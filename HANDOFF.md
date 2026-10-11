@@ -8,8 +8,9 @@
 
 **What:** Linux-first ONNX Runtime inference integration layer prototype (.NET 10/C#)
 **Where:** `~/dev/LinML` (clone from GitHub) or `/mnt/d/Dev/Trackdub_Workspace/LinML`
-**Status:** Scaffold complete, build green, 46 tests passing, pushed to GitHub
-**Next:** Gate A completion (WSL2 .NET setup) → Gate C (fixture + CPU inference) → Gate D (CUDA)
+**Status:** All gates complete (2026-10-11, WSL2) — locked restore, 46 tests green,
+CPU + CUDA inference verified with exact outputs, linux-x64 publish verified, CI green.
+**Next:** See Final Checklist below (all checked) and `docs/compatibility.md` for results.
 
 ```bash
 # Quick start in WSL:
@@ -169,12 +170,12 @@ LinML/
 
 | Gate | Status | What's Left |
 |------|--------|-------------|
-| **A** | 🟡 Partial | Run `scripts/setup-wsl.sh`, verify `dotnet restore --locked-mode`, generate `packages.lock.json`, update ADR 0001 to "Accepted" |
-| **B** | ✅ Done | 14 policy tests passing, contracts defined, logging decided |
-| **C** | ⬜ Pending | Generate ONNX fixture (MatMul+Add), run real CPU inference in WSL, verify outputs match expected `[11,22,13,24,15,26]` |
-| **D** | ⬜ Expected to pass | RTX 5070 available — test CUDA EP in WSL, verify with profiling evidence |
-| **E** | 🟡 Scaffolded | CLI works, exit codes defined — needs publish verification (`verify-linux-publish.sh`) |
-| **F** | ⬜ Pending | CI workflow drafted — needs CI run, evidence collection |
+| **A** | ✅ Done | Locked restore (`packages.lock.json` committed), ADR 0001 Accepted |
+| **B** | ✅ Done | 19 policy tests passing, contracts defined, logging decided |
+| **C** | ✅ Done | Fixture generated (BCL-only C# protobuf writer, deterministic), CPU output `[11,22,13,24,15,26]` verified |
+| **D** | ✅ Done | CUDA EP registered (removed shadowing CPU package); RTX 5070 run + ORT profiling shows `MatMulAddFusion` on CUDA |
+| **E** | ✅ Done | `verify-linux-publish.sh` all PASS; published binary runs CPU + CUDA; 511 MB |
+| **F** | ✅ Done | CI green on `ubuntu-latest` (hosted runners only); evidence in `evidence/` |
 
 ---
 
@@ -377,16 +378,18 @@ Save these to `evidence/` (gitignored) or a separate location:
 
 ---
 
-## Final Checklist Before Claiming "Done"
-
-- [ ] Gate A: WSL2 .NET installed, locked restore works
-- [ ] Gate B: 14 policy tests passing (already done)
-- [ ] Gate C: Real CPU inference in WSL with verified output `[11,22,13,24,15,26]`
-- [ ] Gate D: Real CUDA inference in WSL with profiling evidence (or marked blocked)
-- [ ] Gate E: Published Linux binary works, `ldd` shows no missing deps
-- [ ] Gate F: CI green, evidence files collected
-- [ ] All commits pushed to GitHub
-- [ ] ADR 0001 updated to "Accepted"
-- [ ] compatibility.md updated with actual test results
+**Do not claim the prototype is complete until Gate C and the CPU portion of Gates E/F have real Linux evidence in WSL2.** — Satisfied 2026-10-11; see checklist below.
 
 **Do not claim the prototype is complete until Gate C and the CPU portion of Gates E/F have real Linux evidence in WSL2.**
+
+## Final Checklist Before Claiming "Done"
+
+- [x] Gate A: WSL2 .NET installed, locked restore works
+- [x] Gate B: 19 policy tests passing (14 selector + 5 fallback)
+- [x] Gate C: Real CPU inference in WSL with verified output `[11,22,13,24,15,26]`
+- [x] Gate D: Real CUDA inference in WSL with profiling evidence
+- [x] Gate E: Published Linux binary works, `ldd` shows no missing deps
+- [x] Gate F: CI green, evidence files collected
+- [x] All commits pushed to GitHub
+- [x] ADR 0001 updated to "Accepted"
+- [x] compatibility.md updated with actual test results

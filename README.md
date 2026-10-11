@@ -8,12 +8,12 @@ Linux-first ONNX Runtime inference integration layer. Provides honest provider d
 
 | Gate | Description | Status |
 |------|-------------|--------|
-| A | Runtime and packaging strategy | Pending |
-| B | Contracts and selection policy | Pending |
-| C | Real CPU inference | Pending |
-| D | CUDA readiness and execution | Expected to pass (RTX 5070 available) |
-| E | CLI and native publishing | Pending |
-| F | CI, evidence, and handoff | Pending |
+| A | Runtime and packaging strategy | ✅ Accepted (locked restore, ADR 0001) |
+| B | Contracts and selection policy | ✅ Done (19 policy tests) |
+| C | Real CPU inference | ✅ Done (`[11, 22, 13, 24, 15, 26]` verified) |
+| D | CUDA readiness and execution | ✅ Done (RTX 5070, profiling evidence) |
+| E | CLI and native publishing | ✅ Done (publish verified, 511 MB) |
+| F | CI, evidence, and handoff | ✅ Done (CI green, `evidence/`) |
 
 ## Quick Start
 
