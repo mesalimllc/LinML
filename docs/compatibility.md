@@ -30,6 +30,11 @@
 - **x64 only:** No ARM64 support in MVP.
 - **Ubuntu 26.04:** Other distros not tested.
 - **CUDA 13.x:** Older CUDA drivers not tested.
+- **cuDNN required for CUDA Conv ops:** `CUDAExecutionProvider` runs Gemm-only
+  models without cuDNN, but Conv (and similar) kernels fail at run time with
+  `dlopen failed for libcudnn.so` when cuDNN 9.x is absent. Proven by MNIST
+  (Opp 1): CPU always works; CUDA Conv needs `libcudnn.so` visible via
+  system install or `LD_LIBRARY_PATH`. Provider listed ≠ model runnable.
 - **Framework-dependent:** Requires .NET 10 runtime on target.
 
 ## Up next
@@ -50,6 +55,7 @@
 | Integration: CPU inference | ✓ | N/A | ✅ 3/3 pass, output `[11, 22, 13, 24, 15, 26]` (Gate C) |
 | Integration: CUDA inference | N/A | ✓ | ✅ 2/2 pass on RTX 5070 (Gate D) |
 | Integration: Fallback | ✓ | ✓ | ✅ 2/2 pass (soft CUDA path on this host) |
+| Integration: Real model (MNIST) | ✓ | ✓ | ✅ CPU exact argmax; CUDA matches (argmax + 2dp) |
 | CLI tests | ✓ | ✓ | ✅ 14/14 pass (placeholder assertions, Gate E) |
 | Publish verification | ✓ | ✓ | ✅ `verify-linux-publish.sh` all PASS; published `linml` runs CPU + CUDA (Gate E) |
 

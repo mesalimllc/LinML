@@ -1,0 +1,32 @@
+{
+  "$schema": "https://linml.dev/schemas/fixture-manifest-v1.json",
+  "name": "mnist-8-real",
+  "description": "Real-world validation model: MNIST MLP classifier (Conv+Relu+Gemm, no Softmax; outputs logits)",
+  "source": {
+    "url": "https://github.com/onnx/models/raw/main/validated/vision/classification/mnist/model/mnist-8.onnx",
+    "license": "MIT (onnx/models)"
+  },
+  "inputs": [
+    {
+      "name": "Input3",
+      "type": "float32",
+      "shape": [1, 1, 28, 28]
+    }
+  ],
+  "outputs": [
+    {
+      "name": "Plus214_Output_0",
+      "type": "float32",
+      "shape": [1, 10]
+    }
+  ],
+  "testInput": {
+    "file": "mnist-input.json",
+    "note": "784 seeded pseudo-random floats (seed 42); argmax digit is 8"
+  },
+  "sha256": "2f06e72de813a8635c9bc0397ac447a601bdbfa7df4bebc278723b958831c9bf",
+  "sizeBytes": 26454,
+  "notes": [
+    "CUDA Conv execution requires cuDNN 9.x (libcudnn.so) on the host; without it CUDA fails while CPU succeeds."
+  ]
+}
