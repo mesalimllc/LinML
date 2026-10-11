@@ -21,6 +21,17 @@
          locked-mode restore stays valid for both plain and -r restores. -->
     <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
 
+    <!-- Packaging: only projects that opt in (IsPackable=true) are published,
+         to GitHub Packages by .github/workflows/publish-packages.yml. The
+         workflow overrides Version from the release tag. -->
+    <IsPackable>false</IsPackable>
+    <VersionPrefix>0.1.0</VersionPrefix>
+    <Authors>LinML Contributors</Authors>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/trackdubllc/LinML</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>https://github.com/trackdubllc/LinML</PackageProjectUrl>
+
   </PropertyGroup>
 
 </Project>
