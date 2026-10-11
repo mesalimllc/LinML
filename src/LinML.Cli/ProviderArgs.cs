@@ -11,6 +11,18 @@ public static class ProviderArgs
     /// <summary>Environment variable with ';'-separated name=path plugin EP libraries.</summary>
     public const string EpLibrariesEnvVar = "LINML_EP_LIBRARIES";
 
+    /// <summary>Known providers and their accepted --provider aliases.</summary>
+    private static readonly (string[] Aliases, ProviderId Id)[] KnownProviders =
+    [
+        (["cpu"], ProviderId.Cpu),
+        (["cuda"], ProviderId.Cuda),
+        (["trt", "tensorrt"], ProviderId.Tensorrt),
+        (["trt-rtx", "tensorrt-rtx", "nvtensort-rtx", "nv-tensorrt-rtx"], ProviderId.TensorrtRtx),
+        (["openvino", "ov"], ProviderId.OpenVino),
+        (["qnn"], ProviderId.Qnn),
+        (["migraphx", "amd"], ProviderId.MigraphX),
+    ];
+
     /// <summary>
     /// Parse a --provider value: short alias (cpu, cuda, trt, trt-rtx, openvino,
     /// qnn, migraphx) or a raw ORT EP name (e.g. CUDAExecutionProvider).
@@ -23,21 +35,23 @@ public static class ProviderArgs
             return null;
         }
 
-        return name.Trim().ToLowerInvariant() switch
+        var lowered = name.Trim().ToLowerInvariant();
+        foreach (var (aliases, id) in KnownProviders)
         {
-            "cpu" => ProviderId.Cpu,
-            "cuda" => ProviderId.Cuda,
-            "trt" or "tensorrt" => ProviderId.Tensorrt,
-            "trt-rtx" or "tensorrt-rtx" or "nvtensort-rtx" or "nv-tensorrt-rtx" => ProviderId.TensorrtRtx,
-            "openvino" or "ov" => ProviderId.OpenVino,
-            "qnn" => ProviderId.Qnn,
-            "migraphx" or "amd" => ProviderId.MigraphX,
-            _ when name.Contains("ExecutionProvider", StringComparison.Ordinal)
-                => new ProviderId(name.Trim()),
-            _ => throw new ArgumentException(
-                $"Unknown provider '{name}'. Aliases: cpu, cuda, trt, trt-rtx, openvino, qnn, migraphx " +
-                "(or a raw ORT EP name like CUDAExecutionProvider).")
-        };
+            if (aliases.Contains(lowered))
+            {
+                return id;
+            }
+        }
+
+        if (name.Contains("ExecutionProvider", StringComparison.Ordinal))
+        {
+            return new ProviderId(name.Trim());
+        }
+
+        throw new ArgumentException(
+            $"Unknown provider '{name}'. Aliases: cpu, cuda, trt, trt-rtx, openvino, qnn, migraphx " +
+            "(or a raw ORT EP name like CUDAExecutionProvider).");
     }
 
     /// <summary>
@@ -75,9 +89,45 @@ public static class ProviderArgs
             if (idx <= 0)
             {
                 throw new ArgumentException(
-                    $"Invalid --ep-option '{arg}'. Expected key=value.");
+                    $"Invalid --ep-option '{arg}'. Expected key=value or provider:key=value.");
             }
             result[arg[..idx]] = arg[(idx + 1)..];
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Select the EP options that apply to a specific provider.
+    /// Unprefixed keys (key=value) are global — they apply to every provider.
+    /// Prefixed keys (provider:key=value, where provider is an alias or the raw
+    /// EP name, case-insensitive) apply only to that provider. This keeps
+    /// provider-specific options from leaking into fallback attempts of other
+    /// providers (e.g. a trt_* option must not reach the CUDA append).
+    /// </summary>
+    public static IReadOnlyDictionary<string, string> OptionsForProvider(
+        IReadOnlyDictionary<string, string> options,
+        ProviderId provider)
+    {
+        var aliases = KnownProviders
+            .FirstOrDefault(p => p.Id == provider).Aliases
+            ?? [];
+        var epNameLower = provider.Value.ToLowerInvariant();
+
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (key, value) in options)
+        {
+            var colon = key.IndexOf(':');
+            if (colon < 0)
+            {
+                result[key] = value; // global
+                continue;
+            }
+
+            var prefix = key[..colon].ToLowerInvariant();
+            if (aliases.Contains(prefix) || prefix == epNameLower)
+            {
+                result[key[(colon + 1)..]] = value;
+            }
         }
         return result;
     }

@@ -1,3 +1,4 @@
+using LinML.Cli;
 using LinML.Contracts;
 using Microsoft.Extensions.DependencyInjection;
 using System.CommandLine;
@@ -16,11 +17,19 @@ public static class ProvidersCommand
         var providersCommand = new Command("providers", "Provider discovery commands");
 
         var listCommand = new Command("list", "List available execution providers");
+        var epLibraryOption = new Option<string[]>("--ep-library") { Description = "Plugin EP library as name=path (repeatable)" };
+        listCommand.Options.Add(epLibraryOption);
         listCommand.Options.Add(jsonOption);
 
         listCommand.SetAction(parseResult =>
         {
+            var epLibraryArgs = parseResult.GetValue(epLibraryOption) ?? [];
             var json = parseResult.GetValue(jsonOption);
+
+            // Register plugin EP libraries before discovery so they are listed.
+            var epLibraries = ProviderArgs.ParseEpLibraries(epLibraryArgs);
+            ProviderArgs.EnsureEpLibrariesRegistered(epLibraries);
+
             var discovery = provider.GetRequiredService<IProviderDiscovery>();
             var report = discovery.Discover();
 

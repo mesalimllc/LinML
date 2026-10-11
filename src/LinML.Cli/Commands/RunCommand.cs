@@ -22,7 +22,7 @@ public static class RunCommand
         var providerOption = new Option<string?>("--provider") { Description = "Preferred provider (cpu, cuda, trt, trt-rtx, openvino, qnn, migraphx)" };
         var requireProviderOption = new Option<bool>("--require-provider") { Description = "Fail if the preferred provider is unavailable" };
         var profileOption = new Option<bool>("--profile") { Description = "Enable ORT profiling and report per-node provider placement" };
-        var epOptionOption = new Option<string[]>("--ep-option") { Description = "Provider option as key=value (repeatable), e.g. --ep-option trt_fp16_enable=1" };
+        var epOptionOption = new Option<string[]>("--ep-option") { Description = "Provider option: key=value (all providers) or provider:key=value (scoped, repeatable), e.g. --ep-option trt:trt_fp16_enable=1" };
         var epLibraryOption = new Option<string[]>("--ep-library") { Description = "Plugin EP library as name=path (repeatable), e.g. --ep-library nvtensorrtrtx=/path/libonnxruntime_providers_nv_tensorrt_rtx.so" };
 
         runCommand.Options.Add(modelOption);
@@ -126,8 +126,11 @@ public static class RunCommand
                     IInferenceSession? attemptSession;
                     try
                     {
+                        // EP options are provider-scoped: a trt_* option must
+                        // not leak into a CUDA/CPU fallback attempt.
+                        var attemptOptions = ProviderArgs.OptionsForProvider(epOptions, attempt);
                         attemptSession = factory.CreateSession(
-                            modelIdentity, attempt, epOptions,
+                            modelIdentity, attempt, attemptOptions,
                             enableProfiling: profile, epLibraries: epLibraries);
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException)

@@ -1,4 +1,5 @@
 using LinML.Cli;
+using LinML.Contracts;
 using Xunit;
 
 namespace LinML.Cli.Tests;
@@ -108,6 +109,72 @@ public class ProviderArgsTests
     {
         Assert.Throws<ArgumentException>(() => ProviderArgs.ParseEpOptions(["no-equals"]));
         Assert.Throws<ArgumentException>(() => ProviderArgs.ParseEpOptions(["=novalue"]));
+    }
+
+    [Fact]
+    public void OptionsForProvider_GlobalKeys_ApplyToAllProviders()
+    {
+        var options = ProviderArgs.ParseEpOptions(["device_id=0"]);
+
+        Assert.Equal("0", ProviderArgs.OptionsForProvider(options, ProviderId.Cuda)["device_id"]);
+        Assert.Equal("0", ProviderArgs.OptionsForProvider(options, ProviderId.Tensorrt)["device_id"]);
+        Assert.Equal("0", ProviderArgs.OptionsForProvider(options, ProviderId.Cpu)["device_id"]);
+    }
+
+    [Fact]
+    public void OptionsForProvider_PrefixedKeys_OnlyMatchingProvider()
+    {
+        var options = ProviderArgs.ParseEpOptions(
+            ["trt:trt_fp16_enable=1", "cuda:device_id=0", "global_key=x"]);
+
+        var trt = ProviderArgs.OptionsForProvider(options, ProviderId.Tensorrt);
+        Assert.Equal("1", trt["trt_fp16_enable"]);   // prefix stripped
+        Assert.Equal("x", trt["global_key"]);        // global included
+        Assert.False(trt.ContainsKey("device_id"));  // cuda-scoped excluded
+
+        var cuda = ProviderArgs.OptionsForProvider(options, ProviderId.Cuda);
+        Assert.Equal("0", cuda["device_id"]);
+        Assert.False(cuda.ContainsKey("trt_fp16_enable"));
+
+        var cpu = ProviderArgs.OptionsForProvider(options, ProviderId.Cpu);
+        Assert.False(cpu.ContainsKey("trt_fp16_enable"));
+        Assert.False(cpu.ContainsKey("device_id"));
+        Assert.Equal("x", cpu["global_key"]);
+    }
+
+    [Fact]
+    public void OptionsForProvider_FullEpNamePrefix_Matches()
+    {
+        var options = ProviderArgs.ParseEpOptions(
+            ["TensorrtExecutionProvider:trt_fp16_enable=1",
+             "NvTensorRTRTXExecutionProvider:enable_cuda_graph=1"]);
+
+        var trt = ProviderArgs.OptionsForProvider(options, ProviderId.Tensorrt);
+        Assert.Equal("1", trt["trt_fp16_enable"]);
+        Assert.False(trt.ContainsKey("enable_cuda_graph"));
+
+        var rtx = ProviderArgs.OptionsForProvider(options, ProviderId.TensorrtRtx);
+        Assert.Equal("1", rtx["enable_cuda_graph"]);
+        Assert.False(rtx.ContainsKey("trt_fp16_enable"));
+    }
+
+    [Fact]
+    public void OptionsForProvider_PrefixMatching_IsCaseInsensitive()
+    {
+        var options = ProviderArgs.ParseEpOptions(["TRT:trt_fp16_enable=1"]);
+        var trt = ProviderArgs.OptionsForProvider(options, ProviderId.Tensorrt);
+        Assert.Equal("1", trt["trt_fp16_enable"]);
+    }
+
+    [Fact]
+    public void OptionsForProvider_AliasAndEpName_AreEquivalent()
+    {
+        var byAlias = ProviderArgs.OptionsForProvider(
+            ProviderArgs.ParseEpOptions(["tensorrt:trt_fp16_enable=1"]), ProviderId.Tensorrt);
+        var byEpName = ProviderArgs.OptionsForProvider(
+            ProviderArgs.ParseEpOptions(["TensorrtExecutionProvider:trt_fp16_enable=1"]), ProviderId.Tensorrt);
+
+        Assert.Equal(byAlias, byEpName);
     }
 
     [Fact]

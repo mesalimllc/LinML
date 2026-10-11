@@ -12,7 +12,7 @@ namespace LinML.Runtime.Onnx;
 public static class PluginEpRegistry
 {
     private static readonly object Gate = new();
-    private static readonly HashSet<string> Registered = new(StringComparer.Ordinal);
+    private static readonly Dictionary<string, string> Registered = new(StringComparer.Ordinal);
 
     /// <summary>
     /// Register plugin EP libraries with the ORT environment.
@@ -26,22 +26,30 @@ public static class PluginEpRegistry
             return;
         }
 
-        lock (Gate)
+        foreach (var (name, path) in libraries)
         {
-            foreach (var (name, path) in libraries)
+            // Validate the path even when the name is already registered:
+            // a missing file or a conflicting path is an operator error.
+            if (!File.Exists(path))
             {
-                if (Registered.Contains(name))
+                throw new FileNotFoundException(
+                    $"EP plugin library not found for '{name}': {path}", path);
+            }
+
+            lock (Gate)
+            {
+                if (Registered.TryGetValue(name, out var existingPath))
                 {
-                    continue;
-                }
-                if (!File.Exists(path))
-                {
-                    throw new FileNotFoundException(
-                        $"EP plugin library not found for '{name}': {path}", path);
+                    if (!string.Equals(existingPath, path, StringComparison.Ordinal))
+                    {
+                        throw new ArgumentException(
+                            $"EP plugin '{name}' is already registered with a different path: {existingPath}");
+                    }
+                    continue; // idempotent
                 }
 
                 OrtEnv.Instance().RegisterExecutionProviderLibrary(name, path);
-                Registered.Add(name);
+                Registered[name] = path;
             }
         }
     }
@@ -49,7 +57,7 @@ public static class PluginEpRegistry
     /// <summary>Names of plugin EP libraries registered in this process.</summary>
     public static IReadOnlyCollection<string> RegisteredNames
     {
-        get { lock (Gate) { return Registered.ToArray(); } }
+        get { lock (Gate) { return Registered.Keys.ToArray(); } }
     }
 }
 

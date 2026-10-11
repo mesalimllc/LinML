@@ -22,9 +22,11 @@ public static class DoctorCommand
         var modelOption = new Option<string?>("--model") { Description = "Path to a model file for smoke testing" };
         var inputsOption = new Option<string?>("--inputs") { Description = "Path to inputs JSON (required with --model)" };
         var epLibraryOption = new Option<string[]>("--ep-library") { Description = "Plugin EP library as name=path (repeatable)" };
+        var epOptionOption = new Option<string[]>("--ep-option") { Description = "Provider option: key=value or provider:key=value (repeatable)" };
         doctorCommand.Options.Add(modelOption);
         doctorCommand.Options.Add(inputsOption);
         doctorCommand.Options.Add(epLibraryOption);
+        doctorCommand.Options.Add(epOptionOption);
         doctorCommand.Options.Add(jsonOption);
 
         doctorCommand.SetAction(parseResult =>
@@ -32,6 +34,7 @@ public static class DoctorCommand
             var model = parseResult.GetValue(modelOption);
             var inputs = parseResult.GetValue(inputsOption);
             var epLibraryArgs = parseResult.GetValue(epLibraryOption) ?? [];
+            var epOptionArgs = parseResult.GetValue(epOptionOption) ?? [];
             var json = parseResult.GetValue(jsonOption);
 
             try
@@ -55,6 +58,7 @@ public static class DoctorCommand
                 // Register plugin EP libraries before discovery so they are listed.
                 var epLibraries = ProviderArgs.ParseEpLibraries(epLibraryArgs);
                 ProviderArgs.EnsureEpLibrariesRegistered(epLibraries);
+                var epOptions = ProviderArgs.ParseEpOptions(epOptionArgs);
 
                 var discovery = provider.GetRequiredService<IProviderDiscovery>();
                 var report = discovery.Discover();
@@ -70,7 +74,10 @@ public static class DoctorCommand
 
                     foreach (var p in report.AvailableProviders)
                     {
-                        readinessReports.Add(smokeRunner.RunSmoke(p, modelIdentity, tensorInputs, epLibraries: epLibraries));
+                        var scopedOptions = ProviderArgs.OptionsForProvider(epOptions, p);
+                        readinessReports.Add(smokeRunner.RunSmoke(
+                            p, modelIdentity, tensorInputs,
+                            options: scopedOptions, epLibraries: epLibraries));
                     }
                 }
                 else
