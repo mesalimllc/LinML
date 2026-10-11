@@ -5,6 +5,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>LinML.Contracts</RootNamespace>
+    <IsPackable>true</IsPackable>
+    <PackageId>LinML.Contracts</PackageId>
     <Description>LinML contracts: provider discovery, selection, and inference abstractions.</Description>
   </PropertyGroup>
 

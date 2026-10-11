@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>LinML.Catalog</RootNamespace>
+    <IsPackable>true</IsPackable>
+    <PackageId>LinML.Catalog</PackageId>
+    <Description>Execution provider catalog for ONNX Runtime on Linux: installs pinned plugin EPs, registers them with ORT, and appends their devices to sessions. The Linux counterpart to the Windows ML ExecutionProviderCatalog.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="LinML.Catalog.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\LinML.Contracts\LinML.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Managed API only. The consuming application supplies the native ONNX
+         Runtime (e.g. Microsoft.ML.OnnxRuntime.Gpu), so this package never
+         brings a second libonnxruntime.so that could shadow the host's. -->
+    <PackageReference Include="Microsoft.ML.OnnxRuntime.Managed" />
+  </ItemGroup>
+
+</Project>
