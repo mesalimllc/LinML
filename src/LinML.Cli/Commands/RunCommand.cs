@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using System.CommandLine;
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace LinML.Cli.Commands;
 
@@ -114,14 +115,16 @@ public static class RunCommand
                 var factory = provider.GetRequiredService<IInferenceSessionFactory>();
                 using var session = factory.CreateSession(modelIdentity, decision.SelectedProvider!);
 
+                var stopwatch = System.Diagnostics.Stopwatch.StartNew();
                 var outputs = session.Run(tensorInputs);
+                stopwatch.Stop();
 
                 var result = new InferenceResult
                 {
                     RequestedProvider = preferredProvider ?? ProviderId.Cpu,
                     SelectedProvider = decision.SelectedProvider!,
                     Outputs = outputs,
-                    Duration = TimeSpan.Zero, // TODO: measure
+                    Duration = stopwatch.Elapsed,
                     Model = modelIdentity,
                     RuntimeVersion = OnnxRuntimeDiagnostics.GetRuntimeVersion()
                 };
@@ -166,7 +169,14 @@ public static class RunCommand
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
-        WriteIndented = true
+        WriteIndented = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true,
+        Converters =
+        {
+            new ProviderIdJsonConverter(),
+            new JsonStringEnumConverter()
+        }
     };
 
     private sealed record InputDocument

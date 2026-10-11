@@ -2,6 +2,7 @@ using LinML.Contracts;
 using Microsoft.Extensions.DependencyInjection;
 using System.CommandLine;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace LinML.Cli.Commands;
 
@@ -64,6 +65,12 @@ public static class DoctorCommand
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
-        WriteIndented = true
+        WriteIndented = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        Converters =
+        {
+            new ProviderIdJsonConverter(),
+            new JsonStringEnumConverter()
+        }
     };
 }

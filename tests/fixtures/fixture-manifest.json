@@ -36,8 +36,8 @@
     "cpuDeterministic": 0.0,
     "cpuVsCuda": { "rtol": 1e-5, "atol": 1e-6 }
   },
-  "sha256": "TODO: fill after generation",
-  "sizeBytes": 0,
-  "generatedBy": "TODO: record generation command",
+  "sha256": "ede6e710b4dc79ef12907b670a58ad7c5bb06bf259a3afbbe612abc901248b11",
+  "sizeBytes": 239,
+  "generatedBy": "bash scripts/fetch-test-fixture.sh (embeds a BCL-only C# generator; MatMul+Add, opset 17, IR 10)",
   "license": "Self-generated, no external license"
 }
