@@ -57,6 +57,7 @@ public static class Program
         // Runtime
         services.AddSingleton<IInferenceSessionFactory, OnnxSessionFactory>();
         services.AddSingleton<OnnxSessionFactory>();
+        services.AddSingleton<ModelSmokeRunner>();
 
         // Providers
         services.AddSingleton<CpuProviderAdapter>();

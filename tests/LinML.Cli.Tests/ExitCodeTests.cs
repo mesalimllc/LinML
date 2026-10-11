@@ -176,6 +176,47 @@ public class ExitCodeTests
     }
 
     [Fact]
+    public async Task Doctor_ModelSmoke_Returns0_WithPhaseResults()
+    {
+        if (!File.Exists(CliTestHost.Fixture("model.onnx"))
+            || !File.Exists(CliTestHost.Fixture("inputs.json")))
+        {
+            return;
+        }
+
+        var (exitCode, stdout, _) = await Task.Run(() => CliTestHost.Run(
+            "doctor",
+            "--model", CliTestHost.Fixture("model.onnx"),
+            "--inputs", CliTestHost.Fixture("inputs.json"),
+            "--json"));
+
+        Assert.Equal(0, exitCode);
+        using var doc = JsonDocument.Parse(stdout);
+        var readiness = doc.RootElement.GetProperty("readiness").EnumerateArray().ToArray();
+        Assert.NotEmpty(readiness);
+
+        // CPU smoke must always pass; CUDA passes iff the device really runs.
+        var cpu = readiness.Single(r =>
+            r.GetProperty("provider").GetString() == "CPUExecutionProvider");
+        Assert.True(cpu.GetProperty("isReady").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Doctor_ModelWithoutInputs_Returns2()
+    {
+        if (!File.Exists(CliTestHost.Fixture("model.onnx")))
+        {
+            return;
+        }
+
+        var (exitCode, _, _) = await Task.Run(() => CliTestHost.Run(
+            "doctor",
+            "--model", CliTestHost.Fixture("model.onnx")));
+
+        Assert.Equal(2, exitCode);
+    }
+
+    [Fact]
     public async Task Version_Returns0()
     {
         var (exitCode, _, _) = await Task.Run(() => CliTestHost.Run("--version"));

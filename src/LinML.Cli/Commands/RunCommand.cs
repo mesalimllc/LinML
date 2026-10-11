@@ -1,11 +1,10 @@
+using LinML.Cli;
 using LinML.Contracts;
 using LinML.Policy;
 using LinML.Runtime.Onnx;
 using Microsoft.Extensions.DependencyInjection;
 using System.CommandLine;
-using System.Security.Cryptography;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace LinML.Cli.Commands;
 
@@ -55,27 +54,10 @@ public static class RunCommand
                 }
 
                 // Compute model identity
-                var modelBytes = await File.ReadAllBytesAsync(model);
-                var sha256 = Convert.ToHexString(SHA256.HashData(modelBytes)).ToLowerInvariant();
-                var modelIdentity = new ModelIdentity
-                {
-                    Path = Path.GetFullPath(model),
-                    Sha256 = sha256,
-                    SizeBytes = modelBytes.Length
-                };
+                var modelIdentity = await InputFiles.IdentifyModelAsync(model);
 
                 // Parse inputs
-                var inputsJson = await File.ReadAllTextAsync(inputs);
-                var inputDoc = JsonSerializer.Deserialize<InputDocument>(inputsJson, JsonOptions)
-                    ?? throw new InvalidOperationException("Failed to parse inputs JSON");
-
-                var tensorInputs = inputDoc.Tensors.Select(t => new TensorInput
-                {
-                    Name = t.Name,
-                    DataType = ParseDataType(t.Type),
-                    Shape = t.Shape,
-                    Data = t.Data
-                }).ToList();
+                var tensorInputs = await InputFiles.ReadInputsAsync(inputs);
 
                 // Build request
                 var preferredProvider = providerName?.ToLowerInvariant() switch
@@ -213,7 +195,7 @@ public static class RunCommand
 
                 if (json)
                 {
-                    Console.WriteLine(JsonSerializer.Serialize(result, JsonOptions));
+                    Console.WriteLine(JsonSerializer.Serialize(result, InputFiles.JsonOptions));
                 }
                 else
                 {
@@ -246,39 +228,5 @@ public static class RunCommand
         });
 
         return runCommand;
-    }
-
-    private static TensorDataType ParseDataType(string type) => type.ToLowerInvariant() switch
-    {
-        "float32" or "float" => TensorDataType.Float32,
-        "float16" => TensorDataType.Float16,
-        "int64" or "long" => TensorDataType.Int64,
-        "int32" or "int" => TensorDataType.Int32,
-        _ => throw new ArgumentException($"Unknown tensor type: {type}")
-    };
-
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        PropertyNameCaseInsensitive = true,
-        Converters =
-        {
-            new ProviderIdJsonConverter(),
-            new JsonStringEnumConverter()
-        }
-    };
-
-    private sealed record InputDocument
-    {
-        public List<TensorSpec> Tensors { get; init; } = [];
-    }
-
-    private sealed record TensorSpec
-    {
-        public string Name { get; init; } = "";
-        public string Type { get; init; } = "float32";
-        public List<int> Shape { get; init; } = [];
-        public List<float> Data { get; init; } = [];
     }
 }
