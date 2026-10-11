@@ -30,7 +30,10 @@ internal static class KnownPlugins
     // the EP. Same pin, URL and digest as scripts/fetch-ep-plugins.sh.
     public static readonly PluginPackageSpec OpenVino = new(
         Id: ProviderId.OpenVino,
-        RegistrationName: "linml.openvino",
+        // Keep this name aligned with the runtime's environment setup. ORT's
+        // plugin registry is process-wide; using a second name creates a
+        // second factory for the same EP and its devices cannot be combined.
+        RegistrationName: "openvino",
         Version: "1.6.1",
         WheelUrl: new Uri("https://files.pythonhosted.org/packages/80/50/691cfc0370ab26a62213741026a8e7a172215e02b37cb2ff73ab1b0e1e60/onnxruntime_ep_openvino-1.6.1-py3-none-manylinux_2_28_x86_64.whl"),
         WheelSha256: "a1afbbad0f051523bac0ab10b0aa8f49112f60f2c008f2ffb6c43eaf435412e0",

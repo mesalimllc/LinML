@@ -1,3 +1,4 @@
+using LinML.Contracts;
 using Microsoft.ML.OnnxRuntime;
 
 namespace LinML.Catalog;
@@ -45,7 +46,7 @@ internal sealed class OrtRegistrar : IOrtRegistrar
     {
         lock (Gate)
         {
-            return Registered.ContainsKey(registrationName);
+            return Registered.ContainsKey(registrationName) || IsOpenVinoRegistered(registrationName);
         }
     }
 
@@ -64,6 +65,15 @@ internal sealed class OrtRegistrar : IOrtRegistrar
                 return;
             }
 
+            // The runtime package can register OpenVINO before the catalog is
+            // used. Do not create a second factory under the same process-wide
+            // ORT environment in that case.
+            if (IsOpenVinoRegistered(registrationName))
+            {
+                Registered[registrationName] = libraryPath;
+                return;
+            }
+
             OrtEnv.Instance().RegisterExecutionProviderLibrary(registrationName, libraryPath);
             Registered[registrationName] = libraryPath;
         }
@@ -73,4 +83,9 @@ internal sealed class OrtRegistrar : IOrtRegistrar
         OrtEnv.Instance().GetEpDevices()
             .Where(d => string.Equals(d.EpName, epName, StringComparison.Ordinal))
             .ToList();
+
+    private static bool IsOpenVinoRegistered(string registrationName) =>
+        string.Equals(registrationName, "openvino", StringComparison.Ordinal)
+        && OrtEnv.Instance().GetEpDevices()
+            .Any(d => string.Equals(d.EpName, ProviderId.OpenVino.Value, StringComparison.Ordinal));
 }
