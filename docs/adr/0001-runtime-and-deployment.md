@@ -143,8 +143,15 @@ Notes:
 - `linml providers list` in WSL2 reports `CPUExecutionProvider` plus the RTX 5070 via
   `nvidia-smi` evidence. CUDA EP registration is a Gate D work item.
 
-## Open Questions
+## Open Questions (Resolved 2026-10-11)
 
-1. Does `Microsoft.ML.OnnxRuntime.Gpu` 1.31.0 execute CPU-only on a CUDA-less host? (Gate A step 4)
-2. Does ORT 1.31.0 CUDA 13.0 build support RTX 5070 (sm_120)? (Gate D)
-3. What is the exact publish size with GPU package? (Gate E)
+1. ~~Does `Microsoft.ML.OnnxRuntime.Gpu` 1.31.0 execute CPU-only on a CUDA-less host?~~
+   **Yes.** Full suite passes with `CUDA_VISIBLE_DEVICES=""` (7/7 integration):
+   CUDA EP is listed (libs present) but the per-model smoke gate skips
+   hardware tests honestly; CPU inference is unaffected.
+2. ~~Does ORT 1.31.0 CUDA 13.0 build support RTX 5070 (sm_120)?~~
+   **Yes.** `CUDAExecutionProvider` registered; fused `MatMul_0/MatMulAddFusion`
+   ran on CUDA per ORT profiling; outputs exact `[11, 22, 13, 24, 15, 26]`.
+3. ~~What is the exact publish size with GPU package?~~
+   **511 MB** for `linux-x64` framework-dependent publish
+   (`artifacts/publish/linux-x64/`), dominated by CUDA native libraries.

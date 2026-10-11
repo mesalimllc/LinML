@@ -17,6 +17,10 @@
     <!-- Locked-mode restore (CI uses locked mode; lock files are committed) -->
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
 
+    <!-- Publish RID: every lock file includes RID-specific native assets so
+         locked-mode restore stays valid for both plain and -r restores. -->
+    <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
+
   </PropertyGroup>
 
 </Project>

@@ -14,18 +14,54 @@ public class CudaInferenceTests
 {
     private static string FixturePath => Path.Combine(AppContext.BaseDirectory, "fixtures", "model.onnx");
 
-    private static bool IsCudaAvailable()
+    // Cached smoke result: probe Load/Append phases are necessary but not
+    // sufficient (listed != runnable). Only a real model run proves CUDA works.
+    private static readonly Lazy<bool> CudaSmokePassed = new(() =>
     {
         try
         {
             var probe = new CudaReadinessProbe(NullLogger<CudaReadinessProbe>.Instance);
-            return probe.Probe().IsReady;
+            if (!probe.Probe().IsReady)
+            {
+                return false;
+            }
+
+            if (!File.Exists(FixturePath))
+            {
+                return false;
+            }
+
+            var modelBytes = File.ReadAllBytes(FixturePath);
+            var model = new ModelIdentity
+            {
+                Path = FixturePath,
+                Sha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(modelBytes)).ToLowerInvariant(),
+                SizeBytes = modelBytes.Length
+            };
+
+            var factory = new OnnxSessionFactory(NullLogger<OnnxSessionFactory>.Instance);
+            using var session = factory.CreateSession(model, ProviderId.Cuda);
+
+            var outputs = session.Run(new List<TensorInput>
+            {
+                new()
+                {
+                    Name = "input",
+                    DataType = TensorDataType.Float32,
+                    Shape = [3, 2],
+                    Data = [1, 2, 3, 4, 5, 6]
+                }
+            });
+
+            return outputs.Count == 1 && outputs[0].Data.Count == 6;
         }
         catch
         {
-            return false;
+            return false; // CUDA listed but not runnable (no device, missing libs, etc.)
         }
-    }
+    });
+
+    private static bool IsCudaAvailable() => CudaSmokePassed.Value;
 
     [Fact]
     public void CudaInference_ReturnsExpectedOutput()

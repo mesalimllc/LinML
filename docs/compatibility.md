@@ -51,7 +51,7 @@
 | Integration: CUDA inference | N/A | ✓ | ✅ 2/2 pass on RTX 5070 (Gate D) |
 | Integration: Fallback | ✓ | ✓ | ✅ 2/2 pass (soft CUDA path on this host) |
 | CLI tests | ✓ | ✓ | ✅ 14/14 pass (placeholder assertions, Gate E) |
-| Publish verification | ✓ | ✓ | Pending Gate E |
+| Publish verification | ✓ | ✓ | ✅ `verify-linux-publish.sh` all PASS; published `linml` runs CPU + CUDA (Gate E) |
 
 ## Evidence Files
 
