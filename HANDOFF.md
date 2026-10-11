@@ -7,13 +7,13 @@
 ## TL;DR
 
 **What:** Linux-first ONNX Runtime inference integration layer prototype (.NET 10/C#)
-**Where:** `~/dev/linml` (clone from GitHub) or `/mnt/d/Dev/Trackdub_Workspace/LinML`
+**Where:** `~/dev/LinML` (clone from GitHub) or `/mnt/d/Dev/Trackdub_Workspace/LinML`
 **Status:** Scaffold complete, build green, 46 tests passing, pushed to GitHub
 **Next:** Gate A completion (WSL2 .NET setup) → Gate C (fixture + CPU inference) → Gate D (CUDA)
 
 ```bash
 # Quick start in WSL:
-cd ~/dev/linml  # or clone first: git clone https://github.com/trackdubllc/linml.git
+cd ~/dev/LinML  # or clone first: git clone https://github.com/trackdubllc/LinML.git
 bash scripts/setup-wsl.sh
 dotnet restore LinML.slnx
 dotnet build LinML.slnx -c Release
@@ -54,7 +54,7 @@ ls /usr/local/cuda/lib64/libcudart.so*  # CUDA runtime present
 | **Runtime.Onnx** | `OnnxProviderDiscovery`, `OnnxSessionFactory`, `OnnxInferenceSession`, `CpuProviderAdapter`, `CudaProviderAdapter`, `CudaReadinessProbe` |
 | **CLI** | `Program.cs`, `ProvidersCommand`, `DoctorCommand`, `RunCommand` — all working |
 | **Tests** | 46 passing: 19 policy + 14 CLI + 7 integration + 6 runtime |
-| **Git** | Initialized, 2 commits, pushed to `https://github.com/trackdubllc/linml` (private) |
+| **Git** | Initialized, pushed to `https://github.com/trackdubllc/LinML` (public) |
 | **Docs** | ADR 0001, compatibility.md, diagnostics-schema.md, input-schema.md, wsl-workflow.md |
 | **Scripts** | `setup-wsl.sh`, `fetch-test-fixture.sh` (placeholder), `verify-linux-publish.sh` |
 
@@ -217,7 +217,7 @@ LinML/
 
 4. **Run integration tests in WSL:**
    ```bash
-   cd ~/dev/linml
+   cd ~/dev/LinML
    dotnet test tests/LinML.Integration.Tests -c Release --filter "CpuInference"
    ```
 
@@ -286,12 +286,12 @@ dotnet run --project src/LinML.Cli -- run \
 ## Git Workflow
 
 ```bash
-# Repo: https://github.com/trackdubllc/linml (private)
+# Repo: https://github.com/trackdubllc/LinML (public)
 # Windows path: D:\Dev\Trackdub_Workspace\LinML
-# WSL path (if cloned): ~/dev/linml
+# WSL path (if cloned): ~/dev/LinML
 
 # Recommended: work in WSL filesystem for speed
-cd ~/dev/linml
+cd ~/dev/LinML
 git pull
 # ... make changes ...
 git add -A
