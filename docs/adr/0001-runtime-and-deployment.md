@@ -153,5 +153,6 @@ Notes:
    **Yes.** `CUDAExecutionProvider` registered; fused `MatMul_0/MatMulAddFusion`
    ran on CUDA per ORT profiling; outputs exact `[11, 22, 13, 24, 15, 26]`.
 3. ~~What is the exact publish size with GPU package?~~
-   **511 MB** for `linux-x64` framework-dependent publish
-   (`artifacts/publish/linux-x64/`), dominated by CUDA native libraries.
+   **306 MB** for `linux-x64` framework-dependent publish
+   (`artifacts/publish/linux-x64`) after stripping ~206 MB of Windows native
+   DLLs the ORT Gpu meta-package packs into Linux publish (Opp 6).

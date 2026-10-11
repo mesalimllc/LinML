@@ -26,6 +26,23 @@
 
 ## Known Limitations
 
+- **Publish size 306 MB (was 511 MB):** `linux-x64` framework-dependent publish.
+  Breakdown: `libonnxruntime_providers_cuda.so` 271 MB, `libonnxruntime.so`
+  32 MB, managed + deps ~3 MB. The ORT Gpu meta-package also packs Windows
+  native DLLs (~206 MB) that flow into Linux publish as content; the CLI
+  project strips them post-publish (`RemoveWindowsOrtBinaries` target, Opp 6).
+  Remaining bulk is the CUDA EP itself — a CPU-only flavor would be ~35 MB
+  (29 MB CPU native lib, measured in Gate D, + managed) but is not needed
+  for correctness (the Gpu package runs CPU fine).
+- **CUDA 13.0 build is the default; 12.x is the fallback:** ORT 1.31.0 Gpu
+  ships a CUDA 13.0 build (cuDNN 9.x) that works with CUDA 13.x drivers via
+  minor-version compatibility (proven on driver 617.42 / CUDA 13.4). Hosts
+  with CUDA 12.x-only drivers need the CUDA 12.x variant of the same package
+  (swap the `Microsoft.ML.OnnxRuntime.Gpu` build; requires CUDA 12.8+ for
+  RTX 5070). Not tested — no 12.x-only host available.
+- **Bare metal untested:** all Linux evidence is WSL2 with GPU passthrough;
+  driver behavior and cold-start timing may differ on bare metal.
+
 - **CUDA cold start (~8s, one-time per process):** measured staged breakdown
   (Opp 5, RTX 5070 WSL2): ORT native load + CUDA append ~4.0s, session
   create ~0.45s, first run (CUDA context + kernel init) ~3.9s, second run

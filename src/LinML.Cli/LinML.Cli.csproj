@@ -10,6 +10,20 @@
     <Description>LinML CLI: command-line interface for provider discovery, diagnostics, and inference.</Description>
   </PropertyGroup>
 
+  <!-- The ORT Gpu meta-package packs Windows native binaries (Gpu.Windows)
+       that flow into linux-x64 publish (~206 MB dead weight) as content,
+       bypassing ReferenceCopyLocalPaths. Delete them after publish.
+       Managed 'Microsoft.ML.OnnxRuntime.dll' is NOT in this list. -->
+  <Target Name="RemoveWindowsOrtBinaries" AfterTargets="Publish">
+    <ItemGroup>
+      <WindowsOrtBinaries Include="$(PublishDir)onnxruntime.dll" />
+      <WindowsOrtBinaries Include="$(PublishDir)onnxruntime_providers_shared.dll" />
+      <WindowsOrtBinaries Include="$(PublishDir)onnxruntime_providers_cuda.dll" />
+      <WindowsOrtBinaries Include="$(PublishDir)onnxruntime_providers_tensorrt.dll" />
+    </ItemGroup>
+    <Delete Files="@(WindowsOrtBinaries)" />
+  </Target>
+
   <ItemGroup>
     <ProjectReference Include="..\LinML.Contracts\LinML.Contracts.csproj" />
     <ProjectReference Include="..\LinML.Policy\LinML.Policy.csproj" />
