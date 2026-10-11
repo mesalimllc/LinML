@@ -104,6 +104,33 @@ public class PluginExecutionProviderTests
     }
 
     [Fact]
+    public async Task DownloadTimeout_ReportsFailed()
+    {
+        using var root = new TempDir();
+        byte[] wheel = FakeWheel.Build();
+        var ep = new PluginExecutionProvider(
+            FakeWheel.Spec(wheel), root.Path, new PluginInstaller(new TimingOutHandler()), new FakeRegistrar(), () => true);
+
+        ProviderEnsureResult result = await ep.EnsureReadyAsync(new EnsureOptions(AllowDownloads: true));
+
+        Assert.Equal(ProviderEnsureStatus.Failed, result.Status);
+        Assert.Contains("timed out", result.Detail, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task CallerCancellation_Propagates()
+    {
+        using var root = new TempDir();
+        byte[] wheel = FakeWheel.Build();
+        PluginExecutionProvider ep = Provider(root.Path, FakeWheel.Spec(wheel), new FakeRegistrar(), new FakeWheelHandler(wheel));
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            ep.EnsureReadyAsync(new EnsureOptions(AllowDownloads: true), cts.Token));
+    }
+
+    [Fact]
     public void TryRegister_RealOrt_RejectsNonLibraryFile()
     {
         using var root = new TempDir();

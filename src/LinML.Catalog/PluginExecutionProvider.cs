@@ -45,19 +45,20 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
                 return ProviderReadyState.Unsupported;
             }
 
-            if (LibraryPath is null)
+            if (GetDevices().Count > 0)
             {
-                return ProviderReadyState.NotPresent;
+                return ProviderReadyState.Ready;
             }
 
-            return _registrar.IsRegistered(_spec.RegistrationName) && GetDevices().Count > 0
-                ? ProviderReadyState.Ready
-                : ProviderReadyState.NotReady;
+            return LibraryPath is null ? ProviderReadyState.NotPresent : ProviderReadyState.NotReady;
         }
     }
 
-    public IReadOnlyList<OrtEpDevice> GetDevices() =>
-        _registrar.IsRegistered(_spec.RegistrationName) ? _registrar.GetDevices(_spec.Id.Value) : [];
+    // Devices for this EP name from whichever registration made them, the
+    // catalog's or one made earlier in the process (e.g. LINML_EP_LIBRARIES
+    // or the host): the catalog never registers a second copy, because ORT
+    // rejects an append whose devices come from different EP factories.
+    public IReadOnlyList<OrtEpDevice> GetDevices() => _registrar.GetDevices(_spec.Id.Value);
 
     public bool TryRegister(out string? failureReason)
     {
@@ -65,6 +66,11 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
         if (failureReason is not null)
         {
             return false;
+        }
+
+        if (!_registrar.IsRegistered(_spec.RegistrationName) && GetDevices().Count > 0)
+        {
+            return true; // already registered elsewhere in this process
         }
 
         string? library = LibraryPath;
@@ -103,6 +109,13 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
         await _ensureGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            IReadOnlyList<OrtEpDevice> existing = GetDevices();
+            if (existing.Count > 0)
+            {
+                return new ProviderEnsureResult(
+                    Id, ProviderEnsureStatus.Ready, $"{Id} already registered with {existing.Count} EP device(s).", existing);
+            }
+
             bool downloaded = false;
             if (LibraryPath is null)
             {
@@ -120,6 +133,11 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
                 catch (Exception ex) when (ex is HttpRequestException or InvalidDataException or IOException or UnauthorizedAccessException)
                 {
                     return Result(ProviderEnsureStatus.Failed, $"Vendoring {Id} {_spec.Version} failed: {ex.Message}");
+                }
+                catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+                {
+                    // HttpClient.Timeout surfaces as TaskCanceledException; caller cancellation still propagates.
+                    return Result(ProviderEnsureStatus.Failed, $"Vendoring {Id} {_spec.Version} timed out: {ex.Message}");
                 }
             }
 

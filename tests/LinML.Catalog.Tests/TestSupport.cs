@@ -85,6 +85,13 @@ internal sealed class FakeWheelHandler(byte[] body) : HttpMessageHandler
     }
 }
 
+/// <summary>Simulates HttpClient.Timeout, which surfaces as TaskCanceledException.</summary>
+internal sealed class TimingOutHandler : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+        throw new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout.");
+}
+
 internal sealed class FakeRegistrar : IOrtRegistrar
 {
     private readonly HashSet<string> _registered = [];

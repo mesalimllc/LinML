@@ -34,6 +34,16 @@ public class OpenVinoCatalogEndToEndTests
         ProviderEnsureResult again = await openVino.EnsureReadyAsync(new EnsureOptions(AllowDownloads: false));
         Assert.Equal(ProviderEnsureStatus.Ready, again.Status);
 
+        // A second catalog with an empty root reuses the existing registration
+        // instead of registering a second copy (which would need its own
+        // library and would give the append devices from two EP factories).
+        using var otherRoot = new TempDir();
+        IExecutionProvider second = ExecutionProviderCatalog.Create(otherRoot.Path).Find(Contracts.ProviderId.OpenVino)!;
+        Assert.Equal(ProviderReadyState.Ready, second.ReadyState);
+        ProviderEnsureResult reused = await second.EnsureReadyAsync(new EnsureOptions(AllowDownloads: false));
+        Assert.Equal(ProviderEnsureStatus.Ready, reused.Status);
+        Assert.Equal(ensured.Devices.Count, reused.Devices.Count);
+
         using var options = new SessionOptions();
         ProviderAppendResult appended = options.AppendFromCatalog(openVino, [OrtHardwareDeviceType.CPU]);
         Assert.True(appended.Appended, appended.FailureReason);
