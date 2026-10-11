@@ -1,6 +1,6 @@
 # LinML Compatibility Report
 
-> **Status:** Initial scaffold. Updated as gates complete.
+> **Status:** All gates complete; updated as providers are verified.
 
 ## Supported Environments
 
@@ -101,15 +101,16 @@
 
 | Test | CPU | CUDA | Status |
 |------|-----|------|--------|
-| Unit tests (Policy) | ✓ | N/A | ✅ 19/19 pass |
-| Unit tests (Runtime) | ✓ | ✓ | ✅ 6/6 pass |
+| Unit tests (Policy) | ✓ | N/A | ✅ 23/23 pass |
+| Unit tests (Runtime) | ✓ | ✓ | ✅ 22/22 pass |
+| Unit tests (Catalog) | ✓ | N/A | ✅ 25/25 pass (opt-in network test: `LINML_CATALOG_NETWORK_TESTS=1`) |
 | Integration: CPU inference | ✓ | N/A | ✅ 3/3 pass, output `[11, 22, 13, 24, 15, 26]` (Gate C) |
 | Integration: CUDA inference | N/A | ✓ | ✅ 2/2 pass on RTX 5070 (Gate D) |
 | Integration: Fallback | ✓ | ✓ | ✅ 2/2 pass (soft CUDA path on this host) |
 | Integration: OpenVINO | ✓ | ✗ | ✅ MNIST argmax=8 on `OpenVINOExecutionProvider` via plugin EP `onnxruntime-ep-openvino` 1.6.1 (Intel Xeon CPU); GPU/NPU untested |
-| Integration: QNN | ✗ | ✗ | ✅ Wired (provider ID, adapter, readiness); blocked — no Snapdragon NPU, QAIRT SDK needs Qualcomm account |
+| Integration: QNN | ✗ | ✗ | ✅ Wired (provider ID, readiness); blocked — no Snapdragon NPU, QAIRT SDK needs Qualcomm account |
 | Integration: MIGraphX | ✅ (Daytona) | N/A | ✅ Verified on MI355X (gfx950): MNIST argmax 8, exact logits, MGXKernel on MIGraphXExecutionProvider |
-| CLI tests | ✓ | ✓ | ✅ 14/14 pass (placeholder assertions, Gate E) |
+| CLI tests | ✓ | ✓ | ✅ 57/57 pass (real exit-code, JSON-shape and profiling assertions) |
 | Publish verification | ✓ | ✓ | ✅ `verify-linux-publish.sh` all PASS; published `linml` runs CPU + CUDA (Gate E) |
 
 ## Evidence Files

@@ -15,6 +15,9 @@ Linux-first ONNX Runtime inference integration layer. Provides honest provider d
 | E | CLI and native publishing | ✅ Done (publish verified, 511 MB) |
 | F | CI, evidence, and handoff | ✅ Done (CI green, `evidence/`) |
 
+Beyond the gates: plugin EPs (OpenVINO, TensorRT-RTX), the `LinML.Catalog`
+library (published as `0.1.0-preview.1`), and 147 tests across five test projects.
+
 ## Quick Start
 
 ### Prerequisites
@@ -64,9 +67,20 @@ bash scripts/verify-linux-publish.sh artifacts/publish/linux-x64
 ```bash
 linml --version                          # Print version info
 linml providers list --json              # List available providers
-linml doctor --json                      # Diagnose readiness (no downloads)
-linml run --model <path> --inputs <path> --provider <cpu|cuda> [--require-provider] [--json]
+linml doctor [--model <path> --inputs <path>] --json   # Diagnose readiness (no downloads)
+linml run --model <path> --inputs <path> --provider <name> [--require-provider] [--profile] [--json]
+linml serve --model <path> [--provider <name>] [--warmup-inputs <path>]   # stdin/stdout, long-lived session
 ```
+
+Providers: `cpu`, `cuda`, `trt`, `trt-rtx`, `openvino`, `qnn`, `migraphx`.
+All commands except `--version` also accept:
+
+- `--ep-library name=path` (repeatable) to register a plugin EP library.
+  `LINML_EP_LIBRARIES` (set by `scripts/env-gpu-deps.sh`) does the same.
+- `--ep-option key=value` or `provider:key=value` (repeatable) to set provider options.
+
+Plugin EPs are fetched with `scripts/fetch-ep-plugins.sh`; the pins there must
+match `LinML.Catalog` (enforced by `ScriptPinAgreementTests`).
 
 ### Exit Codes
 
@@ -86,14 +100,16 @@ CLI / application
        ├── Contracts: requests, results, readiness, diagnostics
        ├── Policy: provider selection and explicit fallback
        └── ONNX Runtime adapter
-                ├── CPU
-                └── CUDA, optional until hardware-verified
+                ├── CPU, CUDA, TensorRT, MIGraphX (typed appends)
+                └── Plugin EPs ── LinML.Catalog
+                                   ├── PluginLibraryRegistry (one per process)
+                                   └── OpenVINO plugin (pinned, sha256-verified)
 ```
 
 Dependency direction:
 - `LinML.Contracts` — no ORT dependency
 - `LinML.Policy` — depends only on Contracts
-- `LinML.Runtime.Onnx` — depends on Contracts + ORT
+- `LinML.Runtime.Onnx` — depends on Contracts + Catalog + ORT
 - `LinML.Catalog` — depends on Contracts + the managed ORT API only (published package)
 - `LinML.Cli` — composition root, depends on all
 
@@ -105,6 +121,10 @@ staged install), registers them with ONNX Runtime, and appends their devices
 to sessions. It currently covers OpenVINO (`onnxruntime-ep-openvino` 1.6.1).
 The host application supplies the native ONNX Runtime (e.g.
 `Microsoft.ML.OnnxRuntime.Gpu` 1.31).
+
+Plugin registration goes through `PluginLibraryRegistry`, which the CLI's
+`--ep-library` path also uses, so a library is registered with ORT at most
+once per process no matter which side registers it first.
 
 ```csharp
 IExecutionProviderCatalog catalog = ExecutionProviderCatalog.GetDefault();
@@ -118,13 +138,16 @@ if (ensured.IsReady)
 }
 ```
 
-Packages are published to GitHub Packages by
-`.github/workflows/publish-packages.yml` when a `vX.Y.Z` tag is pushed. To
-consume them, add the feed with a token that has `read:packages`:
+`LinML.Contracts` and `LinML.Catalog` are published to GitHub Packages by
+`.github/workflows/publish-packages.yml`, either when a `vX.Y.Z[-preview.N]`
+tag is pushed or by running the workflow manually with a version. The latest
+published version is `0.1.0-preview.1`. To consume it, add the feed with a
+token that has `read:packages`:
 
 ```bash
 dotnet nuget add source "https://nuget.pkg.github.com/trackdubllc/index.json" \
   --name github-trackdubllc --username <github-user> --password <token> --store-password-in-clear-text
+dotnet add package LinML.Catalog --version 0.1.0-preview.1
 ```
 
 The opt-in end-to-end test downloads the real plugin and runs MNIST on it:
@@ -136,6 +159,7 @@ The opt-in end-to-end test downloads the real plugin and runs MNIST on it:
 - [Compatibility Report](docs/compatibility.md)
 - [Diagnostics Schema](docs/diagnostics-schema.md)
 - [Input Schema](docs/input-schema.md)
+- [WSL Workflow](docs/wsl-workflow.md)
 
 ## License
 

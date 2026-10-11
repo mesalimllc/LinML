@@ -8,8 +8,10 @@
 
 **What:** Linux-first ONNX Runtime inference integration layer prototype (.NET 10/C#)
 **Where:** `~/dev/LinML` (clone from GitHub) or `/mnt/d/Dev/Trackdub_Workspace/LinML`
-**Status:** All gates complete (2026-10-11, WSL2) — locked restore, 46 tests green,
-CPU + CUDA inference verified with exact outputs, linux-x64 publish verified, CI green.
+**Status:** All gates complete (2026-10-11, WSL2) — locked restore, CPU + CUDA inference
+verified with exact outputs, linux-x64 publish verified, CI green. Since then: plugin EPs
+(OpenVINO 1.6.1, TensorRT-RTX), the `LinML.Catalog` library (published to GitHub Packages
+as `0.1.0-preview.1`), one shared plugin registry, and 147 tests.
 **Next:** See Final Checklist below (all checked) and `docs/compatibility.md` for results.
 
 ```bash
@@ -122,8 +124,13 @@ LinML/
 │   ├── LinML.Policy/          # Depends only on Contracts
 │   │   ├── ProviderSelector.cs         # 14 test cases, selection logic
 │   │   └── FallbackPolicy.cs           # Candidate list building
-│   ├── LinML.Runtime.Onnx/    # Depends on Contracts + ORT
-│   │   ├── OnnxProviderDiscovery.cs    # OrtEnv.Instance().GetAvailableProviders()
+│   ├── LinML.Catalog/         # Published package: pinned plugin EPs, install, register, append
+│   │   ├── ExecutionProviderCatalog.cs, PluginExecutionProvider.cs, PluginInstaller.cs
+│   │   ├── PluginLibraryRegistry.cs    # Process-wide plugin registration (shared with CLI)
+│   │   └── SessionOptionsCatalogExtensions.cs  # AppendFromCatalog / AppendEpDevices
+│   ├── LinML.Runtime.Onnx/    # Depends on Contracts + Catalog + ORT
+│   │   ├── OnnxProviderDiscovery.cs    # Built-in providers + plugin EP devices
+│   │   ├── EpAppender.cs               # Typed and plugin (device-based) appends
 │   │   ├── OnnxRuntimeDiagnostics.cs
 │   │   ├── OnnxSessionFactory.cs
 │   │   ├── OnnxInferenceSession.cs
@@ -135,24 +142,28 @@ LinML/
 │       └── Commands/
 │           ├── ProvidersCommand.cs     # linml providers list
 │           ├── DoctorCommand.cs        # linml doctor
-│           └── RunCommand.cs           # linml run --model --inputs --provider
+│           ├── RunCommand.cs           # linml run --model --inputs --provider
+│           └── ServeCommand.cs         # linml serve (stdin/stdout, long-lived session)
 ├── tests/
-│   ├── LinML.Policy.Tests/    # 19 tests passing
+│   ├── LinML.Catalog.Tests/   # 25 tests (plus opt-in network test)
+│   ├── LinML.Policy.Tests/    # 23 tests passing
 │   │   ├── ProviderSelectorTests.cs    # 14 cases with FakeDiscovery/FakeReadinessProbe
 │   │   └── FallbackPolicyTests.cs      # 5 cases
-│   ├── LinML.Runtime.Onnx.Tests/  # 6 tests passing
-│   ├── LinML.Integration.Tests/   # 7 tests (skip without fixture)
+│   ├── LinML.Runtime.Onnx.Tests/  # 22 tests passing
+│   ├── LinML.Integration.Tests/   # 20 tests (skip without fixture)
 │   │   ├── CpuInferenceTests.cs
 │   │   ├── CudaInferenceTests.cs
 │   │   └── FallbackTests.cs
-│   ├── LinML.Cli.Tests/           # 14 tests (placeholders)
+│   ├── LinML.Cli.Tests/           # 57 tests (real exit codes)
 │   └── fixtures/
 │       ├── fixture-manifest.json       # Spec: MatMul+Add, opset 17
 │       ├── inputs.json                 # [1,2,3,4,5,6] shape [3,2]
 │       └── expected-outputs.json       # [11,22,13,24,15,26]
 ├── scripts/
 │   ├── setup-wsl.sh           # Install .NET 10 in WSL, verify GPU
-│   ├── fetch-test-fixture.sh  # PLACEHOLDER — needs ONNX model generation
+│   ├── fetch-test-fixture.sh  # Generates the deterministic MatMul+Add fixture
+│   ├── fetch-ep-plugins.sh    # Pinned plugin EPs (OpenVINO, TensorRT-RTX)
+│   ├── setup-gpu-deps.sh, env-gpu-deps.sh
 │   └── verify-linux-publish.sh
 ├── docs/
 │   ├── adr/0001-runtime-and-deployment.md
@@ -160,7 +171,7 @@ LinML/
 │   ├── diagnostics-schema.md
 │   ├── input-schema.md
 │   └── wsl-workflow.md
-└── .github/workflows/ci.yml
+└── .github/workflows/ci.yml, publish-packages.yml
 ```
 
 ---
