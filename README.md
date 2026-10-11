@@ -69,9 +69,6 @@ See the [Compatibility Report](docs/compatibility.md) for detailed hardware matr
 
 ---
 
-Beyond the gates: plugin EPs (OpenVINO, TensorRT-RTX), the `LinML.Catalog`
-library (published as `0.1.0-preview.1`), and 147 tests across five test projects.
-
 ## Quick Start
 
 ### 1. Install Pre-built CLI (Recommended)

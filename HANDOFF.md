@@ -60,7 +60,7 @@ ls /usr/local/cuda/lib64/libcudart.so*  # CUDA runtime present
 | **Tests** | 147 passing: 23 policy + 57 CLI + 20 integration + 22 runtime + 25 catalog |
 | **Git** | Initialized, pushed to `https://github.com/trackdubllc/LinML` (public) |
 | **Docs** | ADR 0001, compatibility.md, diagnostics-schema.md, input-schema.md, wsl-workflow.md |
-| **Scripts** | `setup-wsl.sh`, `fetch-test-fixture.sh` (placeholder), `verify-linux-publish.sh` |
+| **Scripts** | `setup-wsl.sh`, `fetch-test-fixture.sh`, `fetch-ep-plugins.sh`, `setup-gpu-deps.sh`, `env-gpu-deps.sh`, `verify-linux-publish.sh` |
 
 ### 📦 Pinned Dependencies
 
@@ -172,7 +172,7 @@ LinML/
 │   ├── diagnostics-schema.md
 │   ├── input-schema.md
 │   └── wsl-workflow.md
-└── .github/workflows/ci.yml, publish-packages.yml
+└── .github/workflows/ci.yml, release.yml
 ```
 
 ---
