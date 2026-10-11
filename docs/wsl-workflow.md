@@ -73,6 +73,35 @@ dotnet build LinML.slnx -c Release
 dotnet test LinML.slnx -c Release
 ```
 
+## GPU Dependencies (optional — CUDA / TensorRT / plugin EPs)
+
+For anything beyond CPU inference, install the native GPU libraries and
+vendor the plugin EPs into `~/.local/linml-deps` (no sudo, pip wheels):
+
+```bash
+bash scripts/setup-gpu-deps.sh     # cuDNN 9.x + TensorRT 10.16 libs (pinned)
+bash scripts/fetch-ep-plugins.sh   # OpenVINO + TensorRT-RTX plugin EPs (sha256-verified)
+source scripts/env-gpu-deps.sh     # LD_LIBRARY_PATH + default LINML_EP_LIBRARIES
+```
+
+- `env-gpu-deps.sh` is **sourced** (it mutates `LD_LIBRARY_PATH` and sets
+  `LINML_EP_LIBRARIES` for TRT-RTX/OpenVINO auto-registration). It also adds
+  `~/.dotnet` to PATH if missing.
+- `fetch-ep-plugins.sh` accepts a single plugin name (`trt-rtx` or `openvino`)
+  or fetches both by default. Idempotent.
+- The same vendoring is available programmatically via `LinML.Catalog`
+  (`PluginInstaller` / `EnsureReadyAsync`); `ScriptPinAgreementTests` keeps
+  the bash pins and the C# pins in agreement.
+
+### Known WSL2 gaps (root-caused, not bugs)
+
+- **TensorRT-RTX EP**: registers but exposes zero devices — WSL virtual PCI
+  (vendor `0x1414`, bus `176e:00:00.0`) is rejected by
+  `cudaDeviceGetByPCIBusId`. Works on native Linux/Windows.
+  See `evidence/trt-rtx-wsl2-block.md`.
+- **cuDNN**: CUDA Conv kernels fail without cuDNN 9.x on the loader path
+  (Gemm-only models work). `setup-gpu-deps.sh` provides it.
+
 ## Daily Workflow
 
 ```bash
@@ -105,8 +134,10 @@ dotnet test LinML.slnx -c Release
 ## Troubleshooting
 
 ### "Permission denied" on scripts
+Scripts are intentionally non-executable (mode 644); invoke them explicitly:
 ```bash
-chmod +x scripts/*.sh
+bash scripts/setup-wsl.sh            # run a script
+source scripts/env-gpu-deps.sh       # source (mutates current shell env)
 ```
 
 ### Line ending issues

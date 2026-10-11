@@ -8,8 +8,11 @@
 
 **What:** Linux-first ONNX Runtime inference integration layer prototype (.NET 10/C#)
 **Where:** `~/dev/LinML` (clone from GitHub) or `/mnt/d/Dev/Trackdub_Workspace/LinML`
-**Status:** All gates complete (2026-10-11, WSL2) — locked restore, 46 tests green,
-CPU + CUDA inference verified with exact outputs, linux-x64 publish verified, CI green.
+**Status:** All gates complete (2026-10-11, WSL2) — locked restore, **147 tests green**,
+CPU + CUDA + TensorRT inference verified with exact outputs, linux-x64 publish
+verified, CI green. Since this handoff: `linml serve` (long-lived session),
+TensorRT-RTX/OpenVINO/MIGraphX verified, LinML.Catalog plugin library, unified
+plugin registry. See README.md for the current state.
 **Next:** See Final Checklist below (all checked) and `docs/compatibility.md` for results.
 
 ```bash
@@ -54,7 +57,7 @@ ls /usr/local/cuda/lib64/libcudart.so*  # CUDA runtime present
 | **Policy** | `ProviderSelector` (14 test cases), `FallbackPolicy` (5 tests) |
 | **Runtime.Onnx** | `OnnxProviderDiscovery`, `OnnxSessionFactory`, `OnnxInferenceSession`, `EpAppender`, `CudaReadinessProbe`, `GenericReadinessProbe` |
 | **CLI** | `Program.cs`, `ProvidersCommand`, `DoctorCommand`, `RunCommand` — all working |
-| **Tests** | 46 passing: 19 policy + 14 CLI + 7 integration + 6 runtime |
+| **Tests** | 147 passing: 23 policy + 57 CLI + 20 integration + 22 runtime + 25 catalog |
 | **Git** | Initialized, pushed to `https://github.com/trackdubllc/LinML` (public) |
 | **Docs** | ADR 0001, compatibility.md, diagnostics-schema.md, input-schema.md, wsl-workflow.md |
 | **Scripts** | `setup-wsl.sh`, `fetch-test-fixture.sh` (placeholder), `verify-linux-publish.sh` |
