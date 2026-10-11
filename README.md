@@ -1,4 +1,4 @@
-# LinML (Linux Machine Learning)
+# LinML (Linux ML)
 
 [![CI](https://github.com/trackdubllc/LinML/actions/workflows/ci.yml/badge.svg)](https://github.com/trackdubllc/LinML/actions/workflows/ci.yml)
 [![Release](https://github.com/trackdubllc/LinML/actions/workflows/release.yml/badge.svg)](https://github.com/trackdubllc/LinML/actions/workflows/release.yml)
@@ -7,9 +7,9 @@
 [![NuGet Contracts](https://img.shields.io/nuget/v/LinML.Contracts.svg?label=LinML.Contracts&color=blue)](https://www.nuget.org/packages/LinML.Contracts)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-> **Notice:** LinML is an independent open-source project and is not affiliated with, endorsed by, or sponsored by Microsoft. Windows Machine Learning (WinML) and ONNX Runtime are trademarks of Microsoft.
+> **Notice:** LinML is an independent open-source project and is not affiliated with, endorsed by, or sponsored by Microsoft. Windows ML (WinML) and ONNX Runtime are trademarks of Microsoft.
 
-**LinML** (**Lin**ux **M**achine **L**earning) is built to be the Linux counterpart to **Windows Machine Learning (WinML)**.
+**LinML** (Linux ML) is built to be the Linux counterpart to **Windows ML (WinML)**.
 
 Just as **WinML** provides a unified, hardware-abstracted execution layer on Windows, **LinML** delivers a Linux-first inference integration layer, CLI, and catalog library for [ONNX Runtime](https://onnxruntime.ai). It brings the ergonomic principles of WinML—such as the `ExecutionProviderCatalog`, honest device discovery, and clean hardware abstraction—to Linux environments, providing **honest execution provider discovery, explicit selection policies, reproducible inference execution, and diagnosable fallback** across CPU, CUDA, TensorRT, TensorRT-RTX, OpenVINO, MIGraphX, and QNN.
 
