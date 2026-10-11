@@ -26,6 +26,13 @@
 
 ## Known Limitations
 
+- **CUDA cold start (~8s, one-time per process):** measured staged breakdown
+  (Opp 5, RTX 5070 WSL2): ORT native load + CUDA append ~4.0s, session
+  create ~0.45s, first run (CUDA context + kernel init) ~3.9s, second run
+  1ms. Steady-state inference is fast; latency-sensitive hosts should do a
+  warmup run and reuse a long-lived session (the CLI is one-shot per
+  invocation, so each call pays cold start).
+
 - **WSL2 only:** Tested in WSL2, not bare-metal Linux. Performance may differ.
 - **x64 only:** No ARM64 support in MVP.
 - **Ubuntu 26.04:** Other distros not tested.
