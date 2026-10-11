@@ -1,0 +1,254 @@
+name: Release
+
+# Unified release workflow for LinML:
+# 1. Builds and executes all tests.
+# 2. Publishes NuGet packages (LinML.Contracts, LinML.Catalog) to GitHub Packages.
+# 3. Publishes NuGet packages to nuget.org via Trusted Publishing (OIDC).
+# 4. Publishes self-contained LinML CLI binaries to GitHub Releases.
+#
+# Triggered by pushing a version tag (vX.Y.Z) or manually via workflow_dispatch.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g. 0.1.0 or v0.1.0)'
+        required: true
+      draft:
+        description: 'Create draft GitHub release'
+        type: boolean
+        default: false
+      prerelease:
+        description: 'Mark as prerelease'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Build, Test & Package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Resolve version
+        id: version
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [ -n "$INPUT_VERSION" ]; then
+            raw="$INPUT_VERSION"
+          else
+            raw="$REF_NAME"
+          fi
+          ver_num="${raw#v}"
+          tag="v$ver_num"
+          if ! printf '%s' "$ver_num" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "Invalid version '$ver_num'" >&2
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$ver_num" >> "$GITHUB_OUTPUT"
+
+      - name: Restore (locked mode)
+        run: dotnet restore LinML.slnx --locked-mode -m:1
+
+      - name: Build
+        run: dotnet build LinML.slnx -c Release --no-restore -m:1 -warnaserror -p:Version=${{ steps.version.outputs.version }}
+
+      - name: Test
+        run: dotnet test LinML.slnx -c Release --no-build -m:1
+
+      # Pack C# libraries (LinML.Contracts & LinML.Catalog)
+      - name: Pack NuGet libraries
+        run: |
+          dotnet pack LinML.slnx -c Release --no-build -o artifacts/packages -p:Version=${{ steps.version.outputs.version }}
+
+      # Optional: Author package signing if code signing certificate secrets are configured
+      # (See: https://learn.microsoft.com/en-us/nuget/reference/signed-packages-reference)
+      - name: Sign NuGet packages (optional author signature)
+        if: ${{ env.SIGNING_CERT_BASE64 != '' }}
+        env:
+          SIGNING_CERT_BASE64: ${{ secrets.SIGNING_CERT_BASE64 }}
+          SIGNING_CERT_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
+        run: |
+          echo "Decoding code-signing certificate..."
+          echo "$SIGNING_CERT_BASE64" | base64 -d > /tmp/cert.pfx
+          dotnet nuget sign "artifacts/packages/*.nupkg" \
+            --certificate-path /tmp/cert.pfx \
+            --certificate-password "$SIGNING_CERT_PASSWORD" \
+            --timestamper http://timestamp.digicert.com
+          rm -f /tmp/cert.pfx
+          echo "Packages signed with author signature."
+
+      - name: Upload NuGet packages artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-packages
+          path: artifacts/packages/*.nupkg
+          retention-days: 1
+
+      # Publish standalone CLI (linux-x64, self-contained)
+      - name: Publish CLI (Self-contained linux-x64)
+        run: |
+          mkdir -p dist/linml-linux-x64
+          dotnet publish src/LinML.Cli/LinML.Cli.csproj \
+            -c Release \
+            -r linux-x64 \
+            --self-contained true \
+            --no-restore \
+            -p:Version=${{ steps.version.outputs.version }} \
+            -o dist/linml-linux-x64
+
+      - name: Verify CLI publish
+        run: bash scripts/verify-linux-publish.sh dist/linml-linux-x64
+
+      - name: Package CLI release assets
+        run: |
+          mkdir -p dist/linml-linux-x64/scripts
+          cp scripts/setup-gpu-deps.sh scripts/fetch-ep-plugins.sh scripts/env-gpu-deps.sh dist/linml-linux-x64/scripts/
+          cp README.md LICENSE dist/linml-linux-x64/
+
+          mkdir -p artifacts/release
+          VER="${{ steps.version.outputs.version }}"
+          cd dist/linml-linux-x64
+          tar -czf "../../artifacts/release/linml-${VER}-linux-x64.tar.gz" .
+          cp "../../artifacts/release/linml-${VER}-linux-x64.tar.gz" "../../artifacts/release/linml-linux-x64.tar.gz"
+          cd ../..
+
+          cd artifacts/release
+          sha256sum linml-*.tar.gz > SHA256SUMS.txt
+          cd ../..
+
+      - name: Upload CLI release assets artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-release-assets
+          path: artifacts/release/*
+          retention-days: 1
+
+  publish-github-packages:
+    name: Push to GitHub Packages
+    needs: [build-and-test]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Download NuGet packages
+        uses: actions/download-artifact@v4
+        with:
+          name: nuget-packages
+          path: artifacts/packages
+
+      - name: Push to GitHub Packages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          dotnet nuget push "artifacts/packages/*.nupkg" \
+            --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" \
+            --api-key "$GITHUB_TOKEN" \
+            --skip-duplicate
+
+  publish-nuget-org:
+    name: Push to NuGet.org (Trusted Publishing)
+    needs: [build-and-test]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write  # Required for OIDC exchange with nuget.org
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Download NuGet packages
+        uses: actions/download-artifact@v4
+        with:
+          name: nuget-packages
+          path: artifacts/packages
+
+      # Exchange GitHub Actions OIDC token for temporary NuGet API key
+      - name: NuGet login (OIDC → temp API key)
+        uses: NuGet/login@v1
+        id: nuget-login
+        with:
+          user: ${{ vars.NUGET_USER || secrets.NUGET_USER || 'trackdubllc' }}
+
+      - name: Push to NuGet.org
+        run: |
+          dotnet nuget push "artifacts/packages/*.nupkg" \
+            --source "https://api.nuget.org/v3/index.json" \
+            --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" \
+            --skip-duplicate
+
+  publish-github-release:
+    name: Publish GitHub Release (CLI)
+    needs: [build-and-test]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download CLI release assets
+        uses: actions/download-artifact@v4
+        with:
+          name: cli-release-assets
+          path: artifacts/release
+
+      - name: Create or update GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ needs.build-and-test.outputs.tag }}"
+          EXTRA_FLAGS=()
+          if [ "${{ github.event.inputs.draft }}" = "true" ]; then
+            EXTRA_FLAGS+=("--draft")
+          fi
+          if [ "${{ github.event.inputs.prerelease }}" = "true" ]; then
+            EXTRA_FLAGS+=("--prerelease")
+          fi
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG exists, uploading assets..."
+            gh release upload "$TAG" artifacts/release/* --clobber
+          else
+            echo "Creating release $TAG..."
+            gh release create "$TAG" artifacts/release/* \
+              --title "LinML $TAG" \
+              --generate-notes \
+              "${EXTRA_FLAGS[@]}"
+          fi

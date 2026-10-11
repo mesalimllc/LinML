@@ -31,7 +31,25 @@ Linux-first ONNX Runtime inference integration layer. Provides honest provider d
 
 ## Quick Start
 
-### Prerequisites
+### Install Pre-built CLI (Linux x86_64)
+
+The fastest way to install the standalone `linml` CLI without compiling:
+
+```bash
+# Install to ~/.local/share/linml and symlink to ~/.local/bin/linml
+curl -fsSL https://raw.githubusercontent.com/trackdubllc/LinML/main/scripts/install.sh | bash
+
+# Or install and automatically set up GPU dependencies:
+curl -fsSL https://raw.githubusercontent.com/trackdubllc/LinML/main/scripts/install.sh | bash -s -- --gpu
+```
+
+Pre-built self-contained archives (`linml-<version>-linux-x64.tar.gz`) and checksums are available on [GitHub Releases](https://github.com/trackdubllc/LinML/releases).
+
+---
+
+### Building from Source
+
+#### Prerequisites
 
 - **Ubuntu 24.04+ or Debian 12+** (primary target; tested on Ubuntu 26.04)
 - .NET 10 SDK (installed by `scripts/setup-wsl.sh`, or the [dotnet-install](https://dot.net/v1/dotnet-install.sh) script)
@@ -163,9 +181,16 @@ The CLI and the catalog share one plugin registry
 `ScriptPinAgreementTests` asserts the bash vendoring scripts and the C#
 catalog pin the same wheel URLs and digests.
 
-Packages are published to GitHub Packages by
-`.github/workflows/publish-packages.yml` when a `vX.Y.Z` tag is pushed. To
-consume them, add the feed with a token that has `read:packages`:
+Packages are published to both **nuget.org** and **GitHub Packages** by
+`.github/workflows/release.yml` when a `vX.Y.Z` tag is pushed.
+
+On nuget.org:
+```bash
+dotnet add package LinML.Catalog
+dotnet add package LinML.Contracts
+```
+
+To consume packages from GitHub Packages instead, add the feed:
 
 ```bash
 dotnet nuget add source "https://nuget.pkg.github.com/trackdubllc/index.json" \
