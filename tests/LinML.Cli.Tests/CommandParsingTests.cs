@@ -3,33 +3,48 @@ using Xunit;
 namespace LinML.Cli.Tests;
 
 /// <summary>
-/// Tests for CLI command parsing.
-/// Gate E: command tests cover parse/error behavior.
+/// Real CLI parsing tests (Opp 3): unknown commands, missing options, and
+/// invalid values must fail with non-zero exit codes instead of crashing.
 /// </summary>
 public class CommandParsingTests
 {
     [Fact]
-    public void Program_VersionCommand_Exists()
+    public async Task UnknownCommand_ReturnsNonZero()
     {
-        // Placeholder: actual CLI tests will invoke Program.Main with args
-        Assert.True(true); // TODO: implement in Gate E
+        var (exitCode, _, _) = await Task.Run(() => CliTestHost.Run("frobnicate"));
+        Assert.NotEqual(0, exitCode);
     }
 
     [Fact]
-    public void Program_ProvidersListCommand_Exists()
+    public async Task Run_MissingRequiredOptions_ReturnsNonZero()
     {
-        Assert.True(true); // TODO: implement in Gate E
+        var (exitCode, _, _) = await Task.Run(() => CliTestHost.Run("run"));
+        Assert.NotEqual(0, exitCode);
     }
 
     [Fact]
-    public void Program_DoctorCommand_Exists()
+    public async Task Run_UnknownProvider_Returns1()
     {
-        Assert.True(true); // TODO: implement in Gate E
+        if (!File.Exists(CliTestHost.Fixture("model.onnx"))
+            || !File.Exists(CliTestHost.Fixture("inputs.json")))
+        {
+            return;
+        }
+
+        // Unknown provider name hits the ArgumentException path (exit 1).
+        var (exitCode, _, _) = await Task.Run(() => CliTestHost.Run(
+            "run",
+            "--model", CliTestHost.Fixture("model.onnx"),
+            "--inputs", CliTestHost.Fixture("inputs.json"),
+            "--provider", "tpu"));
+
+        Assert.Equal(1, exitCode);
     }
 
     [Fact]
-    public void Program_RunCommand_Exists()
+    public async Task Providers_UnknownSubcommand_ReturnsNonZero()
     {
-        Assert.True(true); // TODO: implement in Gate E
+        var (exitCode, _, _) = await Task.Run(() => CliTestHost.Run("providers", "bogus"));
+        Assert.NotEqual(0, exitCode);
     }
 }

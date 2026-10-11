@@ -20,4 +20,8 @@
     <PackageReference Include="coverlet.collector" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="..\fixtures\**\*" CopyToOutputDirectory="PreserveNewest" Link="fixtures\%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
 </Project>

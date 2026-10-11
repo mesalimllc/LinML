@@ -114,42 +114,98 @@ public static class RunCommand
                     return 3;
                 }
 
-                // Run inference
+                // Run inference, with execution-time fallback for soft selection:
+                // a provider that passed readiness can still fail at run time
+                // (e.g. CUDA libs present but no GPU). Retry remaining
+                // candidates and record why, per correctness rule 3.
                 var factory = provider.GetRequiredService<IInferenceSessionFactory>();
-                using var session = factory.CreateSession(
-                    modelIdentity, decision.SelectedProvider!, enableProfiling: profile);
-
-                var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-                var outputs = session.Run(tensorInputs);
-                stopwatch.Stop();
-
                 var diagnostics = new List<DiagnosticEntry>();
-                if (profile)
+                var fallbackChain = decision.RejectedCandidates
+                    .Select(r => new FallbackStep { Provider = r.Provider, Reason = r.Reason })
+                    .ToList();
+
+                var attemptOrder = candidates
+                    .SkipWhile(c => c != decision.SelectedProvider!)
+                    .ToList();
+
+                IReadOnlyList<TensorOutput>? outputs = null;
+                var selectedProvider = decision.SelectedProvider!;
+                var duration = TimeSpan.Zero;
+                foreach (var attempt in attemptOrder)
                 {
-                    var placements = session.EndProfiling();
-                    diagnostics.Add(new DiagnosticEntry
+                    IInferenceSession? attemptSession;
+                    try
                     {
-                        Phase = "profile",
-                        Message = $"ORT profile written to {session.ProfilePath}",
-                        Severity = DiagnosticSeverity.Info
-                    });
-                    foreach (var placement in placements)
-                    {
-                        diagnostics.Add(new DiagnosticEntry
-                        {
-                            Phase = "profile",
-                            Message = $"Node '{placement.NodeName}' ran on {placement.Provider}",
-                            Severity = DiagnosticSeverity.Info
-                        });
+                        attemptSession = factory.CreateSession(
+                            modelIdentity, attempt, enableProfiling: profile);
                     }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        // The provider cannot run at all: hard requirement fails
+                        // honestly (3); soft selection records why and retries.
+                        if (requireProvider)
+                        {
+                            Console.Error.WriteLine(
+                                $"Error: Required provider '{attempt}' unavailable: {ex.Message}");
+                            return 3;
+                        }
+                        fallbackChain.Add(new FallbackStep { Provider = attempt, Reason = ex.Message });
+                        continue;
+                    }
+
+                    using (attemptSession)
+                    {
+                        try
+                        {
+                            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+                            outputs = attemptSession.Run(tensorInputs);
+                            stopwatch.Stop();
+                            duration = stopwatch.Elapsed;
+                            selectedProvider = attempt;
+                        }
+                        catch (Exception ex) when (!requireProvider && ex is not OperationCanceledException)
+                        {
+                            fallbackChain.Add(new FallbackStep { Provider = attempt, Reason = ex.Message });
+                            continue;
+                        }
+
+                        if (profile)
+                        {
+                            var placements = attemptSession.EndProfiling();
+                            diagnostics.Add(new DiagnosticEntry
+                            {
+                                Phase = "profile",
+                                Message = $"ORT profile written to {attemptSession.ProfilePath}",
+                                Severity = DiagnosticSeverity.Info
+                            });
+                            foreach (var placement in placements)
+                            {
+                                diagnostics.Add(new DiagnosticEntry
+                                {
+                                    Phase = "profile",
+                                    Message = $"Node '{placement.NodeName}' ran on {placement.Provider}",
+                                    Severity = DiagnosticSeverity.Info
+                                });
+                            }
+                        }
+                        break;
+                    }
+                }
+
+                if (outputs is null)
+                {
+                    var attempted = string.Join(", ", fallbackChain.Select(f => f.Provider.ToString()));
+                    Console.Error.WriteLine($"Error: All providers failed at execution: {attempted}");
+                    return 1;
                 }
 
                 var result = new InferenceResult
                 {
                     RequestedProvider = preferredProvider ?? ProviderId.Cpu,
-                    SelectedProvider = decision.SelectedProvider!,
+                    SelectedProvider = selectedProvider,
+                    FallbackChain = fallbackChain,
                     Outputs = outputs,
-                    Duration = stopwatch.Elapsed,
+                    Duration = duration,
                     Model = modelIdentity,
                     RuntimeVersion = OnnxRuntimeDiagnostics.GetRuntimeVersion(),
                     Diagnostics = diagnostics
@@ -162,6 +218,10 @@ public static class RunCommand
                 else
                 {
                     Console.WriteLine($"Provider: {result.SelectedProvider} (requested: {result.RequestedProvider})");
+                    foreach (var fallback in result.FallbackChain)
+                    {
+                        Console.WriteLine($"Fallback: {fallback.Provider} failed: {fallback.Reason}");
+                    }
                     foreach (var output in result.Outputs)
                     {
                         Console.WriteLine($"Output '{output.Name}': [{string.Join(", ", output.Data)}]");
