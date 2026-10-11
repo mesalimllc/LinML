@@ -40,7 +40,11 @@ fetch_trt_rtx() {
         return 0
     fi
 
-    mkdir -p "$OUT" "$TMP"
+    # Staged like the OpenVINO fetch: a failed extract never leaves a
+    # truncated plugin .so that the check above treats as vendored.
+    local STAGE="$OUT.partial"
+    rm -rf "$STAGE"
+    mkdir -p "$STAGE" "$TMP"
 
     echo "Downloading $WHEEL_NAME ..."
     curl -fsSL -o "$TMP/ep.whl" "$WHEEL_URL"
@@ -49,16 +53,19 @@ fetch_trt_rtx() {
     echo "$WHEEL_SHA256  $TMP/ep.whl" | sha256sum -c
 
     echo "Extracting native libraries..."
-    python3 - "$TMP/ep.whl" "$OUT" << 'PYEOF'
-import sys, zipfile
+    python3 - "$TMP/ep.whl" "$STAGE" << 'PYEOF'
+import os, sys, zipfile
 wheel, out = sys.argv[1], sys.argv[2]
 z = zipfile.ZipFile(wheel)
 prefix = "onnxruntime_ep_nv_tensorrt_rtx/"
 keep = [n for n in z.namelist()
-        if n.startswith(prefix)
+        if n.startswith(prefix) and "/" not in n[len(prefix):]
         and (n.endswith(".so") or ".so." in n or n.endswith(".h") or n.endswith("README.txt"))]
+# Flatten into $OUT (strip the package prefix) so the libraries sit where
+# the check above, env-gpu-deps.sh and TrtRtxInferenceTests look for them.
 for n in keep:
-    z.extract(n, out)
+    with z.open(n) as src, open(os.path.join(out, n[len(prefix):]), "wb") as dst:
+        dst.write(src.read())
 print(f"extracted {len(keep)} files to {out}")
 PYEOF
 
@@ -66,13 +73,16 @@ PYEOF
     # versioned files only. Create the SONAME symlinks next to the libraries.
     local lib
     for lib in libtensorrt_rtx libtensorrt_onnxparser_rtx; do
-        if [ -f "$OUT/${lib}.so.1.6.1" ] && [ ! -e "$OUT/${lib}.so.1" ]; then
-            ln -s "${lib}.so.1.6.1" "$OUT/${lib}.so.1"
+        if [ -f "$STAGE/${lib}.so.1.6.1" ] && [ ! -e "$STAGE/${lib}.so.1" ]; then
+            ln -s "${lib}.so.1.6.1" "$STAGE/${lib}.so.1"
         fi
     done
-    if [ -f "$OUT/libcudart.so.13.4.36" ] && [ ! -e "$OUT/libcudart.so.13" ]; then
-        ln -s "libcudart.so.13.4.36" "$OUT/libcudart.so.13"
+    if [ -f "$STAGE/libcudart.so.13.4.36" ] && [ ! -e "$STAGE/libcudart.so.13" ]; then
+        ln -s "libcudart.so.13.4.36" "$STAGE/libcudart.so.13"
     fi
+
+    rm -rf "$OUT"
+    mv "$STAGE" "$OUT"
 
     echo ""
     echo "=== Vendored ==="
