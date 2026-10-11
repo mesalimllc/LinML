@@ -33,15 +33,16 @@ Linux-first ONNX Runtime inference integration layer. Provides honest provider d
 
 ### Prerequisites
 
-- Windows 11 with WSL2 (Ubuntu 24.04+ recommended; tested on 26.04)
-- .NET 10 SDK (Windows for editing; WSL for building)
+- **Ubuntu 24.04+ or Debian 12+** (primary target; tested on Ubuntu 26.04)
+- .NET 10 SDK (installed by `scripts/setup-wsl.sh`, or the [dotnet-install](https://dot.net/v1/dotnet-install.sh) script)
 - NVIDIA GPU with CUDA 12.8+ or 13.0+ (optional, for CUDA/TRT tests)
 
-### Setup (WSL2)
+> Windows 11 + WSL2 also works (GPU passthrough); see [WSL Workflow](docs/wsl-workflow.md). Some EPs have WSL2 gaps — see [Compatibility Report](docs/compatibility.md).
+
+### Setup (Linux)
 
 ```bash
-# In WSL2 Ubuntu:
-bash scripts/setup-wsl.sh          # .NET 10 SDK + GPU visibility check
+bash scripts/setup-wsl.sh          # .NET 10 SDK + GPU visibility check (name is historical; works on any Linux)
 ```
 
 ### GPU dependencies (optional — for CUDA/TRT/OpenVINO/TRT-RTX)
