@@ -59,7 +59,23 @@
   `dlopen failed for libcudnn.so` when cuDNN 9.x is absent. Proven by MNIST
   (Opp 1): CPU always works; CUDA Conv needs `libcudnn.so` visible via
   system install or `LD_LIBRARY_PATH`. Provider listed ≠ model runnable.
-- **OpenVINO EP (Intel CPU/GPU/NPU):** Compilation and inference work via C API (MNIST argmax=8 on AMD CPU). However, **enumeration returns 0 devices** on this platform because the `onnxruntime-openvino` wheel (1.24.1, built for ORT 1.24.1) lacks `plugins.xml` for runtime plugin discovery and has no compile-time plugins. The EP registers with ORT but `GetSupportedDevices` returns zero devices. Works on Intel hardware with proper OpenVINO install. [OpenVINO issue](https://github.com/microsoft/onnxruntime/issues/25557).
+- **OpenVINO EP (Intel CPU/GPU/NPU):** Use Intel's standalone plugin EP,
+  `onnxruntime-ep-openvino` **1.6.1**, vendored by `scripts/fetch-ep-plugins.sh`
+  and registered by `scripts/env-gpu-deps.sh`. It uses only the stable plugin
+  EP API, so it loads into the ORT 1.31 LinML ships: MNIST runs on
+  `OpenVINOExecutionProvider` with no fallback (argmax=8, Intel Xeon CPU,
+  Linux). Notes:
+  - `onnxruntime-ep-openvino` 1.7.0 fails to create the EP on ORT 1.31
+    (`Experimental function OrtEpApi_ReleaseEpContextConfig_SinceV28 is not
+    available in this build`); LinML falls back cleanly.
+  - The older `onnxruntime-openvino` 1.24.1 package does **not** work with ORT
+    1.31: its EP uses ORT's internal provider-bridge interface, which is not
+    ABI-stable across versions, and it segfaults in the EP constructor.
+  - Earlier reports of "0 devices" were not caused by a missing `plugins.xml`
+    (neither wheel ships one; OpenVINO discovers its device plugins without
+    it). An EP only appears in `GetEpDevices` once its library is registered
+    (`--ep-library` / `LINML_EP_LIBRARIES`).
+  - Only the CPU device is verified; GPU/NPU need Intel hardware to test.
 
 ## Up next
 
@@ -78,7 +94,7 @@
 | Integration: CPU inference | ✓ | N/A | ✅ 3/3 pass, output `[11, 22, 13, 24, 15, 26]` (Gate C) |
 | Integration: CUDA inference | N/A | ✓ | ✅ 2/2 pass on RTX 5070 (Gate D) |
 | Integration: Fallback | ✓ | ✓ | ✅ 2/2 pass (soft CUDA path on this host) |
-| Integration: OpenVINO | ✓ | ✗ | ✅ CPU inference works (MNIST argmax=8); enumerates 0 devices on AMD CPU (no plugins.xml in wheel) |
+| Integration: OpenVINO | ✓ | ✗ | ✅ MNIST argmax=8 on `OpenVINOExecutionProvider` via plugin EP `onnxruntime-ep-openvino` 1.6.1 (Intel Xeon CPU); GPU/NPU untested |
 | Integration: QNN | ✗ | ✗ | ✅ Wired (provider ID, adapter, readiness); blocked — no Snapdragon NPU, QAIRT SDK needs Qualcomm account |
 | Integration: MIGraphX | ✗ | ✗ | ✅ Wired (provider ID, adapter, readiness); blocked — no AMD GPU, ROCm-on-WSL available but no AMD hardware |
 | CLI tests | ✓ | ✓ | ✅ 14/14 pass (placeholder assertions, Gate E) |

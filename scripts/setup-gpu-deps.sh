@@ -46,4 +46,4 @@ fi
 echo ""
 echo "=== Done. Next steps ==="
 echo "  source scripts/env-gpu-deps.sh"
-echo "  bash scripts/fetch-ep-plugins.sh   # TensorRT-RTX plugin EP"
+echo "  bash scripts/fetch-ep-plugins.sh   # TensorRT-RTX + OpenVINO plugin EPs (or name one: trt-rtx, openvino)"
