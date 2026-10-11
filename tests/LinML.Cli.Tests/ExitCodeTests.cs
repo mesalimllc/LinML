@@ -222,4 +222,60 @@ public class ExitCodeTests
         var (exitCode, _, _) = await Task.Run(() => CliTestHost.Run("--version"));
         Assert.Equal(0, exitCode);
     }
+
+    [Fact]
+    public async Task Run_RequiredProviderNotInRuntime_Returns3_WithReason()
+    {
+        if (!HasTinyFixture() || !OperatingSystem.IsLinux())
+        {
+            return;
+        }
+
+        // QNN is never compiled into the Linux x64 ORT build, so the hard
+        // requirement must fail with exit 3 on every Linux host, and must not
+        // fall back to another provider.
+        var (exitCode, stdout, stderr) = await Task.Run(() => CliTestHost.Run(
+            "run",
+            "--model", CliTestHost.Fixture("model.onnx"),
+            "--inputs", CliTestHost.Fixture("inputs.json"),
+            "--provider", "qnn",
+            "--require-provider",
+            "--json"));
+
+        Assert.Equal(3, exitCode);
+        Assert.Contains("QNNExecutionProvider", stderr, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"outputs\"", stdout, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Run_Profile_ReportsPerNodePlacement()
+    {
+        if (!HasTinyFixture())
+        {
+            return;
+        }
+
+        var (exitCode, stdout, _) = await Task.Run(() => CliTestHost.Run(
+            "run",
+            "--model", CliTestHost.Fixture("model.onnx"),
+            "--inputs", CliTestHost.Fixture("inputs.json"),
+            "--provider", "cpu",
+            "--profile",
+            "--json"));
+
+        Assert.Equal(0, exitCode);
+        using var doc = JsonDocument.Parse(stdout);
+        string[] profile = doc.RootElement.GetProperty("diagnostics").EnumerateArray()
+            .Where(d => d.GetProperty("phase").GetString() == "profile")
+            .Select(d => d.GetProperty("message").GetString()!)
+            .ToArray();
+
+        string written = Assert.Single(profile, m => m.StartsWith("ORT profile written to ", StringComparison.Ordinal));
+        Assert.Contains(profile, m => m.StartsWith("Node '", StringComparison.Ordinal)
+            && m.EndsWith("ran on CPUExecutionProvider", StringComparison.Ordinal));
+
+        string profilePath = written["ORT profile written to ".Length..];
+        Assert.True(File.Exists(profilePath), $"Profile file missing: {profilePath}");
+        File.Delete(profilePath);
+    }
 }

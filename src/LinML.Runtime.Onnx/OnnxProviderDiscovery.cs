@@ -140,24 +140,27 @@ public sealed class OnnxProviderDiscovery : IProviderDiscovery
         return evidence;
     }
 
-    private static List<DeviceIdentity> ExtractDevices(List<HardwareEvidence> evidence)
+    internal static List<DeviceIdentity> ExtractDevices(List<HardwareEvidence> evidence)
     {
         // Parse nvidia-smi output into device identities
         var devices = new List<DeviceIdentity>();
 
         foreach (var e in evidence.Where(e => e.Kind == "nvidia-smi"))
         {
-            // Simple parsing: "NVIDIA GeForce RTX 5070, 617.42, 12228"
-            var parts = e.Description.Split(',');
-            if (parts.Length >= 3)
+            // nvidia-smi prints one line per GPU: "NVIDIA GeForce RTX 5070, 617.42, 12228"
+            foreach (var line in e.Description.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
             {
-                devices.Add(new DeviceIdentity
+                var parts = line.Split(',');
+                if (parts.Length >= 3)
                 {
-                    Id = $"gpu{devices.Count}",
-                    Name = parts[0].Trim(),
-                    Vendor = "NVIDIA",
-                    MemoryBytes = long.TryParse(parts[2].Trim(), out var mem) ? mem * 1024 * 1024 : null
-                });
+                    devices.Add(new DeviceIdentity
+                    {
+                        Id = $"gpu{devices.Count}",
+                        Name = parts[0].Trim(),
+                        Vendor = "NVIDIA",
+                        MemoryBytes = long.TryParse(parts[2].Trim(), out var mem) ? mem * 1024 * 1024 : null
+                    });
+                }
             }
         }
 
