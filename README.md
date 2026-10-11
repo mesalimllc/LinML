@@ -1,4 +1,4 @@
-# LinML
+# LinML (Linux Machine Learning)
 
 [![CI](https://github.com/trackdubllc/LinML/actions/workflows/ci.yml/badge.svg)](https://github.com/trackdubllc/LinML/actions/workflows/ci.yml)
 [![Release](https://github.com/trackdubllc/LinML/actions/workflows/release.yml/badge.svg)](https://github.com/trackdubllc/LinML/actions/workflows/release.yml)
@@ -7,11 +7,13 @@
 [![NuGet Contracts](https://img.shields.io/nuget/v/LinML.Contracts.svg?label=LinML.Contracts&color=blue)](https://www.nuget.org/packages/LinML.Contracts)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-> **Notice:** LinML is an independent open-source project and is not affiliated with, endorsed by, or sponsored by Microsoft.
+> **Notice:** LinML is an independent open-source project and is not affiliated with, endorsed by, or sponsored by Microsoft. Windows Machine Learning (WinML) and ONNX Runtime are trademarks of Microsoft.
 
-**LinML** is a Linux-first inference integration layer and CLI for [ONNX Runtime](https://onnxruntime.ai). It provides **honest execution provider discovery, explicit selection policies, reproducible inference execution, and diagnosable fallback** across CPU, CUDA, TensorRT, TensorRT-RTX, OpenVINO, MIGraphX, and QNN.
+**LinML** (**Lin**ux **M**achine **L**earning) is built to be the Linux counterpart to **Windows Machine Learning (WinML)**.
 
-LinML also provides `LinML.Catalog`, a Linux counterpart to Windows ML's `ExecutionProviderCatalog` that automates vendoring, SHA-256 verification, dynamic registration, and session attachment for external plugin execution providers.
+Just as **WinML** provides a unified, hardware-abstracted execution layer on Windows, **LinML** delivers a Linux-first inference integration layer, CLI, and catalog library for [ONNX Runtime](https://onnxruntime.ai). It brings the ergonomic principles of WinML—such as the `ExecutionProviderCatalog`, honest device discovery, and clean hardware abstraction—to Linux environments, providing **honest execution provider discovery, explicit selection policies, reproducible inference execution, and diagnosable fallback** across CPU, CUDA, TensorRT, TensorRT-RTX, OpenVINO, MIGraphX, and QNN.
+
+LinML also provides `LinML.Catalog`, the Linux counterpart to WinML's `ExecutionProviderCatalog`, which automates vendoring, SHA-256 integrity verification, dynamic registration, and session attachment for external plugin execution providers.
 
 ---
 
