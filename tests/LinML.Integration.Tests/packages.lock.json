@@ -125,20 +125,28 @@
           "xunit.extensibility.core": "[2.9.2]"
         }
       },
+      "linml.catalog": {
+        "type": "Project",
+        "dependencies": {
+          "LinML.Contracts": "[0.1.0, )",
+          "Microsoft.ML.OnnxRuntime.Managed": "[1.31.0, )"
+        }
+      },
       "linml.contracts": {
         "type": "Project"
       },
       "linml.policy": {
         "type": "Project",
         "dependencies": {
-          "LinML.Contracts": "[1.0.0, )",
+          "LinML.Contracts": "[0.1.0, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.0, )"
         }
       },
       "linml.runtime.onnx": {
         "type": "Project",
         "dependencies": {
-          "LinML.Contracts": "[1.0.0, )",
+          "LinML.Catalog": "[0.1.0, )",
+          "LinML.Contracts": "[0.1.0, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.0, )",
           "Microsoft.ML.OnnxRuntime.Gpu": "[1.31.0, )",
           "Microsoft.ML.OnnxRuntime.Managed": "[1.31.0, )"

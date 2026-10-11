@@ -13,6 +13,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\LinML.Catalog\LinML.Catalog.csproj" />
     <ProjectReference Include="..\LinML.Contracts\LinML.Contracts.csproj" />
   </ItemGroup>
 

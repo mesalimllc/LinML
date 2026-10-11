@@ -38,16 +38,34 @@ public static class SessionOptionsCatalogExtensions
 
         try
         {
-            options.AppendExecutionProvider(
-                OrtEnv.Instance(),
-                devices,
-                providerOptions is null ? new Dictionary<string, string>() : new Dictionary<string, string>(providerOptions));
+            options.AppendEpDevices(devices, providerOptions);
             return new ProviderAppendResult(true, provider.Id);
         }
         catch (OnnxRuntimeException ex)
         {
             return new ProviderAppendResult(false, provider.Id, $"Appending {provider.Id} failed: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Appends EP devices through the device-based ORT API. All devices must
+    /// come from the same EP factory (e.g. one
+    /// <see cref="PluginLibraryRegistry.GetDevices"/> result). Unlike
+    /// <see cref="AppendFromCatalog"/>, ORT failures propagate.
+    /// </summary>
+    /// <exception cref="OnnxRuntimeException">ORT rejected the append.</exception>
+    public static void AppendEpDevices(
+        this SessionOptions options,
+        IReadOnlyList<OrtEpDevice> devices,
+        IReadOnlyDictionary<string, string>? providerOptions = null)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(devices);
+
+        options.AppendExecutionProvider(
+            OrtEnv.Instance(),
+            devices,
+            providerOptions is null ? new Dictionary<string, string>() : new Dictionary<string, string>(providerOptions));
     }
 
     private static List<OrtEpDevice> SelectDevices(

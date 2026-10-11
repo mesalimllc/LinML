@@ -85,7 +85,7 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
             _registrar.Register(_spec.RegistrationName, library);
             return true;
         }
-        catch (Exception ex) when (ex is OnnxRuntimeException or InvalidOperationException or DllNotFoundException)
+        catch (Exception ex) when (ex is OnnxRuntimeException or InvalidOperationException or ArgumentException or IOException or DllNotFoundException)
         {
             failureReason = $"Registering {library} failed: {ex.Message}";
             return false;
