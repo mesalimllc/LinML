@@ -50,6 +50,13 @@
   1ms. Steady-state inference is fast; latency-sensitive hosts should do a
   warmup run and reuse a long-lived session (the CLI is one-shot per
   invocation, so each call pays cold start).
+- **TensorRT rebuilds engines every run (~44s) unless cached:** without
+  `trt_engine_cache_enable`, each CLI invocation pays a full engine build
+  (MNIST: 44s wall vs 0.09s inference). With
+  `--ep-option trt:trt_engine_cache_enable=1 --ep-option
+  trt:trt_engine_cache_path=<dir>`, the second run loads the cached
+  `*_sm120.engine` in ~5.7s wall. Always enable the engine cache for
+  repeated TRT runs; cache files are GPU-arch-specific.
 
 - **WSL2 only:** Tested in WSL2, not bare-metal Linux. Performance may differ.
 - **x64 only:** No ARM64 support in MVP.
