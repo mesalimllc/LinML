@@ -98,7 +98,12 @@ fetch_openvino() {
         return 0
     fi
 
-    mkdir -p "$OUT" "$TMP"
+    # Extract into a sibling staging dir and rename it into place only once
+    # every file is written, so an interrupted extract (e.g. disk full) never
+    # leaves a truncated plugin .so that the check above treats as vendored.
+    local STAGE="$OUT.partial"
+    rm -rf "$STAGE"
+    mkdir -p "$STAGE" "$TMP"
 
     echo "Downloading $WHEEL_NAME ..."
     curl -fsSL -o "$TMP/ep.whl" "$WHEEL_URL"
@@ -109,7 +114,7 @@ fetch_openvino() {
     # The wheel ships every bundled SONAME as a regular file, so unlike
     # TensorRT-RTX no symlinks are needed. cache.json is OpenVINO runtime data.
     echo "Extracting native libraries..."
-    python3 - "$TMP/ep.whl" "$OUT" << 'PYEOF'
+    python3 - "$TMP/ep.whl" "$STAGE" << 'PYEOF'
 import os, sys, zipfile
 wheel, out = sys.argv[1], sys.argv[2]
 z = zipfile.ZipFile(wheel)
@@ -124,6 +129,9 @@ for n in keep:
         dst.write(src.read())
 print(f"extracted {len(keep)} files to {out}")
 PYEOF
+
+    rm -rf "$OUT"
+    mv "$STAGE" "$OUT"
 
     echo ""
     echo "=== Vendored ==="
