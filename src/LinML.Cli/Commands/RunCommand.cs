@@ -9,7 +9,7 @@ using System.Text.Json;
 namespace LinML.Cli.Commands;
 
 /// <summary>
-/// `linml run` — run inference with a model.
+/// `linml run` — run inference with a model (one-shot).
 /// </summary>
 public static class RunCommand
 {
@@ -64,145 +64,30 @@ public static class RunCommand
                 ProviderArgs.EnsureEpLibrariesRegistered(epLibraries);
                 var epOptions = ProviderArgs.ParseEpOptions(epOptionArgs);
 
-                // Compute model identity
                 var modelIdentity = await InputFiles.IdentifyModelAsync(model);
-
-                // Parse inputs
                 var tensorInputs = await InputFiles.ReadInputsAsync(inputs);
-
-                // Build request
                 var preferredProvider = ProviderArgs.ParseProvider(providerName);
 
-                var request = new InferenceRequest
+                var outcome = InferencePipeline.Execute(
+                    provider, modelIdentity, tensorInputs, preferredProvider,
+                    requireProvider, epOptions, epLibraries, profile);
+
+                if (!outcome.Success)
                 {
-                    Model = modelIdentity,
-                    Inputs = tensorInputs,
-                    PreferredProvider = preferredProvider,
-                    RequireProvider = requireProvider,
-                    Options = epOptions
-                };
-
-                // Select provider: rank the providers the runtime actually lists.
-                var selector = provider.GetRequiredService<ProviderSelector>();
-                var fallbackPolicy = provider.GetRequiredService<FallbackPolicy>();
-                var discovery = provider.GetRequiredService<IProviderDiscovery>();
-
-                var report = discovery.Discover();
-                var candidates = fallbackPolicy.BuildCandidateList(request, report.AvailableProviders);
-                var selectionRequest = new SelectionRequest
-                {
-                    Candidates = candidates,
-                    RequireFirst = requireProvider,
-                    Model = modelIdentity
-                };
-
-                var decision = selector.Select(selectionRequest);
-
-                if (!decision.Success)
-                {
-                    Console.Error.WriteLine($"Error: Provider selection failed: {decision.FailureReason}");
-                    return 3;
-                }
-
-                // Run inference, with execution-time fallback for soft selection:
-                // a provider that passed readiness can still fail at run time
-                // (e.g. CUDA libs present but no GPU). Retry remaining
-                // candidates and record why, per correctness rule 3.
-                var factory = provider.GetRequiredService<IInferenceSessionFactory>();
-                var diagnostics = new List<DiagnosticEntry>();
-                var fallbackChain = decision.RejectedCandidates
-                    .Select(r => new FallbackStep { Provider = r.Provider, Reason = r.Reason })
-                    .ToList();
-
-                var attemptOrder = candidates
-                    .SkipWhile(c => c != decision.SelectedProvider!)
-                    .ToList();
-
-                IReadOnlyList<TensorOutput>? outputs = null;
-                var selectedProvider = decision.SelectedProvider!;
-                var duration = TimeSpan.Zero;
-                foreach (var attempt in attemptOrder)
-                {
-                    IInferenceSession? attemptSession;
-                    try
-                    {
-                        // EP options are provider-scoped: a trt_* option must
-                        // not leak into a CUDA/CPU fallback attempt.
-                        var attemptOptions = ProviderArgs.OptionsForProvider(epOptions, attempt);
-                        attemptSession = factory.CreateSession(
-                            modelIdentity, attempt, attemptOptions,
-                            enableProfiling: profile, epLibraries: epLibraries);
-                    }
-                    catch (Exception ex) when (ex is not OperationCanceledException)
-                    {
-                        // The provider cannot run at all: hard requirement fails
-                        // honestly (3); soft selection records why and retries.
-                        if (requireProvider)
-                        {
-                            Console.Error.WriteLine(
-                                $"Error: Required provider '{attempt}' unavailable: {ex.Message}");
-                            return 3;
-                        }
-                        fallbackChain.Add(new FallbackStep { Provider = attempt, Reason = ex.Message });
-                        continue;
-                    }
-
-                    using (attemptSession)
-                    {
-                        try
-                        {
-                            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-                            outputs = attemptSession.Run(tensorInputs);
-                            stopwatch.Stop();
-                            duration = stopwatch.Elapsed;
-                            selectedProvider = attempt;
-                        }
-                        catch (Exception ex) when (!requireProvider && ex is not OperationCanceledException)
-                        {
-                            fallbackChain.Add(new FallbackStep { Provider = attempt, Reason = ex.Message });
-                            continue;
-                        }
-
-                        if (profile)
-                        {
-                            var placements = attemptSession.EndProfiling();
-                            diagnostics.Add(new DiagnosticEntry
-                            {
-                                Phase = "profile",
-                                Message = $"ORT profile written to {attemptSession.ProfilePath}",
-                                Severity = DiagnosticSeverity.Info
-                            });
-                            foreach (var placement in placements)
-                            {
-                                diagnostics.Add(new DiagnosticEntry
-                                {
-                                    Phase = "profile",
-                                    Message = $"Node '{placement.NodeName}' ran on {placement.Provider}",
-                                    Severity = DiagnosticSeverity.Info
-                                });
-                            }
-                        }
-                        break;
-                    }
-                }
-
-                if (outputs is null)
-                {
-                    var attempted = string.Join(", ", fallbackChain.Select(f => f.Provider.ToString()));
-                    Console.Error.WriteLine($"Error: All providers failed at execution: {attempted}");
-                    return 1;
+                    Console.Error.WriteLine($"Error: {outcome.ErrorMessage}");
+                    return outcome.ExitCode;
                 }
 
                 var result = new InferenceResult
                 {
                     RequestedProvider = preferredProvider ?? ProviderId.Cpu,
-                    SelectedProvider = selectedProvider,
-                    FallbackChain = fallbackChain,
-                    Outputs = outputs,
-                    Duration = duration,
+                    SelectedProvider = outcome.SelectedProvider,
+                    FallbackChain = outcome.FallbackChain,
+                    Outputs = outcome.Outputs!,
+                    Duration = outcome.Duration,
                     Model = modelIdentity,
                     RuntimeVersion = OnnxRuntimeDiagnostics.GetRuntimeVersion(),
-                    Diagnostics = diagnostics
+                    Diagnostics = outcome.Diagnostics
                 };
 
                 if (json)
@@ -220,7 +105,7 @@ public static class RunCommand
                     {
                         Console.WriteLine($"Output '{output.Name}': [{string.Join(", ", output.Data)}]");
                     }
-                    foreach (var diagnostic in diagnostics)
+                    foreach (var diagnostic in outcome.Diagnostics)
                     {
                         Console.WriteLine($"[{diagnostic.Phase}] {diagnostic.Message}");
                     }

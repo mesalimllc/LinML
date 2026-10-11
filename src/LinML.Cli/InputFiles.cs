@@ -23,10 +23,22 @@ internal static class InputFiles
         }
     };
 
+    /// <summary>Single-line JSON options for the `serve` request/response stream.</summary>
+    public static readonly JsonSerializerOptions JsonLineOptions = new(JsonOptions)
+    {
+        WriteIndented = false
+    };
+
     /// <summary>Read and parse an --inputs JSON file into tensor inputs.</summary>
     public static async Task<List<TensorInput>> ReadInputsAsync(string path)
     {
         var inputsJson = await File.ReadAllTextAsync(path);
+        return ParseInputs(inputsJson);
+    }
+
+    /// <summary>Parse an inputs JSON document (file content or `serve` request line).</summary>
+    public static List<TensorInput> ParseInputs(string inputsJson)
+    {
         var inputDoc = JsonSerializer.Deserialize<InputDocument>(inputsJson, JsonOptions)
             ?? throw new InvalidOperationException("Failed to parse inputs JSON");
 

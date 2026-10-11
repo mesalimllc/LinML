@@ -127,6 +127,27 @@ With `linml run --profile`, per-node provider placement is appended to `diagnost
 ]
 ```
 
+## Serve Protocol
+
+`linml serve --model <model> [--provider <p>] [--warmup-inputs <inputs>]`
+holds a long-lived session and serves requests over stdin/stdout, one JSON
+document per line. Selection, fallback, and exit codes match `run`; `--profile`
+is not supported (profiling ends a session's profiling state, which conflicts
+with reuse — use one-shot `run --profile` for placement proof).
+
+```bash
+printf '%s\n%s\n' "$REQ1" "$REQ2" | linml serve --model model.onnx --provider cuda --warmup-inputs warm.json
+```
+
+- **Request line:** `{"tensors":[...]}` — same schema as `--inputs` files.
+- **Response line:** one compact `InferenceResult` object (same schema as above).
+- **Error line:** `{"error":"..."}` — the server keeps serving; EOF exits 0.
+- **stderr:** startup diagnostics only (`Warmup: <provider> ready in <t>`,
+  or `Serving: <provider> ...` without warmup).
+- A failed request disposes the session; the next request reopens cleanly.
+- Exit codes: same as `run` (2 bad args/files, 3 selection/required-provider
+  failure, 1 warmup or all-providers failure, 4 cancelled).
+
 ## SelectionDecision
 
 Internal contract used by policy layer.
