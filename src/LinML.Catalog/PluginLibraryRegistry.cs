@@ -30,14 +30,14 @@ public static class PluginLibraryRegistry
         ArgumentException.ThrowIfNullOrWhiteSpace(registrationName);
         ArgumentException.ThrowIfNullOrWhiteSpace(libraryPath);
 
-        if (!File.Exists(libraryPath))
-        {
-            throw new FileNotFoundException(
-                $"EP plugin library not found for '{registrationName}': {libraryPath}", libraryPath);
-        }
-
         lock (Gate)
         {
+            if (!File.Exists(libraryPath))
+            {
+                throw new FileNotFoundException(
+                    $"EP plugin library not found for '{registrationName}': {libraryPath}", libraryPath);
+            }
+
             if (Registered.TryGetValue(registrationName, out string? existing))
             {
                 if (!string.Equals(existing, libraryPath, StringComparison.Ordinal))
