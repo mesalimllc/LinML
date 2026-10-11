@@ -111,25 +111,30 @@ internal static class EpAppender
             case "NvTensorRTRTXExecutionProvider":
             {
                 // Plugin EP: enumerate EP devices and append via the V2 API.
-                var devices = OrtEnv.Instance().GetEpDevices()
-                    .Where(d => d.EpName == provider.Value)
-                    .ToList();
+                var devices = GetEpDevices(provider);
                 if (devices.Count == 0)
                 {
                     throw new InvalidOperationException(
                         $"Plugin EP '{provider}' is registered but exposes no EP devices. " +
                         "Check GPU presence and driver (RTX Ampere+ required).");
                 }
-                sessionOptions.AppendExecutionProvider(
-                    OrtEnv.Instance(), devices,
-                    options is null
-                        ? new Dictionary<string, string>()
-                        : new Dictionary<string, string>(options));
+                AppendDevices(sessionOptions, devices, options);
                 break;
             }
 
             default:
             {
+                // An EP registered as a plugin library (e.g. OpenVINO from the
+                // onnxruntime-openvino wheel) is unknown to the name-based API
+                // unless compiled into this ORT build, so append its devices
+                // via the V2 API instead.
+                var devices = GetEpDevices(provider);
+                if (devices.Count > 0)
+                {
+                    AppendDevices(sessionOptions, devices, options);
+                    break;
+                }
+
                 // Generic path: covers MIGraphX, OpenVINO, QNN, and any other EP
                 // the runtime lists. Provider options pass through verbatim.
                 sessionOptions.AppendExecutionProvider(
@@ -141,4 +146,19 @@ internal static class EpAppender
             }
         }
     }
+
+    private static List<OrtEpDevice> GetEpDevices(ProviderId provider) =>
+        OrtEnv.Instance().GetEpDevices()
+            .Where(d => d.EpName == provider.Value)
+            .ToList();
+
+    private static void AppendDevices(
+        SessionOptions sessionOptions,
+        List<OrtEpDevice> devices,
+        IReadOnlyDictionary<string, string>? options) =>
+        sessionOptions.AppendExecutionProvider(
+            OrtEnv.Instance(), devices,
+            options is null
+                ? new Dictionary<string, string>()
+                : new Dictionary<string, string>(options));
 }
