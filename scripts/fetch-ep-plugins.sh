@@ -16,6 +16,9 @@
 # the deployed product has no Python dependency.
 #
 # Pinned for reproducibility (sha256 verified).
+#
+# Usage: bash scripts/fetch-ep-plugins.sh [trt-rtx] [openvino]
+#        (no arguments fetches both)
 
 set -euo pipefail
 
@@ -142,5 +145,17 @@ PYEOF
     echo "  linml run --provider openvino --model ... --inputs ..."
 }
 
-fetch_trt_rtx
-fetch_openvino
+PLUGINS=("$@")
+if [ ${#PLUGINS[@]} -eq 0 ]; then
+    PLUGINS=(trt-rtx openvino)
+fi
+for plugin in "${PLUGINS[@]}"; do
+    case "$plugin" in
+        trt-rtx) fetch_trt_rtx ;;
+        openvino) fetch_openvino ;;
+        *)
+            echo "Unknown plugin '$plugin' (expected: trt-rtx, openvino)" >&2
+            exit 2
+            ;;
+    esac
+done
