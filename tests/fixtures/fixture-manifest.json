@@ -1,0 +1,43 @@
+{
+  "$schema": "https://linml.dev/schemas/fixture-manifest-v1.json",
+  "name": "matmul-add-tiny",
+  "description": "Minimal deterministic ONNX model: MatMul (identity) + Add (bias)",
+  "architecture": {
+    "ops": ["MatMul", "Add"],
+    "opset": 17
+  },
+  "inputs": [
+    {
+      "name": "input",
+      "type": "float32",
+      "shape": [3, 2]
+    }
+  ],
+  "weights": {
+    "weight": {
+      "shape": [2, 2],
+      "values": [[1, 0], [0, 1]]
+    },
+    "bias": {
+      "shape": [2],
+      "values": [10, 20]
+    }
+  },
+  "outputs": [
+    {
+      "name": "output",
+      "type": "float32",
+      "shape": [3, 2]
+    }
+  ],
+  "testInput": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+  "expectedOutput": [11.0, 22.0, 13.0, 24.0, 15.0, 26.0],
+  "tolerances": {
+    "cpuDeterministic": 0.0,
+    "cpuVsCuda": { "rtol": 1e-5, "atol": 1e-6 }
+  },
+  "sha256": "TODO: fill after generation",
+  "sizeBytes": 0,
+  "generatedBy": "TODO: record generation command",
+  "license": "Self-generated, no external license"
+}

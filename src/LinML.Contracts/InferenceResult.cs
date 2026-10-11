@@ -1,0 +1,49 @@
+namespace LinML.Contracts;
+
+/// <summary>
+/// Result of an inference run: outputs, which provider actually ran, and diagnostics.
+/// </summary>
+public sealed record InferenceResult
+{
+    /// <summary>The provider that was requested.</summary>
+    public required ProviderId RequestedProvider { get; init; }
+
+    /// <summary>The provider that actually executed.</summary>
+    public required ProviderId SelectedProvider { get; init; }
+
+    /// <summary>Whether fallback occurred (requested != selected).</summary>
+    public bool FallbackOccurred => RequestedProvider != SelectedProvider;
+
+    /// <summary>If fallback occurred, the chain of providers tried and why.</summary>
+    public IReadOnlyList<FallbackStep> FallbackChain { get; init; } = [];
+
+    /// <summary>Output tensors.</summary>
+    public required IReadOnlyList<TensorOutput> Outputs { get; init; }
+
+    /// <summary>Total inference duration.</summary>
+    public required TimeSpan Duration { get; init; }
+
+    /// <summary>Model identity that was executed.</summary>
+    public required ModelIdentity Model { get; init; }
+
+    /// <summary>Runtime version used.</summary>
+    public required string RuntimeVersion { get; init; }
+
+    /// <summary>Diagnostics from execution.</summary>
+    public IReadOnlyList<DiagnosticEntry> Diagnostics { get; init; } = [];
+}
+
+public sealed record FallbackStep
+{
+    public required ProviderId Provider { get; init; }
+    public required string Reason { get; init; }
+}
+
+/// <summary>A named tensor output.</summary>
+public sealed record TensorOutput
+{
+    public required string Name { get; init; }
+    public required TensorDataType DataType { get; init; }
+    public required IReadOnlyList<int> Shape { get; init; }
+    public required IReadOnlyList<float> Data { get; init; }
+}

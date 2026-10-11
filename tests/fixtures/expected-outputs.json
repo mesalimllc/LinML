@@ -1,0 +1,11 @@
+{
+  "$schema": "https://linml.dev/schemas/expected-outputs-v1.json",
+  "tensors": [
+    {
+      "name": "output",
+      "type": "float32",
+      "shape": [3, 2],
+      "data": [11.0, 22.0, 13.0, 24.0, 15.0, 26.0]
+    }
+  ]
+}

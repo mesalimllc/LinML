@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/LinML.Contracts/LinML.Contracts.csproj" />
+    <Project Path="src/LinML.Policy/LinML.Policy.csproj" />
+    <Project Path="src/LinML.Runtime.Onnx/LinML.Runtime.Onnx.csproj" />
+    <Project Path="src/LinML.Cli/LinML.Cli.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/LinML.Policy.Tests/LinML.Policy.Tests.csproj" />
+    <Project Path="tests/LinML.Runtime.Onnx.Tests/LinML.Runtime.Onnx.Tests.csproj" />
+    <Project Path="tests/LinML.Integration.Tests/LinML.Integration.Tests.csproj" />
+    <Project Path="tests/LinML.Cli.Tests/LinML.Cli.Tests.csproj" />
+  </Folder>
+</Solution>

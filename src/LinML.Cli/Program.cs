@@ -1,0 +1,116 @@
+using LinML.Cli.Commands;
+using LinML.Contracts;
+using LinML.Policy;
+using LinML.Runtime.Onnx;
+using LinML.Runtime.Onnx.Providers;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using System.CommandLine;
+
+namespace LinML.Cli;
+
+/// <summary>
+/// LinML CLI entry point.
+/// </summary>
+public static class Program
+{
+    public static async Task<int> Main(string[] args)
+    {
+        var services = new ServiceCollection();
+        ConfigureServices(services);
+        await using var provider = services.BuildServiceProvider();
+
+        var rootCommand = new RootCommand("LinML: Linux ONNX Runtime inference integration layer");
+
+        // Global options (recursive = available on all subcommands)
+        var jsonOption = new Option<bool>("--json")
+        {
+            Description = "Output machine-readable JSON to stdout",
+            Recursive = true
+        };
+        rootCommand.Options.Add(jsonOption);
+
+        // Subcommands
+        rootCommand.Subcommands.Add(ProvidersCommand.Create(provider, jsonOption));
+        rootCommand.Subcommands.Add(DoctorCommand.Create(provider, jsonOption));
+        rootCommand.Subcommands.Add(RunCommand.Create(provider, jsonOption));
+
+        // Version is built-in via RootCommand (--version)
+
+        return rootCommand.Parse(args).Invoke();
+    }
+
+    private static void ConfigureServices(IServiceCollection services)
+    {
+        services.AddLogging(builder => builder
+            .SetMinimumLevel(LogLevel.Warning)
+            .AddConsole(console => console.LogToStandardErrorThreshold = LogLevel.Trace));
+
+        // Contracts implementations
+        services.AddSingleton<IProviderDiscovery, OnnxProviderDiscovery>();
+        services.AddSingleton<OnnxProviderDiscovery>();
+
+        // Policy
+        services.AddSingleton<ProviderSelector>();
+        services.AddSingleton<FallbackPolicy>();
+
+        // Runtime
+        services.AddSingleton<IInferenceSessionFactory, OnnxSessionFactory>();
+        services.AddSingleton<OnnxSessionFactory>();
+
+        // Providers
+        services.AddSingleton<CpuProviderAdapter>();
+        services.AddSingleton<CudaProviderAdapter>();
+        services.AddSingleton<CudaReadinessProbe>();
+
+        // Readiness probe adapter (wraps CudaReadinessProbe into IProviderReadinessProbe)
+        services.AddSingleton<IProviderReadinessProbe, ReadinessProbeAdapter>();
+    }
+}
+
+/// <summary>
+/// Adapter that routes readiness probes to the appropriate provider-specific probe.
+/// </summary>
+internal sealed class ReadinessProbeAdapter : IProviderReadinessProbe
+{
+    private readonly CudaReadinessProbe _cudaProbe;
+    private readonly ILogger<ReadinessProbeAdapter> _logger;
+
+    public ReadinessProbeAdapter(CudaReadinessProbe cudaProbe, ILogger<ReadinessProbeAdapter> logger)
+    {
+        _cudaProbe = cudaProbe;
+        _logger = logger;
+    }
+
+    public ProviderReadinessReport Probe(ProviderId provider, CancellationToken cancellationToken = default)
+    {
+        return provider.Value switch
+        {
+            "CPUExecutionProvider" => ProbeCpu(),
+            "CUDAExecutionProvider" => _cudaProbe.Probe(cancellationToken),
+            _ => new ProviderReadinessReport
+            {
+                Provider = provider,
+                IsReady = false,
+                FailedPhase = ReadinessPhase.Load,
+                FailureReason = $"No readiness probe available for provider '{provider}'."
+            }
+        };
+    }
+
+    private static ProviderReadinessReport ProbeCpu()
+    {
+        // CPU is always ready in standard ORT builds
+        return new ProviderReadinessReport
+        {
+            Provider = ProviderId.Cpu,
+            IsReady = true,
+            PhaseResults =
+            [
+                new ReadinessPhaseResult { Phase = ReadinessPhase.Load, Success = true },
+                new ReadinessPhaseResult { Phase = ReadinessPhase.Append, Success = true },
+                new ReadinessPhaseResult { Phase = ReadinessPhase.Smoke, Success = true }
+            ]
+        };
+    }
+}

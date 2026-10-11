@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>LinML.Cli</RootNamespace>
+    <AssemblyName>linml</AssemblyName>
+    <Description>LinML CLI: command-line interface for provider discovery, diagnostics, and inference.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\LinML.Contracts\LinML.Contracts.csproj" />
+    <ProjectReference Include="..\LinML.Policy\LinML.Policy.csproj" />
+    <ProjectReference Include="..\LinML.Runtime.Onnx\LinML.Runtime.Onnx.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" />
+    <PackageReference Include="System.CommandLine" />
+  </ItemGroup>
+
+</Project>
