@@ -57,6 +57,13 @@
         "resolved": "9.0.0",
         "contentHash": "hyJB4UlpAi19Xr9AXzu2NuagKC4lPfHObNMEAA0HmqFz2rX7wKgzeYzO/jM/eBHDhnUGFFEjk5cOoJaxqg5J4A=="
       },
+      "linml.catalog": {
+        "type": "Project",
+        "dependencies": {
+          "LinML.Contracts": "[0.1.0, )",
+          "Microsoft.ML.OnnxRuntime.Managed": "[1.31.0, )"
+        }
+      },
       "linml.contracts": {
         "type": "Project"
       }

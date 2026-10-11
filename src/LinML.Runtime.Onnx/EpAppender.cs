@@ -1,3 +1,4 @@
+using LinML.Catalog;
 using LinML.Contracts;
 using Microsoft.Extensions.Logging;
 using Microsoft.ML.OnnxRuntime;
@@ -5,19 +6,19 @@ using Microsoft.ML.OnnxRuntime;
 namespace LinML.Runtime.Onnx;
 
 /// <summary>
-/// Process-wide registry for ORT plugin execution provider libraries
-/// (e.g. the standalone TensorRT-RTX EP). Registration is global to the
-/// OrtEnv and idempotent: registering the same name twice is a no-op.
+/// Registers plugin EP libraries supplied by name→path (the CLI's
+/// <c>--ep-library</c> / <c>LINML_EP_LIBRARIES</c>). A thin forwarder to the
+/// process-wide <see cref="PluginLibraryRegistry"/> in LinML.Catalog, so the
+/// CLI, readiness probes and the catalog share one registration record.
 /// </summary>
 public static class PluginEpRegistry
 {
-    private static readonly object Gate = new();
-    private static readonly Dictionary<string, string> Registered = new(StringComparer.Ordinal);
-
     /// <summary>
     /// Register plugin EP libraries with the ORT environment.
     /// </summary>
     /// <param name="libraries">Mapping of registration name to library path.</param>
+    /// <exception cref="FileNotFoundException">A library does not exist.</exception>
+    /// <exception cref="ArgumentException">A name is already registered with a different path.</exception>
     /// <exception cref="System.Exception">A library failed to load.</exception>
     public static void EnsureRegistered(IReadOnlyDictionary<string, string>? libraries)
     {
@@ -28,37 +29,12 @@ public static class PluginEpRegistry
 
         foreach (var (name, path) in libraries)
         {
-            // Validate the path even when the name is already registered:
-            // a missing file or a conflicting path is an operator error.
-            if (!File.Exists(path))
-            {
-                throw new FileNotFoundException(
-                    $"EP plugin library not found for '{name}': {path}", path);
-            }
-
-            lock (Gate)
-            {
-                if (Registered.TryGetValue(name, out var existingPath))
-                {
-                    if (!string.Equals(existingPath, path, StringComparison.Ordinal))
-                    {
-                        throw new ArgumentException(
-                            $"EP plugin '{name}' is already registered with a different path: {existingPath}");
-                    }
-                    continue; // idempotent
-                }
-
-                OrtEnv.Instance().RegisterExecutionProviderLibrary(name, path);
-                Registered[name] = path;
-            }
+            PluginLibraryRegistry.Register(name, path);
         }
     }
 
     /// <summary>Names of plugin EP libraries registered in this process.</summary>
-    public static IReadOnlyCollection<string> RegisteredNames
-    {
-        get { lock (Gate) { return Registered.Keys.ToArray(); } }
-    }
+    public static IReadOnlyCollection<string> RegisteredNames => PluginLibraryRegistry.RegisteredNames;
 }
 
 /// <summary>
@@ -147,18 +123,12 @@ internal static class EpAppender
         }
     }
 
-    private static List<OrtEpDevice> GetEpDevices(ProviderId provider) =>
-        OrtEnv.Instance().GetEpDevices()
-            .Where(d => d.EpName == provider.Value)
-            .ToList();
+    private static IReadOnlyList<OrtEpDevice> GetEpDevices(ProviderId provider) =>
+        PluginLibraryRegistry.GetDevices(provider.Value);
 
     private static void AppendDevices(
         SessionOptions sessionOptions,
-        List<OrtEpDevice> devices,
+        IReadOnlyList<OrtEpDevice> devices,
         IReadOnlyDictionary<string, string>? options) =>
-        sessionOptions.AppendExecutionProvider(
-            OrtEnv.Instance(), devices,
-            options is null
-                ? new Dictionary<string, string>()
-                : new Dictionary<string, string>(options));
+        sessionOptions.AppendEpDevices(devices, options);
 }
