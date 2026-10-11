@@ -9,6 +9,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="LinML.Runtime.Onnx.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\LinML.Catalog\LinML.Catalog.csproj" />
     <ProjectReference Include="..\LinML.Contracts\LinML.Contracts.csproj" />
   </ItemGroup>
