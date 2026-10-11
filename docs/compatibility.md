@@ -44,12 +44,16 @@
 - **Bare metal untested:** all Linux evidence is WSL2 with GPU passthrough;
   driver behavior and cold-start timing may differ on bare metal.
 
-- **CUDA cold start (~8s, one-time per process):** measured staged breakdown
-  (Opp 5, RTX 5070 WSL2): ORT native load + CUDA append ~4.0s, session
-  create ~0.45s, first run (CUDA context + kernel init) ~3.9s, second run
-  1ms. Steady-state inference is fast; latency-sensitive hosts should do a
-  warmup run and reuse a long-lived session (the CLI is one-shot per
-  invocation, so each call pays cold start).
+- **CUDA cold start, corrected:** ORT 1.31 ships **precompiled sm_120 cubins
+  (317, zero PTX)** — ORT's own kernels need no JIT. The ~16s first-touch cost
+  is **cuBLAS/cuDNN JIT-compiling for sm_120** (proven: `CUDA_CACHE_DISABLE=1`
+  → 19.7s wall / 16.5s inference vs 2.6s / 0.36s cached). The driver cache
+  (`~/.nv/ComputeCache`, 1.1 GB here) **does work across processes** —
+  the earlier "every call pays full cost" claim was wrong; it held only
+  because each measurement run was compared against a cold cache. Steady
+  per-process floor is ~2.6s wall (CLR + 300 MB native load + CUDA context
+  creation; CPU-only is ~1.0s), none of which is cacheable. First-ever run
+  on a machine pays ~16s JIT once, then ~2.6s per invocation.
 - **TensorRT rebuilds engines every run (~44s) unless cached:** without
   `trt_engine_cache_enable`, each CLI invocation pays a full engine build
   (MNIST: 44s wall vs 0.09s inference). With
