@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Xunit;
 
 namespace LinML.Cli.Tests;
@@ -39,6 +40,90 @@ public class CommandParsingTests
             "--provider", "tpu"));
 
         Assert.Equal(1, exitCode);
+    }
+
+    [Fact]
+    public async Task Run_ProviderAliasTrt_AlwaysSucceeds()
+    {
+        if (!File.Exists(CliTestHost.Fixture("model.onnx"))
+            || !File.Exists(CliTestHost.Fixture("inputs.json")))
+        {
+            return;
+        }
+
+        // TRT EP is compiled into our ORT build and listed even without
+        // libnvinfer present; selection/execution fall back honestly to
+        // CUDA then CPU. The run must succeed with correct outputs either way.
+        var (exitCode, stdout, _) = await Task.Run(() => CliTestHost.Run(
+            "run",
+            "--model", CliTestHost.Fixture("model.onnx"),
+            "--inputs", CliTestHost.Fixture("inputs.json"),
+            "--provider", "trt",
+            "--json"));
+
+        Assert.Equal(0, exitCode);
+        using var doc = JsonDocument.Parse(stdout);
+        var data = doc.RootElement.GetProperty("outputs")[0].GetProperty("data")
+            .EnumerateArray().Select(e => e.GetSingle()).ToArray();
+        Assert.Equal([11f, 22f, 13f, 24f, 15f, 26f], data);
+    }
+
+    [Fact]
+    public async Task Run_RawEpName_Works()
+    {
+        if (!File.Exists(CliTestHost.Fixture("model.onnx"))
+            || !File.Exists(CliTestHost.Fixture("inputs.json")))
+        {
+            return;
+        }
+
+        var (exitCode, _, _) = await Task.Run(() => CliTestHost.Run(
+            "run",
+            "--model", CliTestHost.Fixture("model.onnx"),
+            "--inputs", CliTestHost.Fixture("inputs.json"),
+            "--provider", "CPUExecutionProvider"));
+
+        Assert.Equal(0, exitCode);
+    }
+
+    [Fact]
+    public async Task Run_BadEpLibrary_FailsWithError()
+    {
+        if (!File.Exists(CliTestHost.Fixture("model.onnx"))
+            || !File.Exists(CliTestHost.Fixture("inputs.json")))
+        {
+            return;
+        }
+
+        var (exitCode, _, stderr) = await Task.Run(() => CliTestHost.Run(
+            "run",
+            "--model", CliTestHost.Fixture("model.onnx"),
+            "--inputs", CliTestHost.Fixture("inputs.json"),
+            "--provider", "trt-rtx",
+            "--ep-library", "nvtensorrtrtx=/nonexistent/lib.so"));
+
+        Assert.Equal(1, exitCode);
+        Assert.Contains("EP plugin library not found", stderr);
+    }
+
+    [Fact]
+    public async Task Run_BadEpOption_FailsWithError()
+    {
+        if (!File.Exists(CliTestHost.Fixture("model.onnx"))
+            || !File.Exists(CliTestHost.Fixture("inputs.json")))
+        {
+            return;
+        }
+
+        var (exitCode, _, stderr) = await Task.Run(() => CliTestHost.Run(
+            "run",
+            "--model", CliTestHost.Fixture("model.onnx"),
+            "--inputs", CliTestHost.Fixture("inputs.json"),
+            "--provider", "cpu",
+            "--ep-option", "no-equals-sign"));
+
+        Assert.Equal(1, exitCode);
+        Assert.Contains("key=value", stderr);
     }
 
     [Fact]

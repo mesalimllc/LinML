@@ -89,19 +89,16 @@ internal sealed class ReadinessProbeAdapter : IProviderReadinessProbe
         {
             "CPUExecutionProvider" => ProbeCpu(),
             "CUDAExecutionProvider" => _cudaProbe.Probe(cancellationToken),
-            _ => new ProviderReadinessReport
-            {
-                Provider = provider,
-                IsReady = false,
-                FailedPhase = ReadinessPhase.Load,
-                FailureReason = $"No readiness probe available for provider '{provider}'."
-            }
+            // All other providers (TensorRT, TRT-RTX plugin, OpenVINO, QNN,
+            // MIGraphX, ...) get the generic Load+Append probe.
+            _ => new LinML.Runtime.Onnx.Providers.GenericReadinessProbe(_logger).Probe(provider, cancellationToken: cancellationToken)
         };
     }
 
     private static ProviderReadinessReport ProbeCpu()
     {
-        // CPU is always ready in standard ORT builds
+        // CPU is always available in standard ORT builds. Load+Append only;
+        // the Smoke phase (real inference) requires a model — see doctor --model.
         return new ProviderReadinessReport
         {
             Provider = ProviderId.Cpu,
@@ -109,8 +106,7 @@ internal sealed class ReadinessProbeAdapter : IProviderReadinessProbe
             PhaseResults =
             [
                 new ReadinessPhaseResult { Phase = ReadinessPhase.Load, Success = true },
-                new ReadinessPhaseResult { Phase = ReadinessPhase.Append, Success = true },
-                new ReadinessPhaseResult { Phase = ReadinessPhase.Smoke, Success = true }
+                new ReadinessPhaseResult { Phase = ReadinessPhase.Append, Success = true }
             ]
         };
     }

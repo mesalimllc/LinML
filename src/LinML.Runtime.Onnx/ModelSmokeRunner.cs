@@ -25,6 +25,8 @@ public sealed class ModelSmokeRunner
         ProviderId provider,
         ModelIdentity model,
         IReadOnlyList<TensorInput> inputs,
+        IReadOnlyDictionary<string, string>? options = null,
+        IReadOnlyDictionary<string, string>? epLibraries = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(provider);
@@ -64,7 +66,8 @@ public sealed class ModelSmokeRunner
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            using var session = _factory.CreateSession(model, provider, cancellationToken: cancellationToken);
+            using var session = _factory.CreateSession(
+                model, provider, options, epLibraries: epLibraries, cancellationToken: cancellationToken);
             durations[ReadinessPhase.Append] = DateTime.UtcNow - appendStart;
             phaseResults.Add(new ReadinessPhaseResult { Phase = ReadinessPhase.Append, Success = true });
 

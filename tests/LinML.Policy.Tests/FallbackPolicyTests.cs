@@ -90,4 +90,86 @@ public class FallbackPolicyTests
 
         Assert.False(policy.IsFallbackAllowed(request));
     }
+
+    [Fact]
+    public void BuildCandidateList_WithAvailable_RanksGpuProvidersBeforeCpu()
+    {
+        var policy = CreatePolicy();
+        var request = new InferenceRequest
+        {
+            Model = new ModelIdentity { Path = "test.onnx", Sha256 = "abc" },
+            Inputs = []
+        };
+        var available = new[]
+        {
+            ProviderId.Cpu, ProviderId.Cuda, ProviderId.Tensorrt, ProviderId.TensorrtRtx
+        };
+
+        var candidates = policy.BuildCandidateList(request, available);
+
+        // No preferred provider: ranked order, CPU last.
+        Assert.Equal(
+            [ProviderId.TensorrtRtx, ProviderId.Tensorrt, ProviderId.Cuda, ProviderId.Cpu],
+            candidates);
+    }
+
+    [Fact]
+    public void BuildCandidateList_WithAvailable_PreferredFirstThenRankedRest()
+    {
+        var policy = CreatePolicy();
+        var request = new InferenceRequest
+        {
+            Model = new ModelIdentity { Path = "test.onnx", Sha256 = "abc" },
+            Inputs = [],
+            PreferredProvider = ProviderId.Cuda
+        };
+        var available = new[]
+        {
+            ProviderId.Cpu, ProviderId.Cuda, ProviderId.Tensorrt
+        };
+
+        var candidates = policy.BuildCandidateList(request, available);
+
+        Assert.Equal(
+            [ProviderId.Cuda, ProviderId.Tensorrt, ProviderId.Cpu],
+            candidates);
+    }
+
+    [Fact]
+    public void BuildCandidateList_WithAvailable_PreferredNotListed_StillFirst()
+    {
+        var policy = CreatePolicy();
+        var request = new InferenceRequest
+        {
+            Model = new ModelIdentity { Path = "test.onnx", Sha256 = "abc" },
+            Inputs = [],
+            PreferredProvider = ProviderId.MigraphX // not in available list
+        };
+        var available = new[] { ProviderId.Cpu, ProviderId.Cuda };
+
+        var candidates = policy.BuildCandidateList(request, available);
+
+        // Preferred is first even when not listed — selection rejects it
+        // honestly and records why.
+        Assert.Equal(
+            [ProviderId.MigraphX, ProviderId.Cuda, ProviderId.Cpu],
+            candidates);
+    }
+
+    [Fact]
+    public void BuildCandidateList_WithAvailable_UnavailableProvidersExcluded()
+    {
+        var policy = CreatePolicy();
+        var request = new InferenceRequest
+        {
+            Model = new ModelIdentity { Path = "test.onnx", Sha256 = "abc" },
+            Inputs = []
+        };
+        // Only CPU listed (e.g. CI runner without GPU EP libs registered).
+        var available = new[] { ProviderId.Cpu };
+
+        var candidates = policy.BuildCandidateList(request, available);
+
+        Assert.Equal([ProviderId.Cpu], candidates);
+    }
 }

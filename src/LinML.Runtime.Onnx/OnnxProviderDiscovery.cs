@@ -39,6 +39,24 @@ public sealed class OnnxProviderDiscovery : IProviderDiscovery
                 });
             }
 
+            // Plugin EPs registered via OrtEnv.RegisterExecutionProviderLibrary
+            // may not appear in GetAvailableProviders; merge EP devices so
+            // discovery reflects them (e.g. NvTensorRTRTXExecutionProvider).
+            foreach (var epDevice in OrtEnv.Instance().GetEpDevices())
+            {
+                var id = new ProviderId(epDevice.EpName);
+                if (!availableProviders.Contains(id))
+                {
+                    availableProviders.Add(id);
+                    diagnostics.Add(new DiagnosticEntry
+                    {
+                        Phase = "discovery",
+                        Message = $"Found plugin EP device: {epDevice.EpName} (vendor: {epDevice.EpVendor})",
+                        Severity = DiagnosticSeverity.Info
+                    });
+                }
+            }
+
             // Check for NVIDIA hardware (evidence only, not proof of CUDA availability)
             var nvidiaEvidence = ProbeNvidiaHardware();
             hardwareEvidence.AddRange(nvidiaEvidence);

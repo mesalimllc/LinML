@@ -120,16 +120,13 @@ public sealed class CudaReadinessProbe
             };
         }
 
-        // Phase 3: Smoke — actual CUDA execution would require a model.
-        // This is a placeholder; the real smoke test happens in integration tests.
-        durations[ReadinessPhase.Smoke] = TimeSpan.Zero;
-        phaseResults.Add(new ReadinessPhaseResult
-        {
-            Phase = ReadinessPhase.Smoke,
-            Success = true
-        });
+        // Phase 3: Smoke — real inference requires a model and is covered by
+        // ModelSmokeRunner via `doctor --model`. Without a model there is no
+        // honest way to claim the Smoke phase, so it is not reported here.
+        // A provider that passes Load+Append can still fail at run time;
+        // the CLI's execution-time fallback covers that case.
 
-        _logger.LogInformation("CUDA readiness probe passed all phases");
+        _logger.LogInformation("CUDA readiness probe passed Load+Append (smoke requires a model)");
 
         return new ProviderReadinessReport
         {

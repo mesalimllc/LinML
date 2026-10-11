@@ -19,15 +19,19 @@ public static class RunCommand
 
         var modelOption = new Option<string>("--model") { Description = "Path to the ONNX model file", Required = true };
         var inputsOption = new Option<string>("--inputs") { Description = "Path to the inputs JSON file", Required = true };
-        var providerOption = new Option<string?>("--provider") { Description = "Preferred provider (cpu, cuda)" };
+        var providerOption = new Option<string?>("--provider") { Description = "Preferred provider (cpu, cuda, trt, trt-rtx, openvino, qnn, migraphx)" };
         var requireProviderOption = new Option<bool>("--require-provider") { Description = "Fail if the preferred provider is unavailable" };
         var profileOption = new Option<bool>("--profile") { Description = "Enable ORT profiling and report per-node provider placement" };
+        var epOptionOption = new Option<string[]>("--ep-option") { Description = "Provider option as key=value (repeatable), e.g. --ep-option trt_fp16_enable=1" };
+        var epLibraryOption = new Option<string[]>("--ep-library") { Description = "Plugin EP library as name=path (repeatable), e.g. --ep-library nvtensorrtrtx=/path/libonnxruntime_providers_nv_tensorrt_rtx.so" };
 
         runCommand.Options.Add(modelOption);
         runCommand.Options.Add(inputsOption);
         runCommand.Options.Add(providerOption);
         runCommand.Options.Add(requireProviderOption);
         runCommand.Options.Add(profileOption);
+        runCommand.Options.Add(epOptionOption);
+        runCommand.Options.Add(epLibraryOption);
         runCommand.Options.Add(jsonOption);
 
         runCommand.SetAction(async parseResult =>
@@ -37,6 +41,8 @@ public static class RunCommand
             var providerName = parseResult.GetValue(providerOption);
             var requireProvider = parseResult.GetValue(requireProviderOption);
             var profile = parseResult.GetValue(profileOption);
+            var epOptionArgs = parseResult.GetValue(epOptionOption) ?? [];
+            var epLibraryArgs = parseResult.GetValue(epLibraryOption) ?? [];
             var json = parseResult.GetValue(jsonOption);
 
             try
@@ -53,6 +59,11 @@ public static class RunCommand
                     return 2;
                 }
 
+                // Register plugin EP libraries before discovery so they are listed.
+                var epLibraries = ProviderArgs.ParseEpLibraries(epLibraryArgs);
+                ProviderArgs.EnsureEpLibrariesRegistered(epLibraries);
+                var epOptions = ProviderArgs.ParseEpOptions(epOptionArgs);
+
                 // Compute model identity
                 var modelIdentity = await InputFiles.IdentifyModelAsync(model);
 
@@ -60,27 +71,24 @@ public static class RunCommand
                 var tensorInputs = await InputFiles.ReadInputsAsync(inputs);
 
                 // Build request
-                var preferredProvider = providerName?.ToLowerInvariant() switch
-                {
-                    "cpu" => ProviderId.Cpu,
-                    "cuda" => ProviderId.Cuda,
-                    null => null,
-                    _ => throw new ArgumentException($"Unknown provider: {providerName}")
-                };
+                var preferredProvider = ProviderArgs.ParseProvider(providerName);
 
                 var request = new InferenceRequest
                 {
                     Model = modelIdentity,
                     Inputs = tensorInputs,
                     PreferredProvider = preferredProvider,
-                    RequireProvider = requireProvider
+                    RequireProvider = requireProvider,
+                    Options = epOptions
                 };
 
-                // Select provider
+                // Select provider: rank the providers the runtime actually lists.
                 var selector = provider.GetRequiredService<ProviderSelector>();
                 var fallbackPolicy = provider.GetRequiredService<FallbackPolicy>();
+                var discovery = provider.GetRequiredService<IProviderDiscovery>();
 
-                var candidates = fallbackPolicy.BuildCandidateList(request);
+                var report = discovery.Discover();
+                var candidates = fallbackPolicy.BuildCandidateList(request, report.AvailableProviders);
                 var selectionRequest = new SelectionRequest
                 {
                     Candidates = candidates,
@@ -119,7 +127,8 @@ public static class RunCommand
                     try
                     {
                         attemptSession = factory.CreateSession(
-                            modelIdentity, attempt, enableProfiling: profile);
+                            modelIdentity, attempt, epOptions,
+                            enableProfiling: profile, epLibraries: epLibraries);
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException)
                     {
