@@ -51,3 +51,15 @@ if [ -f "$TRT_RTX_EP" ]; then
     esac
     export LINML_EP_LIBRARIES
 fi
+
+# Convenience: default plugin EP library registration for OpenVINO
+# (vendored by scripts/fetch-ep-plugins.sh). The plugin resolves its bundled
+# OpenVINO runtime via RUNPATH $ORIGIN, so no add_path is needed.
+OPENVINO_EP="$DEPS/ep-plugins/openvino/onnxruntime_ep_openvino/libonnxruntime_providers_openvino_plugin.so"
+if [ -f "$OPENVINO_EP" ]; then
+    case ";${LINML_EP_LIBRARIES:-};" in
+        *";openvino="*) ;;
+        *) LINML_EP_LIBRARIES="openvino=$OPENVINO_EP${LINML_EP_LIBRARIES:+;$LINML_EP_LIBRARIES}" ;;
+    esac
+    export LINML_EP_LIBRARIES
+fi
