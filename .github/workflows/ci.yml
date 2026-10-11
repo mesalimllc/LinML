@@ -49,10 +49,9 @@ jobs:
           retention-days: 7
 
   gpu-tests:
-    name: GPU Tests (self-hosted)
-    runs-on: [self-hosted, linux, gpu, wsl2]
+    name: GPU Tests (hosted, CUDA skipped)
+    runs-on: ubuntu-latest
     timeout-minutes: 30
-    continue-on-error: true
 
     steps:
       - name: Checkout
