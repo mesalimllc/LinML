@@ -63,7 +63,6 @@
 
 ## Up next
 
-- AMD MIGraphX, Intel OpenVINO, QNN/NPU, TensorRT-RTX
 - ARM64 architecture
 - Other Linux distributions (Debian, Fedora, etc.)
 - CUDA 11.x, 12.x (unless using CUDA 12.x ORT variant)
@@ -80,6 +79,8 @@
 | Integration: CUDA inference | N/A | ✓ | ✅ 2/2 pass on RTX 5070 (Gate D) |
 | Integration: Fallback | ✓ | ✓ | ✅ 2/2 pass (soft CUDA path on this host) |
 | Integration: OpenVINO | ✓ | ✗ | ✅ CPU inference works (MNIST argmax=8); enumerates 0 devices on AMD CPU (no plugins.xml in wheel) |
+| Integration: QNN | ✗ | ✗ | ✅ Wired (provider ID, adapter, readiness); blocked — no Snapdragon NPU, QAIRT SDK needs Qualcomm account |
+| Integration: MIGraphX | ✗ | ✗ | ✅ Wired (provider ID, adapter, readiness); blocked — no AMD GPU, ROCm-on-WSL available but no AMD hardware |
 | CLI tests | ✓ | ✓ | ✅ 14/14 pass (placeholder assertions, Gate E) |
 | Publish verification | ✓ | ✓ | ✅ `verify-linux-publish.sh` all PASS; published `linml` runs CPU + CUDA (Gate E) |
 

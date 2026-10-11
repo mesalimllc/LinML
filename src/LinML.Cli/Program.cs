@@ -63,6 +63,8 @@ public static class Program
         services.AddSingleton<CpuProviderAdapter>();
         services.AddSingleton<CudaProviderAdapter>();
         services.AddSingleton<OpenVinoProviderAdapter>();
+        services.AddSingleton<QnnProviderAdapter>();
+        services.AddSingleton<MigraphXProviderAdapter>();
         services.AddSingleton<CudaReadinessProbe>();
 
         // Readiness probe adapter (wraps CudaReadinessProbe into IProviderReadinessProbe)
