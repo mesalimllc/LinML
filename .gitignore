@@ -43,5 +43,6 @@ TestResults/
 coverage.*
 *.coverage
 *.coveragexml
-onnxruntime_profile__2026-10-11_04-04-33_004.json
+# ORT profiles written by `linml run --profile` (to the working directory)
+onnxruntime_profile__*.json
 /.agents/skills/daytona

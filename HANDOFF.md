@@ -52,7 +52,7 @@ ls /usr/local/cuda/lib64/libcudart.so*  # CUDA runtime present
 | **Project scaffold** | 4 src projects + 4 test projects, 64 files, 34 C# files |
 | **Contracts** | `ProviderId`, `ProviderDiscoveryReport`, `ProviderReadinessReport`, `ModelIdentity`, `InferenceRequest`, `InferenceResult`, `SelectionRequest`, `SelectionDecision`, 4 interfaces |
 | **Policy** | `ProviderSelector` (14 test cases), `FallbackPolicy` (5 tests) |
-| **Runtime.Onnx** | `OnnxProviderDiscovery`, `OnnxSessionFactory`, `OnnxInferenceSession`, `CpuProviderAdapter`, `CudaProviderAdapter`, `CudaReadinessProbe` |
+| **Runtime.Onnx** | `OnnxProviderDiscovery`, `OnnxSessionFactory`, `OnnxInferenceSession`, `EpAppender`, `CudaReadinessProbe`, `GenericReadinessProbe` |
 | **CLI** | `Program.cs`, `ProvidersCommand`, `DoctorCommand`, `RunCommand` — all working |
 | **Tests** | 46 passing: 19 policy + 14 CLI + 7 integration + 6 runtime |
 | **Git** | Initialized, pushed to `https://github.com/trackdubllc/LinML` (public) |
@@ -128,9 +128,8 @@ LinML/
 │   │   ├── OnnxSessionFactory.cs
 │   │   ├── OnnxInferenceSession.cs
 │   │   └── Providers/
-│   │       ├── CpuProviderAdapter.cs
-│   │       ├── CudaProviderAdapter.cs
-│   │       └── CudaReadinessProbe.cs  # Load → Append → Smoke phases
+│   │       ├── CudaReadinessProbe.cs  # Load → Append → Smoke phases
+│   │       └── GenericReadinessProbe.cs
 │   └── LinML.Cli/             # Composition root
 │       ├── Program.cs                  # DI setup, System.CommandLine 2.0.12
 │       └── Commands/
