@@ -1,6 +1,6 @@
 # LinML
 
-> **Working label.** LinML is a prototype name, not an established project or affiliation with Microsoft.
+> LinML is not affiliatted with Microsoft.
 
 Linux-first ONNX Runtime inference integration layer. Provides honest provider discovery, explicit selection, ONNX inference, and diagnosable fallback — across CPU, CUDA, TensorRT, TensorRT-RTX, OpenVINO, MIGraphX, and QNN.
 
