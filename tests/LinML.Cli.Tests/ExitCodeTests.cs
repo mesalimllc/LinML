@@ -226,7 +226,11 @@ public class ExitCodeTests
     [Fact]
     public async Task Run_RequiredProviderNotInRuntime_Returns3_WithReason()
     {
-        if (!HasTinyFixture() || !OperatingSystem.IsLinux())
+        // LINML_EP_LIBRARIES (e.g. from sourcing scripts/env-gpu-deps.sh) makes
+        // the CLI register plugins before selection, which can change the exit
+        // path; the test asserts the plain-runtime contract only.
+        if (!HasTinyFixture() || !OperatingSystem.IsLinux()
+            || !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("LINML_EP_LIBRARIES")))
         {
             return;
         }
@@ -270,12 +274,22 @@ public class ExitCodeTests
             .Select(d => d.GetProperty("message").GetString()!)
             .ToArray();
 
-        string written = Assert.Single(profile, m => m.StartsWith("ORT profile written to ", StringComparison.Ordinal));
-        Assert.Contains(profile, m => m.StartsWith("Node '", StringComparison.Ordinal)
-            && m.EndsWith("ran on CPUExecutionProvider", StringComparison.Ordinal));
-
-        string profilePath = written["ORT profile written to ".Length..];
-        Assert.True(File.Exists(profilePath), $"Profile file missing: {profilePath}");
-        File.Delete(profilePath);
+        const string writtenPrefix = "ORT profile written to ";
+        string? profilePath = profile.FirstOrDefault(m => m.StartsWith(writtenPrefix, StringComparison.Ordinal))?[writtenPrefix.Length..];
+        try
+        {
+            Assert.NotNull(profilePath);
+            Assert.Single(profile, m => m.StartsWith(writtenPrefix, StringComparison.Ordinal));
+            Assert.Contains(profile, m => m.StartsWith("Node '", StringComparison.Ordinal)
+                && m.EndsWith("ran on CPUExecutionProvider", StringComparison.Ordinal));
+            Assert.True(File.Exists(profilePath), $"Profile file missing: {profilePath}");
+        }
+        finally
+        {
+            if (profilePath is not null)
+            {
+                File.Delete(profilePath);
+            }
+        }
     }
 }

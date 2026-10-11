@@ -73,10 +73,12 @@ public class EpAppenderTests
     public void RegisteredPlugin_AppendsViaDevices_AndRegistryIsIdempotent()
     {
         string? lib = Environment.GetEnvironmentVariable("LINML_OPENVINO_EP_LIB");
-        if (string.IsNullOrEmpty(lib) || !File.Exists(lib))
+        if (string.IsNullOrEmpty(lib))
         {
             return;
         }
+
+        Assert.True(File.Exists(lib), $"LINML_OPENVINO_EP_LIB is set but does not exist: {lib}");
 
         var libraries = new Dictionary<string, string> { ["test.openvino"] = lib };
         PluginEpRegistry.EnsureRegistered(libraries);
@@ -90,10 +92,8 @@ public class EpAppenderTests
         EpAppender.Append(options, ProviderId.OpenVino, options: null, epLibraries: null);
 
         string model = Path.Combine(AppContext.BaseDirectory, "fixtures", "model.onnx");
-        if (File.Exists(model))
-        {
-            using var session = new InferenceSession(model, options);
-            Assert.NotEmpty(session.InputMetadata);
-        }
+        Assert.True(File.Exists(model), $"Fixture not copied to the test output: {model}");
+        using var session = new InferenceSession(model, options);
+        Assert.NotEmpty(session.InputMetadata);
     }
 }
