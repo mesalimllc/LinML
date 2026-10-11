@@ -62,6 +62,7 @@ public static class Program
         // Providers
         services.AddSingleton<CpuProviderAdapter>();
         services.AddSingleton<CudaProviderAdapter>();
+        services.AddSingleton<OpenVinoProviderAdapter>();
         services.AddSingleton<CudaReadinessProbe>();
 
         // Readiness probe adapter (wraps CudaReadinessProbe into IProviderReadinessProbe)
@@ -89,7 +90,8 @@ internal sealed class ReadinessProbeAdapter : IProviderReadinessProbe
         {
             "CPUExecutionProvider" => ProbeCpu(),
             "CUDAExecutionProvider" => _cudaProbe.Probe(cancellationToken),
-            // All other providers (TensorRT, TRT-RTX plugin, OpenVINO, QNN,
+            "OpenVINOExecutionProvider" => new LinML.Runtime.Onnx.Providers.GenericReadinessProbe(_logger).Probe(provider, cancellationToken: cancellationToken),
+            // All other providers (TensorRT, TRT-RTX plugin, QNN,
             // MIGraphX, ...) get the generic Load+Append probe.
             _ => new LinML.Runtime.Onnx.Providers.GenericReadinessProbe(_logger).Probe(provider, cancellationToken: cancellationToken)
         };

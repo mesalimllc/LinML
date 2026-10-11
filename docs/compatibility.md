@@ -59,7 +59,7 @@
   `dlopen failed for libcudnn.so` when cuDNN 9.x is absent. Proven by MNIST
   (Opp 1): CPU always works; CUDA Conv needs `libcudnn.so` visible via
   system install or `LD_LIBRARY_PATH`. Provider listed ≠ model runnable.
-- **Framework-dependent:** Requires .NET 10 runtime on target.
+- **OpenVINO EP (Intel CPU/GPU/NPU):** Compilation and inference work via C API (MNIST argmax=8 on AMD CPU). However, **enumeration returns 0 devices** on this platform because the `onnxruntime-openvino` wheel (1.24.1, built for ORT 1.24.1) lacks `plugins.xml` for runtime plugin discovery and has no compile-time plugins. The EP registers with ORT but `GetSupportedDevices` returns zero devices. Works on Intel hardware with proper OpenVINO install. [OpenVINO issue](https://github.com/microsoft/onnxruntime/issues/25557).
 
 ## Up next
 
@@ -79,7 +79,7 @@
 | Integration: CPU inference | ✓ | N/A | ✅ 3/3 pass, output `[11, 22, 13, 24, 15, 26]` (Gate C) |
 | Integration: CUDA inference | N/A | ✓ | ✅ 2/2 pass on RTX 5070 (Gate D) |
 | Integration: Fallback | ✓ | ✓ | ✅ 2/2 pass (soft CUDA path on this host) |
-| Integration: Real model (MNIST) | ✓ | ✓ | ✅ CPU exact argmax; CUDA matches (argmax + 2dp) |
+| Integration: OpenVINO | ✓ | ✗ | ✅ CPU inference works (MNIST argmax=8); enumerates 0 devices on AMD CPU (no plugins.xml in wheel) |
 | CLI tests | ✓ | ✓ | ✅ 14/14 pass (placeholder assertions, Gate E) |
 | Publish verification | ✓ | ✓ | ✅ `verify-linux-publish.sh` all PASS; published `linml` runs CPU + CUDA (Gate E) |
 
