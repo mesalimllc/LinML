@@ -23,7 +23,7 @@
 | CPUExecutionProvider | ✅ Verified (Gate C) | `evidence/cpu-run.json`, `CpuInference_ReturnsExpectedOutput` |
 | CUDAExecutionProvider | ✅ Verified (Gate D, RTX 5070) | `evidence/cuda-run.json`, ORT profile shows `MatMul_0/MatMulAddFusion` on `CUDAExecutionProvider` |
 | TensorrtExecutionProvider | ✅ Verified (RTX 5070) | `evidence/trt-run.json`, `evidence/trt-mnist-run.json` — exact logits, TRTKernel placement; TF32 default, use `trt:trt_engine_cache_*` for repeated runs |
-| NvTensorRTRTXExecutionProvider | ✅ Verified (native Linux, RTX 4090 Daytona) | TrtRtxInferenceTests 3/3; **WSL2-blocked** — virtual PCI vendor 0x1414 + bus-id mismatch, root-caused in `evidence/trt-rtx-wsl2-block.md`, upstream issue [#13](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI/issues/13), fix proposed in PR [#12](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI/pull/12) |
+| NvTensorRTRTXExecutionProvider | ✅ Verified (native Linux, RTX 4090 Daytona) | TrtRtxInferenceTests 3/3; **WSL2-blocked** — virtual PCI vendor 0x1414 + bus-id mismatch, root-caused in `evidence/trt-rtx-wsl2-block.md`, upstream issue [#13](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI/issues/13), fix proposed in PR [#12](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI/pull/12). **Workaround:** `scripts/build-trt-rtx-custom.sh` builds the EP with the WSL2 fallback patch; set `TRT_RTX_CUSTOM_EP` to use it |
 | OpenVINOExecutionProvider | ✅ Verified (plugin EP 1.6.1, Intel Xeon) | MNIST argmax=8, no fallback; `onnxruntime-ep-openvino` wheel |
 | MIGraphXExecutionProvider | ✅ Verified (Daytona MI355X gfx950) | `evidence/migraphx-run.json`, MGXKernel on MIGraphXExecutionProvider, exact logits |
 | QNNExecutionProvider | 🔌 Wired, blocked | No Snapdragon NPU; QAIRT SDK needs Qualcomm account |
