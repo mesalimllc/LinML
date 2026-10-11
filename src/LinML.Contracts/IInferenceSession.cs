@@ -15,4 +15,13 @@ public interface IInferenceSession : IDisposable
     IReadOnlyList<TensorOutput> Run(
         IReadOnlyList<TensorInput> inputs,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// End ORT profiling and return per-node provider placement.
+    /// Returns an empty list when the session was not created with profiling enabled.
+    /// </summary>
+    IReadOnlyList<NodePlacement> EndProfiling();
+
+    /// <summary>Path of the ORT profile file, once <see cref="EndProfiling"/> has run.</summary>
+    string? ProfilePath { get; }
 }

@@ -110,6 +110,23 @@ Returned by `linml run --json`.
 }
 ```
 
+With `linml run --profile`, per-node provider placement is appended to `diagnostics`:
+
+```json
+"diagnostics": [
+  {
+    "phase": "profile",
+    "message": "ORT profile written to onnxruntime_profile__2026-10-11_03-08-00_814.json",
+    "severity": "Info"
+  },
+  {
+    "phase": "profile",
+    "message": "Node 'MatMul_0/MatMulAddFusion_kernel_time' ran on CUDAExecutionProvider",
+    "severity": "Info"
+  }
+]
+```
+
 ## SelectionDecision
 
 Internal contract used by policy layer.

@@ -2,6 +2,7 @@ using LinML.Contracts;
 using Microsoft.Extensions.Logging;
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
+using System.Text.Json;
 
 namespace LinML.Runtime.Onnx;
 
@@ -12,22 +13,26 @@ public sealed class OnnxInferenceSession : IInferenceSession
 {
     private readonly InferenceSession _session;
     private readonly ILogger _logger;
+    private readonly bool _profilingEnabled;
     private bool _disposed;
 
     public OnnxInferenceSession(
         InferenceSession session,
         ModelIdentity model,
         ProviderId provider,
-        ILogger logger)
+        ILogger logger,
+        bool profilingEnabled = false)
     {
         _session = session ?? throw new ArgumentNullException(nameof(session));
         Model = model ?? throw new ArgumentNullException(nameof(model));
         Provider = provider ?? throw new ArgumentNullException(nameof(provider));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _profilingEnabled = profilingEnabled;
     }
 
     public ProviderId Provider { get; }
     public ModelIdentity Model { get; }
+    public string? ProfilePath { get; private set; }
 
     public IReadOnlyList<TensorOutput> Run(
         IReadOnlyList<TensorInput> inputs,
@@ -95,5 +100,37 @@ public sealed class OnnxInferenceSession : IInferenceSession
         if (_disposed) return;
         _disposed = true;
         _session?.Dispose();
+    }
+
+    public IReadOnlyList<NodePlacement> EndProfiling()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        if (!_profilingEnabled)
+        {
+            return [];
+        }
+
+        ProfilePath = _session.EndProfiling();
+        _logger.LogInformation("ORT profile written to {ProfilePath}", ProfilePath);
+
+        var placements = new List<NodePlacement>();
+        using var doc = JsonDocument.Parse(File.ReadAllText(ProfilePath));
+        foreach (var element in doc.RootElement.EnumerateArray())
+        {
+            if (element.TryGetProperty("cat", out var cat) && cat.GetString() == "Node"
+                && element.TryGetProperty("args", out var args)
+                && args.TryGetProperty("provider", out var provider)
+                && element.TryGetProperty("name", out var name))
+            {
+                placements.Add(new NodePlacement
+                {
+                    NodeName = name.GetString() ?? "",
+                    Provider = provider.GetString() ?? ""
+                });
+            }
+        }
+
+        return placements;
     }
 }

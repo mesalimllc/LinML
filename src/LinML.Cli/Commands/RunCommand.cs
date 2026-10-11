@@ -22,11 +22,13 @@ public static class RunCommand
         var inputsOption = new Option<string>("--inputs") { Description = "Path to the inputs JSON file", Required = true };
         var providerOption = new Option<string?>("--provider") { Description = "Preferred provider (cpu, cuda)" };
         var requireProviderOption = new Option<bool>("--require-provider") { Description = "Fail if the preferred provider is unavailable" };
+        var profileOption = new Option<bool>("--profile") { Description = "Enable ORT profiling and report per-node provider placement" };
 
         runCommand.Options.Add(modelOption);
         runCommand.Options.Add(inputsOption);
         runCommand.Options.Add(providerOption);
         runCommand.Options.Add(requireProviderOption);
+        runCommand.Options.Add(profileOption);
         runCommand.Options.Add(jsonOption);
 
         runCommand.SetAction(async parseResult =>
@@ -35,6 +37,7 @@ public static class RunCommand
             var inputs = parseResult.GetValue(inputsOption)!;
             var providerName = parseResult.GetValue(providerOption);
             var requireProvider = parseResult.GetValue(requireProviderOption);
+            var profile = parseResult.GetValue(profileOption);
             var json = parseResult.GetValue(jsonOption);
 
             try
@@ -113,11 +116,33 @@ public static class RunCommand
 
                 // Run inference
                 var factory = provider.GetRequiredService<IInferenceSessionFactory>();
-                using var session = factory.CreateSession(modelIdentity, decision.SelectedProvider!);
+                using var session = factory.CreateSession(
+                    modelIdentity, decision.SelectedProvider!, enableProfiling: profile);
 
                 var stopwatch = System.Diagnostics.Stopwatch.StartNew();
                 var outputs = session.Run(tensorInputs);
                 stopwatch.Stop();
+
+                var diagnostics = new List<DiagnosticEntry>();
+                if (profile)
+                {
+                    var placements = session.EndProfiling();
+                    diagnostics.Add(new DiagnosticEntry
+                    {
+                        Phase = "profile",
+                        Message = $"ORT profile written to {session.ProfilePath}",
+                        Severity = DiagnosticSeverity.Info
+                    });
+                    foreach (var placement in placements)
+                    {
+                        diagnostics.Add(new DiagnosticEntry
+                        {
+                            Phase = "profile",
+                            Message = $"Node '{placement.NodeName}' ran on {placement.Provider}",
+                            Severity = DiagnosticSeverity.Info
+                        });
+                    }
+                }
 
                 var result = new InferenceResult
                 {
@@ -126,7 +151,8 @@ public static class RunCommand
                     Outputs = outputs,
                     Duration = stopwatch.Elapsed,
                     Model = modelIdentity,
-                    RuntimeVersion = OnnxRuntimeDiagnostics.GetRuntimeVersion()
+                    RuntimeVersion = OnnxRuntimeDiagnostics.GetRuntimeVersion(),
+                    Diagnostics = diagnostics
                 };
 
                 if (json)
@@ -139,6 +165,10 @@ public static class RunCommand
                     foreach (var output in result.Outputs)
                     {
                         Console.WriteLine($"Output '{output.Name}': [{string.Join(", ", output.Data)}]");
+                    }
+                    foreach (var diagnostic in diagnostics)
+                    {
+                        Console.WriteLine($"[{diagnostic.Phase}] {diagnostic.Message}");
                     }
                 }
                 return 0;

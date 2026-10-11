@@ -20,6 +20,7 @@ public sealed class OnnxSessionFactory : IInferenceSessionFactory
         ModelIdentity model,
         ProviderId provider,
         IReadOnlyDictionary<string, string>? options = null,
+        bool enableProfiling = false,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(model);
@@ -29,6 +30,7 @@ public sealed class OnnxSessionFactory : IInferenceSessionFactory
             model.Path, provider);
 
         var sessionOptions = new SessionOptions();
+        sessionOptions.EnableProfiling = enableProfiling;
 
         // Configure provider
         switch (provider.Value)
@@ -59,6 +61,6 @@ public sealed class OnnxSessionFactory : IInferenceSessionFactory
         // Create session
         var session = new InferenceSession(model.Path, sessionOptions);
 
-        return new OnnxInferenceSession(session, model, provider, _logger);
+        return new OnnxInferenceSession(session, model, provider, _logger, enableProfiling);
     }
 }

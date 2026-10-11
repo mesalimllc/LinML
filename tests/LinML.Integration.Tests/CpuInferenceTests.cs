@@ -63,6 +63,56 @@ public class CpuInferenceTests
     }
 
     [Fact]
+    public void CpuInference_Profiling_ReportsNodePlacement()
+    {
+        if (!File.Exists(FixturePath))
+        {
+            return; // Fixture model not generated.
+        }
+
+        var modelBytes = File.ReadAllBytes(FixturePath);
+        var model = new ModelIdentity
+        {
+            Path = FixturePath,
+            Sha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(modelBytes)).ToLowerInvariant(),
+            SizeBytes = modelBytes.Length
+        };
+
+        var factory = new OnnxSessionFactory(NullLogger<OnnxSessionFactory>.Instance);
+        using var session = factory.CreateSession(model, ProviderId.Cpu, enableProfiling: true);
+
+        try
+        {
+            var inputs = new List<TensorInput>
+            {
+                new()
+                {
+                    Name = "input",
+                    DataType = TensorDataType.Float32,
+                    Shape = [3, 2],
+                    Data = [1, 2, 3, 4, 5, 6]
+                }
+            };
+
+            var outputs = session.Run(inputs);
+            Assert.Single(outputs);
+
+            var placements = session.EndProfiling();
+            Assert.NotEmpty(placements);
+            Assert.Contains(placements, p => p.Provider == "CPUExecutionProvider");
+            Assert.All(placements, p => Assert.False(string.IsNullOrWhiteSpace(p.NodeName)));
+        }
+        finally
+        {
+            // Profiling writes a file to the working directory; don't leave it behind.
+            if (session.ProfilePath is not null && File.Exists(session.ProfilePath))
+            {
+                File.Delete(session.ProfilePath);
+            }
+        }
+    }
+
+    [Fact]
     public void CpuInference_MissingModel_Throws()
     {
         var factory = new OnnxSessionFactory(NullLogger<OnnxSessionFactory>.Instance);
