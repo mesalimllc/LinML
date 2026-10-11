@@ -223,6 +223,9 @@ jobs:
       contents: write
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Download CLI release assets
         uses: actions/download-artifact@v4
         with:
@@ -232,6 +235,7 @@ jobs:
       - name: Create or update GitHub Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           TAG="${{ needs.build-and-test.outputs.tag }}"
           EXTRA_FLAGS=()
