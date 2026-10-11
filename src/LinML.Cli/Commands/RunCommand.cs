@@ -23,7 +23,7 @@ public static class RunCommand
         var requireProviderOption = new Option<bool>("--require-provider") { Description = "Fail if the preferred provider is unavailable" };
         var profileOption = new Option<bool>("--profile") { Description = "Enable ORT profiling and report per-node provider placement" };
         var epOptionOption = new Option<string[]>("--ep-option") { Description = "Provider option: key=value (all providers) or provider:key=value (scoped, repeatable), e.g. --ep-option trt:trt_fp16_enable=1" };
-        var epLibraryOption = new Option<string[]>("--ep-library") { Description = "Plugin EP library as name=path (repeatable), e.g. --ep-library nvtensorrtrtx=/path/libonnxruntime_providers_nv_tensorrt_rtx.so" };
+        var epLibraryOption = new Option<string[]>("--ep-library") { Description = "Plugin EP library as name=path (repeatable), e.g. --ep-library NvTensorRTRTXExecutionProvider=/path/libonnxruntime_providers_nv_tensorrt_rtx.so" };
 
         runCommand.Options.Add(modelOption);
         runCommand.Options.Add(inputsOption);

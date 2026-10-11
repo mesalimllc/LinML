@@ -100,7 +100,7 @@ public class CommandParsingTests
             "--model", CliTestHost.Fixture("model.onnx"),
             "--inputs", CliTestHost.Fixture("inputs.json"),
             "--provider", "trt-rtx",
-            "--ep-library", "nvtensorrtrtx=/nonexistent/lib.so"));
+            "--ep-library", "NvTensorRTRTXExecutionProvider=/nonexistent/lib.so"));
 
         Assert.Equal(1, exitCode);
         Assert.Contains("EP plugin library not found", stderr);

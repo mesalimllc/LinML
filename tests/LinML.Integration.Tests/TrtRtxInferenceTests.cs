@@ -20,7 +20,7 @@ namespace LinML.Integration.Tests;
 public class TrtRtxInferenceTests
 {
     private const string EpName = "NvTensorRTRTXExecutionProvider";
-    private const string RegistrationName = "nvtensorrtrtx";
+    private const string RegistrationName = "NvTensorRTRTXExecutionProvider";
 
     private static string FixturePath => Path.Combine(AppContext.BaseDirectory, "fixtures", "model.onnx");
 

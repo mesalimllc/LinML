@@ -46,8 +46,8 @@ export LD_LIBRARY_PATH
 TRT_RTX_EP="$DEPS/ep-plugins/trt-rtx/onnxruntime_ep_nv_tensorrt_rtx/libonnxruntime_providers_nv_tensorrt_rtx.so"
 if [ -f "$TRT_RTX_EP" ]; then
     case ";${LINML_EP_LIBRARIES:-};" in
-        *"nvtensorrtrtx"*) ;;
-        *) LINML_EP_LIBRARIES="nvtensorrtrtx=$TRT_RTX_EP${LINML_EP_LIBRARIES:+;$LINML_EP_LIBRARIES}" ;;
+        *"NvTensorRTRTXExecutionProvider="*|*"nvtensorrtrtx="*) ;;
+        *) LINML_EP_LIBRARIES="NvTensorRTRTXExecutionProvider=$TRT_RTX_EP${LINML_EP_LIBRARIES:+;$LINML_EP_LIBRARIES}" ;;
     esac
     export LINML_EP_LIBRARIES
 fi
