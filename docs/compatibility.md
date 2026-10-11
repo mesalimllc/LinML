@@ -32,7 +32,7 @@
 - **CUDA 13.x:** Older CUDA drivers not tested.
 - **Framework-dependent:** Requires .NET 10 runtime on target.
 
-## Unsupported (Deferred)
+## Up next
 
 - AMD MIGraphX, Intel OpenVINO, QNN/NPU, TensorRT-RTX
 - ARM64 architecture
