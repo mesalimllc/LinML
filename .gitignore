@@ -44,3 +44,4 @@ coverage.*
 *.coverage
 *.coveragexml
 onnxruntime_profile__2026-10-11_04-04-33_004.json
+/.agents/skills/daytona
