@@ -6,8 +6,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- ONNX Runtime -->
-    <PackageVersion Include="Microsoft.ML.OnnxRuntime" Version="1.31.0" />
+    <!-- ONNX Runtime: Gpu package only (includes CPU EP). Do NOT add the
+         CPU-only Microsoft.ML.OnnxRuntime package: its native library
+         shadows the GPU build and hides the CUDA EP. -->
     <PackageVersion Include="Microsoft.ML.OnnxRuntime.Managed" Version="1.31.0" />
     <PackageVersion Include="Microsoft.ML.OnnxRuntime.Gpu" Version="1.31.0" />
 

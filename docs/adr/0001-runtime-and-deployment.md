@@ -26,8 +26,17 @@ Constraints:
 ### ONNX Runtime Packages
 | Package | Version | Purpose |
 |---------|---------|---------|
-| `Microsoft.ML.OnnxRuntime` | 1.31.0 | CPU execution provider (managed + native) |
-| `Microsoft.ML.OnnxRuntime.Gpu` | 1.31.0 | CUDA execution provider (CUDA 13.0 build, cuDNN 9.x) |
+| `Microsoft.ML.OnnxRuntime.Managed` | 1.31.0 | Managed C# API (separate package since ORT 1.31) |
+| `Microsoft.ML.OnnxRuntime.Gpu` | 1.31.0 | CUDA EP + CPU EP + native libs (CUDA 13.0 build, cuDNN 9.x) |
+
+> **Do NOT reference `Microsoft.ML.OnnxRuntime` (CPU-only) alongside the Gpu
+> package.** Its CPU-only `libonnxruntime.so` (29 MB) shadows the GPU build's
+> library (33 MB) in the app output, and ORT then registers only
+> `CPUExecutionProvider` — the CUDA EP silently disappears. Found 2026-10-11
+> (Gate D): removing the CPU package made ORT report
+> `TensorrtExecutionProvider, CUDAExecutionProvider, CPUExecutionProvider`.
+> Verified on RTX 5070: fused `MatMul_0/MatMulAddFusion` node ran on
+> `CUDAExecutionProvider` per ORT profiling.
 
 **Rationale:**
 - ORT 1.31.0 is the latest stable release (as of 2026-10-10).

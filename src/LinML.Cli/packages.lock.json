@@ -147,7 +147,6 @@
         "dependencies": {
           "LinML.Contracts": "[1.0.0, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.0, )",
-          "Microsoft.ML.OnnxRuntime": "[1.31.0, )",
           "Microsoft.ML.OnnxRuntime.Gpu": "[1.31.0, )",
           "Microsoft.ML.OnnxRuntime.Managed": "[1.31.0, )"
         }
@@ -159,15 +158,6 @@
         "contentHash": "FU/IfjDfwaMuKr414SSQNTIti/69bHEMb+QKrskRb26oVqpx3lNFXMjs/RC9ZUuhBhcwDM2BwOgoMw+PZ+beqQ==",
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.0"
-        }
-      },
-      "Microsoft.ML.OnnxRuntime": {
-        "type": "CentralTransitive",
-        "requested": "[1.31.0, )",
-        "resolved": "1.31.0",
-        "contentHash": "7v58S0xqY1ZmLui5BnK3FQEWagRhmhkR/9yLrxF5rQGppGfcMaw7W0a2wgT1SWnT6ug0dmr1B2I4VWhlY/yvng==",
-        "dependencies": {
-          "Microsoft.ML.OnnxRuntime.Managed": "1.31.0"
         }
       },
       "Microsoft.ML.OnnxRuntime.Gpu": {

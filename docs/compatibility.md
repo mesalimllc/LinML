@@ -20,8 +20,9 @@
 
 | Provider | Status | Evidence |
 |----------|--------|----------|
-| CPUExecutionProvider | Pending Gate C | — |
-| CUDAExecutionProvider | Pending Gate D | — |
+| CPUExecutionProvider | ✅ Verified (Gate C) | `evidence/cpu-run.json`, `CpuInference_ReturnsExpectedOutput` |
+| CUDAExecutionProvider | ✅ Verified (Gate D, RTX 5070) | `evidence/cuda-run.json`, ORT profile shows `MatMul_0/MatMulAddFusion` on `CUDAExecutionProvider` |
+| TensorrtExecutionProvider | Listed by ORT, no readiness probe (out of scope) | `linml doctor` reports NOT READY with reason |
 
 ## Known Limitations
 
@@ -44,12 +45,12 @@
 
 | Test | CPU | CUDA | Status |
 |------|-----|------|--------|
-| Unit tests (Policy) | ✓ | N/A | Pending Gate B |
-| Unit tests (Runtime) | ✓ | ✓ | Pending Gate B/D |
-| Integration: CPU inference | ✓ | N/A | Pending Gate C |
-| Integration: CUDA inference | N/A | ✓ | Pending Gate D |
-| Integration: Fallback | ✓ | ✓ | Pending Gate D |
-| CLI tests | ✓ | ✓ | Pending Gate E |
+| Unit tests (Policy) | ✓ | N/A | ✅ 19/19 pass |
+| Unit tests (Runtime) | ✓ | ✓ | ✅ 6/6 pass |
+| Integration: CPU inference | ✓ | N/A | ✅ 3/3 pass, output `[11, 22, 13, 24, 15, 26]` (Gate C) |
+| Integration: CUDA inference | N/A | ✓ | ✅ 2/2 pass on RTX 5070 (Gate D) |
+| Integration: Fallback | ✓ | ✓ | ✅ 2/2 pass (soft CUDA path on this host) |
+| CLI tests | ✓ | ✓ | ✅ 14/14 pass (placeholder assertions, Gate E) |
 | Publish verification | ✓ | ✓ | Pending Gate E |
 
 ## Evidence Files
