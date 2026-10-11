@@ -7,7 +7,12 @@
     <RootNamespace>LinML.Contracts</RootNamespace>
     <IsPackable>true</IsPackable>
     <PackageId>LinML.Contracts</PackageId>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
     <Description>LinML contracts: provider discovery, selection, and inference abstractions.</Description>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
 
 </Project>
