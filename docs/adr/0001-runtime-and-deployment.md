@@ -1,7 +1,7 @@
 # ADR 0001: Runtime and Deployment Strategy
 
 ## Status
-Proposed
+Accepted (2026-10-11, verified in WSL2 — see Evidence)
 
 ## Context
 
@@ -111,6 +111,28 @@ curl -s "https://api.nuget.org/v3-flatcontainer/microsoft.ml.onnxruntime.gpu/ind
 - ORT 1.27+ GPU packages: CUDA 13.0 + cuDNN 9.x (default)
 - CUDA 12.x variant available for ORT 1.27-1.31
 - Minor version compatibility: CUDA 13.0 build works with CUDA 13.x drivers
+
+## Gate A Verification (2026-10-11, WSL2)
+
+```bash
+dotnet --info
+# SDK 10.0.401, Runtime 10.0.12, OS ubuntu 26.04, RID linux-x64
+
+nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv
+# NVIDIA GeForce RTX 5070, 617.42, 12227 MiB
+
+dotnet restore LinML.slnx --locked-mode   # OK (packages.lock.json committed per project)
+dotnet build LinML.slnx -c Release --no-restore -warnaserror  # 0 warnings, 0 errors
+dotnet test LinML.slnx -c Release --no-build  # 46 passed, 0 failed
+```
+
+Notes:
+- `RestorePackagesWithLockFile` is enabled in `Directory.Build.props`; `packages.lock.json`
+  files are committed (removed from `.gitignore`). CI restores with locked mode.
+- `NuGet.config` sets `globalPackagesFolder` to the repo-local `.nuget/packages`
+  (gitignored), so lock files contain only version metadata, no local paths.
+- `linml providers list` in WSL2 reports `CPUExecutionProvider` plus the RTX 5070 via
+  `nvidia-smi` evidence. CUDA EP registration is a Gate D work item.
 
 ## Open Questions
 

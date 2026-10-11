@@ -14,6 +14,9 @@
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
     <Deterministic>true</Deterministic>
 
+    <!-- Locked-mode restore (CI uses locked mode; lock files are committed) -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+
   </PropertyGroup>
 
 </Project>

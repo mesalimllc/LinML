@@ -12,7 +12,6 @@ out/
 *.userprefs
 project.lock.json
 project.fragment.lock.json
-packages.lock.json
 *.csv
 
 # NuGet
