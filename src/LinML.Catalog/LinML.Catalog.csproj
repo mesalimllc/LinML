@@ -7,8 +7,13 @@
     <RootNamespace>LinML.Catalog</RootNamespace>
     <IsPackable>true</IsPackable>
     <PackageId>LinML.Catalog</PackageId>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
     <Description>Execution provider catalog for ONNX Runtime on Linux: installs pinned plugin EPs, registers them with ORT, and appends their devices to sessions. The Linux counterpart to the Windows ML ExecutionProviderCatalog.</Description>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="LinML.Catalog.Tests" />
