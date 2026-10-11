@@ -23,6 +23,7 @@
 | CPUExecutionProvider | ✅ Verified (Gate C) | `evidence/cpu-run.json`, `CpuInference_ReturnsExpectedOutput` |
 | CUDAExecutionProvider | ✅ Verified (Gate D, RTX 5070) | `evidence/cuda-run.json`, ORT profile shows `MatMul_0/MatMulAddFusion` on `CUDAExecutionProvider` |
 | TensorrtExecutionProvider | Listed by ORT, no readiness probe (out of scope) | `linml doctor` reports NOT READY with reason |
+| MIGraphXExecutionProvider | ✅ Verified (Daytona MI355X gfx950) | `evidence/migraphx-run.json`, MGXKernel on MIGraphXExecutionProvider, exact logits |
 
 ## Known Limitations
 
@@ -96,7 +97,7 @@
 | Integration: Fallback | ✓ | ✓ | ✅ 2/2 pass (soft CUDA path on this host) |
 | Integration: OpenVINO | ✓ | ✗ | ✅ MNIST argmax=8 on `OpenVINOExecutionProvider` via plugin EP `onnxruntime-ep-openvino` 1.6.1 (Intel Xeon CPU); GPU/NPU untested |
 | Integration: QNN | ✗ | ✗ | ✅ Wired (provider ID, adapter, readiness); blocked — no Snapdragon NPU, QAIRT SDK needs Qualcomm account |
-| Integration: MIGraphX | ✗ | ✗ | ✅ Wired (provider ID, adapter, readiness); blocked — no AMD GPU, ROCm-on-WSL available but no AMD hardware |
+| Integration: MIGraphX | ✅ (Daytona) | N/A | ✅ Verified on MI355X (gfx950): MNIST argmax 8, exact logits, MGXKernel on MIGraphXExecutionProvider |
 | CLI tests | ✓ | ✓ | ✅ 14/14 pass (placeholder assertions, Gate E) |
 | Publish verification | ✓ | ✓ | ✅ `verify-linux-publish.sh` all PASS; published `linml` runs CPU + CUDA (Gate E) |
 
