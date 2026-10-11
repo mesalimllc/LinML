@@ -114,26 +114,48 @@ internal sealed class PluginInstaller(HttpMessageHandler? httpHandler = null)
         || name.Contains(".so.", StringComparison.Ordinal)
         || name.EndsWith(".json", StringComparison.Ordinal);
 
+    /// <summary>
+    /// Moves <paramref name="stage"/> to <paramref name="finalDir"/>. The rename
+    /// itself picks the winner between concurrent installers, so a completed
+    /// install is never deleted: installs only ever appear complete, and a
+    /// directory without the library can only be a leftover from an older,
+    /// interrupted or nested install, which is moved aside and the rename retried.
+    /// </summary>
     /// <returns>True if the stage was moved into place; false if another installer finished first.</returns>
-    private static bool Promote(string stage, string finalDir, string libraryFileName)
+    internal static bool Promote(string stage, string finalDir, string libraryFileName)
     {
-        if (File.Exists(Path.Combine(finalDir, libraryFileName)))
+        string library = Path.Combine(finalDir, libraryFileName);
+        for (int attempt = 0; attempt < 2; attempt++)
         {
-            return false;
+            try
+            {
+                Directory.Move(stage, finalDir);
+                return true;
+            }
+            catch (IOException) when (Directory.Exists(finalDir))
+            {
+                if (File.Exists(library))
+                {
+                    return false;
+                }
+
+                string aside = $"{finalDir}.stale-{Guid.NewGuid():N}";
+                try
+                {
+                    Directory.Move(finalDir, aside);
+                }
+                catch (IOException)
+                {
+                    // A concurrent installer moved the leftover first.
+                }
+
+                TryDeleteDirectory(aside);
+            }
         }
 
-        // A directory without the library is a leftover from an older,
-        // interrupted install; replace it.
-        TryDeleteDirectory(finalDir);
-        try
-        {
-            Directory.Move(stage, finalDir);
-            return true;
-        }
-        catch (IOException) when (File.Exists(Path.Combine(finalDir, libraryFileName)))
-        {
-            return false;
-        }
+        return File.Exists(library)
+            ? false
+            : throw new IOException($"Could not move {stage} into place at {finalDir}.");
     }
 
     private static void TryDeleteFile(string path)

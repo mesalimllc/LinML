@@ -65,6 +65,23 @@ public class PluginInstallerTests
     }
 
     [Fact]
+    public void Promote_WhenAnotherInstallerWon_KeepsTheExistingInstall()
+    {
+        using var root = new TempDir();
+        string finalDir = Path.Combine(root.Path, "plugin");
+        Directory.CreateDirectory(finalDir);
+        File.WriteAllText(Path.Combine(finalDir, FakeWheel.Library), "winner");
+        string stage = finalDir + ".partial-test";
+        Directory.CreateDirectory(stage);
+        File.WriteAllText(Path.Combine(stage, FakeWheel.Library), "loser");
+
+        bool promoted = PluginInstaller.Promote(stage, finalDir, FakeWheel.Library);
+
+        Assert.False(promoted);
+        Assert.Equal("winner", File.ReadAllText(Path.Combine(finalDir, FakeWheel.Library)));
+    }
+
+    [Fact]
     public async Task Install_ReplacesLeftoverDirectoryWithoutLibrary()
     {
         using var root = new TempDir();
