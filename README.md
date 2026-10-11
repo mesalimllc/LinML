@@ -94,7 +94,41 @@ Dependency direction:
 - `LinML.Contracts` — no ORT dependency
 - `LinML.Policy` — depends only on Contracts
 - `LinML.Runtime.Onnx` — depends on Contracts + ORT
+- `LinML.Catalog` — depends on Contracts + the managed ORT API only (published package)
 - `LinML.Cli` — composition root, depends on all
+
+## LinML.Catalog (library)
+
+`LinML.Catalog` is the Linux counterpart to the Windows ML
+`ExecutionProviderCatalog`. It vendors pinned plugin EPs (sha256-verified,
+staged install), registers them with ONNX Runtime, and appends their devices
+to sessions. It currently covers OpenVINO (`onnxruntime-ep-openvino` 1.6.1).
+The host application supplies the native ONNX Runtime (e.g.
+`Microsoft.ML.OnnxRuntime.Gpu` 1.31).
+
+```csharp
+IExecutionProviderCatalog catalog = ExecutionProviderCatalog.GetDefault();
+IExecutionProvider openVino = catalog.Find(ProviderId.OpenVino)!;
+
+ProviderEnsureResult ensured = await openVino.EnsureReadyAsync(new EnsureOptions(AllowDownloads: true));
+using var options = new SessionOptions();
+if (ensured.IsReady)
+{
+    ProviderAppendResult appended = options.AppendFromCatalog(openVino, [OrtHardwareDeviceType.CPU]);
+}
+```
+
+Packages are published to GitHub Packages by
+`.github/workflows/publish-packages.yml` when a `vX.Y.Z` tag is pushed. To
+consume them, add the feed with a token that has `read:packages`:
+
+```bash
+dotnet nuget add source "https://nuget.pkg.github.com/trackdubllc/index.json" \
+  --name github-trackdubllc --username <github-user> --password <token> --store-password-in-clear-text
+```
+
+The opt-in end-to-end test downloads the real plugin and runs MNIST on it:
+`LINML_CATALOG_NETWORK_TESTS=1 dotnet test tests/LinML.Catalog.Tests`.
 
 ## Documentation
 
