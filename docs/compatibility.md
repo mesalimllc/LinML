@@ -1,6 +1,6 @@
 # LinML Compatibility Report
 
-> **Status:** Initial scaffold. Updated as gates complete.
+> **Status:** Current as of 2026-10-11. All gates complete; EPs verified per table below.
 
 ## Supported Environments
 
@@ -22,8 +22,11 @@
 |----------|--------|----------|
 | CPUExecutionProvider | ✅ Verified (Gate C) | `evidence/cpu-run.json`, `CpuInference_ReturnsExpectedOutput` |
 | CUDAExecutionProvider | ✅ Verified (Gate D, RTX 5070) | `evidence/cuda-run.json`, ORT profile shows `MatMul_0/MatMulAddFusion` on `CUDAExecutionProvider` |
-| TensorrtExecutionProvider | Listed by ORT, no readiness probe (out of scope) | `linml doctor` reports NOT READY with reason |
+| TensorrtExecutionProvider | ✅ Verified (RTX 5070) | `evidence/trt-run.json`, `evidence/trt-mnist-run.json` — exact logits, TRTKernel placement; TF32 default, use `trt:trt_engine_cache_*` for repeated runs |
+| NvTensorRTRTXExecutionProvider | ✅ Verified (native Linux, RTX 4090 Daytona) | TrtRtxInferenceTests 3/3; **WSL2-blocked** — virtual PCI vendor 0x1414 + bus-id mismatch, root-caused in `evidence/trt-rtx-wsl2-block.md` |
+| OpenVINOExecutionProvider | ✅ Verified (plugin EP 1.6.1, Intel Xeon) | MNIST argmax=8, no fallback; `onnxruntime-ep-openvino` wheel |
 | MIGraphXExecutionProvider | ✅ Verified (Daytona MI355X gfx950) | `evidence/migraphx-run.json`, MGXKernel on MIGraphXExecutionProvider, exact logits |
+| QNNExecutionProvider | 🔌 Wired, blocked | No Snapdragon NPU; QAIRT SDK needs Qualcomm account |
 
 ## Known Limitations
 
@@ -99,18 +102,26 @@
 
 ## Test Matrix
 
-| Test | CPU | CUDA | Status |
-|------|-----|------|--------|
-| Unit tests (Policy) | ✓ | N/A | ✅ 19/19 pass |
-| Unit tests (Runtime) | ✓ | ✓ | ✅ 6/6 pass |
-| Integration: CPU inference | ✓ | N/A | ✅ 3/3 pass, output `[11, 22, 13, 24, 15, 26]` (Gate C) |
-| Integration: CUDA inference | N/A | ✓ | ✅ 2/2 pass on RTX 5070 (Gate D) |
-| Integration: Fallback | ✓ | ✓ | ✅ 2/2 pass (soft CUDA path on this host) |
-| Integration: OpenVINO | ✓ | ✗ | ✅ MNIST argmax=8 on `OpenVINOExecutionProvider` via plugin EP `onnxruntime-ep-openvino` 1.6.1 (Intel Xeon CPU); GPU/NPU untested |
-| Integration: QNN | ✗ | ✗ | ✅ Wired (provider ID, adapter, readiness); blocked — no Snapdragon NPU, QAIRT SDK needs Qualcomm account |
-| Integration: MIGraphX | ✅ (Daytona) | N/A | ✅ Verified on MI355X (gfx950): MNIST argmax 8, exact logits, MGXKernel on MIGraphXExecutionProvider |
-| CLI tests | ✓ | ✓ | ✅ 14/14 pass (placeholder assertions, Gate E) |
-| Publish verification | ✓ | ✓ | ✅ `verify-linux-publish.sh` all PASS; published `linml` runs CPU + CUDA (Gate E) |
+| Suite | Tests | Status |
+|-------|-------|--------|
+| Policy | 23 | ✅ green |
+| Runtime.Onnx | 22 | ✅ green |
+| Catalog | 25 | ✅ green (incl. script/catalog pin agreement) |
+| Integration | 20 | ✅ green (CPU/CUDA/TRT/TRT-RTX/OpenVINO/MIGraphX where hardware allows; honest skips elsewhere) |
+| CLI | 57 | ✅ green (incl. 6 serve tests) |
+| **Total** | **147** | ✅ green with GPU env and with `CUDA_VISIBLE_DEVICES=''` |
+
+| Integration area | CPU | CUDA | Status |
+|------------------|-----|------|--------|
+| CPU inference | ✓ | N/A | ✅ 3/3, output `[11, 22, 13, 24, 15, 26]` (Gate C) |
+| CUDA inference | N/A | ✓ | ✅ RTX 5070 (Gate D) |
+| TensorRT | ✓ (GPU) | — | ✅ RTX 5070, exact logits, TRTKernel placement |
+| TensorRT-RTX | — | ✅ (native Linux) | ✅ RTX 4090 Daytona; WSL2 honestly skipped |
+| OpenVINO | ✓ | ✗ | ✅ plugin EP 1.6.1, Intel Xeon CPU; GPU/NPU untested |
+| MIGraphX | ✅ (Daytona) | N/A | ✅ MI355X gfx950, exact logits |
+| Fallback | ✓ | ✓ | ✅ soft/hard selection, execution-time fallback |
+| serve (long-lived) | ✓ | ✓ | ✅ warmup, reuse, error envelopes, reopen-after-poison |
+| Publish verification | ✓ | ✓ | ✅ `verify-linux-publish.sh` all PASS |
 
 ## Evidence Files
 
