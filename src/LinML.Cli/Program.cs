@@ -35,6 +35,7 @@ public static class Program
         rootCommand.Subcommands.Add(ProvidersCommand.Create(provider, jsonOption));
         rootCommand.Subcommands.Add(DoctorCommand.Create(provider, jsonOption));
         rootCommand.Subcommands.Add(RunCommand.Create(provider, jsonOption));
+        rootCommand.Subcommands.Add(BenchCommand.Create(provider, jsonOption));
         rootCommand.Subcommands.Add(ServeCommand.Create(provider));
 
         // Version is built-in via RootCommand (--version)
