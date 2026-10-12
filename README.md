@@ -29,12 +29,27 @@ LinML also provides `LinML.Catalog`, the Linux counterpart to WinML's `Execution
   - [Global Options & Exit Codes](#global-options--exit-codes)
   - [Provider Discovery (`linml providers list`)](#provider-discovery-linml-providers-list)
   - [Diagnostic Readiness Probe (`linml doctor`)](#diagnostic-readiness-probe-linml-doctor)
+  - [Model Inspection (`linml inspect`)](#model-inspection-linml-inspect)
   - [Model Inference (`linml run`)](#model-inference-linml-run)
+  - [Benchmarking Suite (`linml bench`)](#benchmarking-suite-linml-bench)
   - [Persistent Session Serving (`linml serve`)](#persistent-session-serving-linml-serve)
 - [LinML.Catalog Library](#linmlcatalog-library)
 - [Architecture](#architecture)
 - [Documentation](#documentation)
 - [License](#license)
+
+---
+
+## Status
+
+| Component | Version | NuGet | Notes |
+|-----------|---------|-------|-------|
+| **CLI** (`linml`) | `0.3.0` | — | Self-contained `linux-x64` binary |
+| **LinML.Catalog** | `0.3.0` | [![NuGet Catalog](https://img.shields.io/nuget/v/LinML.Catalog.svg?label=LinML.Catalog&color=blue)](https://www.nuget.org/packages/LinML.Catalog) | Plugin EP vendoring & registration |
+| **LinML.Contracts** | `0.3.0` | [![NuGet Contracts](https://img.shields.io/nuget/v/LinML.Contracts.svg?label=LinML.Contracts&color=blue)](https://www.nuget.org/packages/LinML.Contracts) | Pure contracts & data models |
+| **Runtime** | — | — | ONNX Runtime 1.31.x |
+
+See [CHANGELOG.md](CHANGELOG.md) for full release history.
 
 ---
 
@@ -258,6 +273,94 @@ linml doctor
 # Comprehensive model smoke test (loads model and runs real inference per provider)
 linml doctor --model model.onnx --inputs inputs.json --json
 ```
+
+---
+
+### Model Inspection (`linml inspect`)
+
+Inspect ONNX model graph structure, input/output tensors, opset versions, custom metadata, and execution provider compatibility warnings **without running inference**. Useful for CI validation, model cataloging, and debugging EP suitability before deployment.
+
+```bash
+# Human-readable output
+linml inspect --model model.onnx
+
+# Machine-readable JSON for tooling/CI
+linml inspect --model model.onnx --json
+```
+
+#### Example Human-Readable Output:
+```text
+LinML Model Inspection
+----------------------
+Model:       /path/to/model.onnx
+Size:        2.45 MB (2,567,891 bytes)
+SHA-256:     a1b2c3d4e5f6...
+IR Version:  v10
+Opset:       ai.onnx v17
+Producer:    LinML-fixture-gen 1.0
+
+Inputs (1):
+  • x: float32 [3, 2] (static)
+
+Outputs (1):
+  • y: float32 [3, 2] (static)
+
+Metadata Properties (2):
+  • author: linml
+  • generated_by: fetch-test-fixture.sh
+
+Graph Structure:
+  • Nodes:     2
+  • Operators: 2 distinct (Add, MatMul)
+
+Execution Provider Compatibility:
+  ⚠ [CUDAExecutionProvider] Model contains convolution operations ('Conv'). CUDAExecutionProvider requires NVIDIA cuDNN (libcudnn.so.9) installed on the system.
+  ⚠ [TensorrtExecutionProvider] Model contains dynamic dimensions. TensorRT compiles static execution engines; specify '--ep-option trt:trt_profile_min_shapes=...' and '--ep-option trt:trt_engine_cache_enable=1' for optimal caching.
+  ℹ [OpenVINOExecutionProvider] Model uses ONNX opset 17. OpenVINO EP supports up to opset 21; unverified operators may fall back to CPU.
+```
+
+#### JSON Output Schema (abridged):
+```json
+{
+  "model": {
+    "path": "/path/to/model.onnx",
+    "sha256": "a1b2c3d4e5f6...",
+    "sizeBytes": 2567891,
+    "name": "model"
+  },
+  "irVersion": 10,
+  "opsetImports": [{"domain": "ai.onnx", "version": 17}],
+  "producerName": "LinML-fixture-gen",
+  "producerVersion": "1.0",
+  "inputs": [
+    {"name": "x", "dataType": "float32", "shape": [3, 2], "isDynamic": false, "symbolicDimensions": []}
+  ],
+  "outputs": [
+    {"name": "y", "dataType": "float32", "shape": [3, 2], "isDynamic": false, "symbolicDimensions": []}
+  ],
+  "graph": {"nodeCount": 2, "operators": ["Add", "MatMul"]},
+  "compatibilityWarnings": [
+    {"provider": "CUDAExecutionProvider", "severity": "Warning", "message": "..."},
+    {"provider": "TensorrtExecutionProvider", "severity": "Warning", "message": "..."},
+    {"provider": "OpenVINOExecutionProvider", "severity": "Info", "message": "..."}
+  ]
+}
+```
+
+#### Options:
+- `--model <path>`: Path to the ONNX model file (required).
+- `--json`: Output machine-readable JSON to stdout instead of formatted plain text.
+
+#### Exit Codes:
+- `0`: Success
+- `1`: Inspection failed (model corrupt, parse error, etc.)
+- `2`: Invalid arguments (missing `--model`, file not found)
+
+#### Use Cases:
+- **CI gating**: Validate model structure before deployment (`linml inspect --model model.onnx --json | jq '.graph.operators'`)
+- **EP suitability**: Quick check if a model will run well on TensorRT, CUDA, OpenVINO, MIGraphX without provisioning hardware
+- **Model cataloging**: Record SHA-256, tensor signatures, and opset imports in a model registry
+- **Debugging**: Identify dynamic dimensions, unsupported operators, or opset mismatches before runtime failures
 
 ---
 
