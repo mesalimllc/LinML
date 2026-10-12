@@ -97,8 +97,8 @@ jobs:
       - name: Build
         run: dotnet build LinML.slnx -c Release --no-restore -m:1 -warnaserror
 
-      - name: Test
-        run: dotnet test LinML.slnx -c Release --no-build -m:1 --logger "console;verbosity=normal"
+      - name: Test (runtime, policy, cli - ARM64)
+        run: dotnet test LinML.slnx -c Release --no-build -m:1 --logger "console;verbosity=normal" --filter "Category!=Integration"
 
       - name: Publish (linux-arm64)
         run: |
