@@ -46,7 +46,7 @@ public class CudaInferenceTests
             {
                 new()
                 {
-                    Name = "input",
+                    Name = "x",
                     DataType = TensorDataType.Float32,
                     Shape = [3, 2],
                     Data = [1, 2, 3, 4, 5, 6]
@@ -91,7 +91,7 @@ public class CudaInferenceTests
         {
             new()
             {
-                Name = "input",
+                Name = "x",
                 DataType = TensorDataType.Float32,
                 Shape = [3, 2],
                 Data = [1, 2, 3, 4, 5, 6]
@@ -137,7 +137,7 @@ public class CudaInferenceTests
         {
             new()
             {
-                Name = "input",
+                Name = "x",
                 DataType = TensorDataType.Float32,
                 Shape = [3, 2],
                 Data = [1, 2, 3, 4, 5, 6]
