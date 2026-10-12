@@ -39,7 +39,8 @@ internal static class KnownGpuDependencies
         IndexUrl: null,
         InstallSubdirectory: "cudnn",
         SentinelLibrary: Path.Combine("nvidia", "cudnn", "lib", "libcudnn.so.9"),
-        PreloadLibraries: ["libcudnn.so.9"]);
+        // cuDNN's cuBLAS dependencies are installed in the sibling cublas/lib directory.
+        PreloadLibraries: ["libcublas.so.13", "libcublasLt.so.13", "libcudnn.so.9"]);
 
     /// <summary>TensorRT 10 classic runtime (<c>libnvinfer.so.10</c>), required by the TensorRT EP.</summary>
     public static readonly GpuDependencySpec TensorRt = new(

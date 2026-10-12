@@ -91,8 +91,8 @@ public static class GpuDependencyLoader
                         continue;
                     }
 
-                    string path = Path.Combine(directory, soname);
-                    if (File.Exists(path) && NativeLibrary.TryLoad(path, out IntPtr handle))
+                    string? path = FindLibraryPath(spec, root, directory, soname);
+                    if (path is not null && NativeLibrary.TryLoad(path, out IntPtr handle))
                     {
                         Handles.Add(handle);
                         Loaded.Add(soname);
@@ -108,6 +108,35 @@ public static class GpuDependencyLoader
         }
 
         return loadedNow;
+    }
+
+    private static string? FindLibraryPath(
+        GpuDependencySpec spec,
+        string installRoot,
+        string primaryDirectory,
+        string soname)
+    {
+        string path = Path.Combine(primaryDirectory, soname);
+        if (File.Exists(path))
+        {
+            return path;
+        }
+
+        // Some wheels (notably cuDNN) put runtime siblings under separate
+        // directories in the same pip target, such as nvidia/cublas/lib.
+        try
+        {
+            return Directory.EnumerateFiles(spec.InstallDirectory(installRoot), soname, SearchOption.AllDirectories)
+                .FirstOrDefault();
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 
     /// <summary>Vendoring state of every known GPU dependency under <paramref name="installRoot"/>.</summary>
