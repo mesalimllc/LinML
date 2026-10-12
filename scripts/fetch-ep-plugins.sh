@@ -253,10 +253,9 @@ z = zipfile.ZipFile(wheel)
 prefix = "linml_trt_rtx_ep/"
 keep = [n for n in z.namelist() if n.startswith(prefix) and not n.endswith("/")]
 for n in keep:
-    dest = os.path.join(out, n[len(prefix):])
-    # The archive nests licenses/ under the top-level dir, so create parents.
-    os.makedirs(os.path.dirname(dest), exist_ok=True)
-    with z.open(n) as src, open(dest, "wb") as dst:
+    destination = os.path.join(out, n[len(prefix):])
+    os.makedirs(os.path.dirname(destination), exist_ok=True)
+    with z.open(n) as src, open(destination, "wb") as dst:
         dst.write(src.read())
 print(f"extracted {len(keep)} files to {out}")
 PYEOF
