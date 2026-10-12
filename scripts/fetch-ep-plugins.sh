@@ -184,8 +184,18 @@ fetch_migraphx() {
     echo "$WHEEL_SHA256  $TMP/$WHEEL_NAME" | sha256sum -c
 
     echo "Extracting native libraries..."
-    unzip -q "$TMP/$WHEEL_NAME" 'linml_migraphx_ep/*' -d "$TMP"
-    cp -a "$TMP/linml_migraphx_ep/." "$STAGE/"
+    python3 - "$TMP/$WHEEL_NAME" "$STAGE" << 'PYEOF'
+import os, sys, zipfile
+wheel, out = sys.argv[1], sys.argv[2]
+z = zipfile.ZipFile(wheel)
+prefix = "linml_migraphx_ep/"
+keep = [n for n in z.namelist()
+        if n.startswith(prefix) and not n.endswith("/")]
+for n in keep:
+    with z.open(n) as src, open(os.path.join(out, n[len(prefix):]), "wb") as dst:
+        dst.write(src.read())
+print(f"extracted {len(keep)} files to {out}")
+PYEOF
 
     rm -rf "$OUT"
     mv "$STAGE" "$OUT"

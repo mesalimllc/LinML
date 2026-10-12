@@ -13,6 +13,8 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
     private readonly IOrtRegistrar _registrar;
     private readonly Func<bool> _isSupportedPlatform;
     private readonly SemaphoreSlim _ensureGate = new(1, 1);
+    // Keep dependency handles alive for as long as ORT may resolve the plugin.
+    private readonly List<IntPtr> _bundledLibraryHandles = [];
 
     internal PluginExecutionProvider(
         PluginPackageSpec spec,
@@ -82,6 +84,11 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
 
         try
         {
+            // The wheel's bundled SONAME dependencies are not visible to the
+            // native loader merely because they share the plugin directory.
+            // Load them explicitly before ORT loads the plugin.
+            _bundledLibraryHandles.AddRange(
+                PluginInstaller.LoadBundledLibraries(_spec.InstallDirectory(_installRoot), _spec.LibraryFileName));
             _registrar.Register(_spec.RegistrationName, library);
             return true;
         }

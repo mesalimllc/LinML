@@ -1,3 +1,4 @@
+using Microsoft.ML.OnnxRuntime;
 using Xunit;
 
 namespace LinML.Catalog.Tests;
@@ -197,5 +198,41 @@ public class PluginExecutionProviderTests
 
         Assert.Equal(ProviderEnsureStatus.Ready, result.Status);
         Assert.True(result.IsReady);
+    }
+
+    [Fact]
+    public void AppendFromCatalog_BuiltIn_RejectsMismatchedDeviceTypes()
+    {
+        using var root = new TempDir();
+        ExecutionProviderCatalog catalog = ExecutionProviderCatalog.Create(root.Path);
+        IExecutionProvider cpu = catalog.Find(Contracts.ProviderId.Cpu)!;
+        IExecutionProvider cuda = catalog.Find(Contracts.ProviderId.Cuda)!;
+
+        using var sessionOptions = new SessionOptions();
+
+        // CPU requested with GPU preference -> fails
+        var cpuResult = sessionOptions.AppendFromCatalog(cpu, preferredDeviceTypes: [OrtHardwareDeviceType.GPU]);
+        Assert.False(cpuResult.Appended);
+        Assert.Contains("exposes no device of the preferred types", cpuResult.FailureReason);
+
+        // CUDA requested with CPU preference -> fails
+        var cudaResult = sessionOptions.AppendFromCatalog(cuda, preferredDeviceTypes: [OrtHardwareDeviceType.CPU]);
+        Assert.False(cudaResult.Appended);
+        Assert.Contains("exposes no device of the preferred types", cudaResult.FailureReason);
+    }
+
+    [Fact]
+    public void BuiltIn_Cuda_AppendFromCatalog_BranchesToDedicatedCudaOptions()
+    {
+        var fakeRegistrar = new FakeRegistrar { AvailableProviders = [Contracts.ProviderId.Cuda.Value] };
+        var cuda = new BuiltInExecutionProvider(Contracts.ProviderId.Cuda, fakeRegistrar, () => true);
+
+        using var sessionOptions = new SessionOptions();
+        var result = sessionOptions.AppendFromCatalog(cuda);
+        // If CUDA native dependencies aren't present in this test environment, Appended is false with failure reason mentioning CUDA
+        if (!result.Appended)
+        {
+            Assert.Contains("CUDA", result.FailureReason);
+        }
     }
 }

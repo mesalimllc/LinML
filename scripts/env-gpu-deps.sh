@@ -40,6 +40,9 @@ add_path "$DEPS/ep-plugins/trt-rtx/onnxruntime_ep_nv_tensorrt_rtx"
 # OpenVINO runtime (pip wheel), if installed
 add_path "$DEPS/openvino/lib"
 
+# ROCm / MIGraphX runtime libraries, if installed
+add_path "${ROCM_PATH:-/opt/rocm}/lib"
+
 export LD_LIBRARY_PATH
 
 # Convenience: default plugin EP library registration for TRT-RTX.

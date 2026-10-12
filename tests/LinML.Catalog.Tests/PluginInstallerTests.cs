@@ -119,4 +119,34 @@ public class PluginInstallerTests
         Assert.NotNull(linkTarget);
         Assert.Equal("libtensorrt_rtx.so.1.6.1", linkTarget.Name);
     }
+
+    [Fact]
+    public async Task Install_WhenAlreadyPresent_RepairsMissingSymlinks()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return;
+        }
+
+        using var root = new TempDir();
+        PluginPackageSpec spec = KnownPlugins.TensorrtRtx;
+        string installDir = spec.InstallDirectory(root.Path);
+        Directory.CreateDirectory(installDir);
+        File.WriteAllText(spec.LibraryPath(root.Path), "dummy lib");
+        File.WriteAllText(Path.Combine(installDir, "libtensorrt_rtx.so.1.6.1"), "dummy soname");
+
+        var installer = new PluginInstaller();
+        bool installed = await installer.InstallAsync(spec, root.Path, CancellationToken.None);
+
+        Assert.False(installed);
+        string linkFile = Path.Combine(installDir, "libtensorrt_rtx.so.1");
+        Assert.True(File.Exists(linkFile));
+    }
+
+    [Fact]
+    public void LoadBundledLibraries_ReturnsEmptyOnNonExistentDir()
+    {
+        var handles = PluginInstaller.LoadBundledLibraries("/non/existent/path", "libtest.so");
+        Assert.Empty(handles);
+    }
 }

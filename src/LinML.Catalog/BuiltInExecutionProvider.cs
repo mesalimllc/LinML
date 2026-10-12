@@ -12,6 +12,7 @@ internal sealed class BuiltInExecutionProvider : IExecutionProvider
     private readonly ProviderId _id;
     private readonly IOrtRegistrar _registrar;
     private readonly Func<bool>? _isSupportedPlatform;
+    private ProviderReadyState? _cachedProbeReadyState;
 
     internal BuiltInExecutionProvider(
         ProviderId id,
@@ -55,7 +56,23 @@ internal sealed class BuiltInExecutionProvider : IExecutionProvider
                 return ProviderReadyState.Ready;
             }
 
-            return ProviderReadyState.NotReady;
+            if (_cachedProbeReadyState is not null)
+            {
+                return _cachedProbeReadyState.Value;
+            }
+
+            try
+            {
+                using var sessionOptions = new SessionOptions();
+                var result = sessionOptions.AppendFromCatalog(this);
+                _cachedProbeReadyState = result.Appended ? ProviderReadyState.Ready : ProviderReadyState.NotReady;
+                return _cachedProbeReadyState.Value;
+            }
+            catch
+            {
+                _cachedProbeReadyState = ProviderReadyState.NotReady;
+                return _cachedProbeReadyState.Value;
+            }
         }
     }
 
@@ -108,15 +125,18 @@ internal sealed class BuiltInExecutionProvider : IExecutionProvider
             var appendResult = sessionOptions.AppendFromCatalog(this);
             if (!appendResult.Appended)
             {
+                _cachedProbeReadyState = ProviderReadyState.NotReady;
                 return Task.FromResult(new ProviderEnsureResult(
                     _id, ProviderEnsureStatus.Failed, appendResult.FailureReason ?? $"Failed to append {_id}.", []));
             }
 
+            _cachedProbeReadyState = ProviderReadyState.Ready;
             return Task.FromResult(new ProviderEnsureResult(
                 _id, ProviderEnsureStatus.Ready, $"{_id} is built in and ready.", GetDevices()));
         }
         catch (Exception ex)
         {
+            _cachedProbeReadyState = ProviderReadyState.NotReady;
             return Task.FromResult(new ProviderEnsureResult(
                 _id, ProviderEnsureStatus.Failed, $"{_id} initialization failed: {ex.Message}", []));
         }
