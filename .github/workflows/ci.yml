@@ -14,8 +14,6 @@ jobs:
     name: Build and Test
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    env:
-      LD_LIBRARY_PATH: /tmp/onnxruntime-linux-aarch64-1.31.0/lib:${LD_LIBRARY_PATH}
 
     steps:
       - name: Checkout
@@ -91,8 +89,8 @@ jobs:
         with:
           global-json-file: global.json
 
-      - name: Restore (locked mode)
-        run: dotnet restore LinML.slnx --locked-mode -m:1
+      - name: Restore (non-locked mode for ARM64)
+        run: dotnet restore LinML.slnx -m:1
 
       - name: Build
         run: dotnet build LinML.slnx -c Release --no-restore -m:1 -warnaserror
@@ -102,7 +100,7 @@ jobs:
 
       - name: Publish (linux-arm64)
         run: |
-          dotnet restore src/LinML.Cli/LinML.Cli.csproj -r linux-arm64 --locked-mode
+          dotnet restore src/LinML.Cli/LinML.Cli.csproj -r linux-arm64
           dotnet publish src/LinML.Cli/LinML.Cli.csproj -c Release -r linux-arm64 --self-contained false -o artifacts/publish/linux-arm64 --no-restore
 
       - name: Verify publish (linux-arm64)
