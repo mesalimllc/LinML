@@ -71,6 +71,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Install ONNX Runtime native libraries (ARM64)
+        run: |
+          # Install ONNX Runtime native libraries for ARM64
+          ORT_VERSION="1.31.0"
+          curl -fsSL "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-aarch64-${ORT_VERSION}.tgz" -o /tmp/ort.tgz
+          tar -xzf /tmp/ort.tgz -C /tmp
+          sudo cp /tmp/onnxruntime-linux-aarch64-${ORT_VERSION}/lib/libonnxruntime.so* /usr/lib/
+          sudo ldconfig
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v6
         with:
