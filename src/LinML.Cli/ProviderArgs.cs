@@ -150,6 +150,17 @@ public static class ProviderArgs
                     }
                 }
 
+                // The opted-in WSL2 build outranks the stock wheel on WSL2 hosts: both when
+                // nothing is mapped and when the inherited mapping (a shell that sourced
+                // env-gpu-deps.sh before the patch was installed) is just the stock wheel.
+                // An explicit --ep-library, TRT_RTX_CUSTOM_EP, or any other inherited path
+                // stays authoritative.
+                if (libraryPath is null && !explicitOnCommandLine && spec.Id == ProviderId.TensorrtRtx
+                    && (!alreadySpecified || result.Where(kv => MatchesProvider(kv.Key)).Any(kv => IsStockWheelPath(kv.Value, spec))))
+                {
+                    libraryPath = ResolveWslVariant(spec, customRoot);
+                }
+
                 if (libraryPath is null && !alreadySpecified)
                 {
                     libraryPath = spec.FindLibrary(customRoot);
@@ -177,6 +188,30 @@ public static class ProviderArgs
         }
 
         return result;
+    }
+
+    private static bool IsStockWheelPath(string path, PluginPackageSpec spec) =>
+        string.Equals(Path.GetFileName(path), spec.LibraryFileName, StringComparison.Ordinal)
+        && string.Equals(
+            Path.GetFileName(Path.GetDirectoryName(path)),
+            Path.GetFileName(spec.InstallSubdirectory),
+            StringComparison.Ordinal);
+
+    /// <summary>
+    /// The vendored WSL2 build of <paramref name="spec"/> when this host is WSL2, it is
+    /// installed, and the stock wheel's runtime libraries it links against are present
+    /// (they are loaded here, ahead of the plugin); otherwise null.
+    /// </summary>
+    private static string? ResolveWslVariant(PluginPackageSpec spec, string? customRoot)
+    {
+        string? variant = KnownPlugins.WslVariantLibrary(spec.Id, customRoot);
+        if (variant is null || KnownPlugins.WslVariantRuntimeDirectory(customRoot) is not { } runtimeDir)
+        {
+            return null;
+        }
+
+        BundledLibraryHandles.AddRange(PluginInstaller.LoadBundledLibraries(runtimeDir, spec.LibraryFileName));
+        return variant;
     }
 
     /// <summary>Parse repeated --ep-option key=value arguments into a dictionary.</summary>

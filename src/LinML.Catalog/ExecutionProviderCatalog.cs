@@ -32,6 +32,10 @@ public sealed class ExecutionProviderCatalog : IExecutionProviderCatalog
     public static ExecutionProviderCatalog Create(string installRoot)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(installRoot);
+
+        // Vendored cuDNN / TensorRT must be loaded before ORT first opens a provider
+        // library; libraries under this root win over LINML_DEPS and the default root.
+        GpuDependencyLoader.PreloadVendored(installRoot);
         return Create(installRoot, new PluginInstaller(), OrtRegistrar.Instance, isSupportedPlatform: null);
     }
 

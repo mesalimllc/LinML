@@ -16,6 +16,14 @@ public static class Program
 {
     public static async Task<int> Main(string[] args)
     {
+        // Vendored cuDNN / TensorRT must be loaded before ORT first opens a provider
+        // library, so the CLI works without LD_LIBRARY_PATH from env-gpu-deps.sh.
+        if (!IsInformationalInvocation(args))
+        {
+            // An explicit --root outranks LINML_DEPS and the default root.
+            LinML.Catalog.GpuDependencyLoader.PreloadVendored(FindRootArgument(args));
+        }
+
         await using var provider = BuildServices();
 
         var rootCommand = new RootCommand("LinML: Linux ONNX Runtime inference integration layer");
@@ -42,6 +50,30 @@ public static class Program
 
         return rootCommand.Parse(args).Invoke();
     }
+
+    /// <summary>The value of <c>--root</c> / <c>--root=</c> if present (the catalog install root).</summary>
+    internal static string? FindRootArgument(string[] args)
+    {
+        for (int i = 0; i < args.Length; i++)
+        {
+            if (args[i] == "--root")
+            {
+                return i + 1 < args.Length && !string.IsNullOrWhiteSpace(args[i + 1]) ? args[i + 1] : null;
+            }
+
+            if (args[i].StartsWith("--root=", StringComparison.Ordinal))
+            {
+                string value = args[i]["--root=".Length..];
+                return string.IsNullOrWhiteSpace(value) ? null : value;
+            }
+        }
+
+        return null;
+    }
+
+    private static bool IsInformationalInvocation(string[] args) =>
+        args.Length == 0
+        || args.Any(a => a is "-h" or "--help" or "-?" or "--version");
 
     internal static ServiceProvider BuildServices()
     {

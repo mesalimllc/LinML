@@ -291,6 +291,9 @@ public class ServeCommandTests
                 linmlDll,
                 "serve",
                 "--model", CliTestHost.Fixture("model.onnx"),
+                // CPU keeps startup inside the 10 s health poll below: on hosts with the
+                // vendored TensorRT libs, auto-selection builds a TensorRT engine first.
+                "--provider", "cpu",
                 "--port", port.ToString()
             },
             RedirectStandardOutput = true,

@@ -74,6 +74,9 @@
   `dlopen failed for libcudnn.so` when cuDNN 9.x is absent. Proven by MNIST
   (Opp 1): CPU always works; CUDA Conv needs `libcudnn.so` visible via
   system install or `LD_LIBRARY_PATH`. Provider listed ≠ model runnable.
+- **OpenVINO on non-Intel CPUs:** the plugin EP registers but exposes **zero EP
+  devices** on an AMD Ryzen 7 5700X3D (OpenVINO's own runtime does enumerate the
+  CPU); `linml setup` therefore recommends it only on Intel hardware.
 - **OpenVINO EP (Intel CPU/GPU/NPU):** Use Intel's standalone plugin EP,
   `onnxruntime-ep-openvino` **1.6.1**, vendored by `scripts/fetch-ep-plugins.sh`
   and registered by `scripts/env-gpu-deps.sh`. It uses only the stable plugin
@@ -117,12 +120,12 @@
   publishes an **opt-in** patched build (release
   `ep-trt-rtx-wsl2-0.4.0-wsl2p1`):
   ```
-  bash scripts/fetch-ep-plugins.sh trt-rtx-wsl2   # patched EP
-  source scripts/env-gpu-deps.sh
+  linml setup --trt-rtx-wsl2                      # patched EP (or: bash scripts/fetch-ep-plugins.sh trt-rtx-wsl2)
   linml providers list                            # RTX GPU enumerated
   ```
-  `env-gpu-deps.sh` prefers the patched build for `trt-rtx`; `TRT_RTX_CUSTOM_EP`
-  overrides it. Notes:
+  `linml setup` offers this automatically (never installs it unasked) when it
+  detects WSL2 and an RTX Ampere+ GPU. On WSL2 the CLI prefers the patched build
+  for `trt-rtx` (as does `env-gpu-deps.sh`); `TRT_RTX_CUSTOM_EP` overrides it. Notes:
   - The archive contains only the Apache-2.0 EP plugin `.so` (~5 MB, RUNPATH
     `$ORIGIN`); it dynamically links the TensorRT-RTX 1.6.1 runtime
     (`libtensorrt_rtx.so.1`, `libtensorrt_onnxparser_rtx.so.1`) and CUDA 13,

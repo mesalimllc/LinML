@@ -38,6 +38,10 @@ public sealed class OnnxSessionFactory : IInferenceSessionFactory
         // Create session
         var session = new InferenceSession(model.Path, sessionOptions);
 
+        // Providers can leave a handled CUDA error latched on this thread; do not let
+        // it fail the next provider's first kernel (see CudaStickyError).
+        CudaStickyError.Clear();
+
         return new OnnxInferenceSession(session, model, provider, _logger, enableProfiling);
     }
 }

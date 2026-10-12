@@ -18,6 +18,7 @@ public sealed class OnnxProviderDiscovery : IProviderDiscovery
 
     public ProviderDiscoveryReport Discover()
     {
+        LinML.Catalog.GpuDependencyLoader.PreloadVendored();
         var diagnostics = new List<DiagnosticEntry>();
         var availableProviders = new List<ProviderId>();
         var devices = new List<DeviceIdentity>();

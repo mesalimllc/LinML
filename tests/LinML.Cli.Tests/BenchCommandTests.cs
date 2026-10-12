@@ -125,18 +125,28 @@ public class BenchCommandTests
         if (!FixturesExist) return;
 
         var (exitCode, stdout, _) = await Task.Run(() => CliTestHost.Run(
-            "bench",
-            "--model", CliTestHost.Fixture("model.onnx"),
-            "--inputs", CliTestHost.Fixture("inputs.json"),
-            "--all-ready",
-            "--warmup", "1",
-            "--iterations", "5",
-            "--json"));
+            [
+                "bench",
+                "--model", CliTestHost.Fixture("model.onnx"),
+                "--inputs", CliTestHost.Fixture("inputs.json"),
+                "--all-ready",
+                "--warmup", "1",
+                "--iterations", "5",
+                "--json",
+                .. CliTestHost.FastTensorRtOptions(),
+            ]));
 
         Assert.Equal(0, exitCode);
 
         using var doc = JsonDocument.Parse(stdout);
         var results = doc.RootElement.GetProperty("results");
         Assert.True(results.GetArrayLength() >= 1);
+        // Every ready provider must benchmark cleanly: a provider that fails only
+        // because of another provider's leftover CUDA error is a regression.
+        foreach (var result in results.EnumerateArray())
+        {
+            Assert.True(result.GetProperty("success").GetBoolean(),
+                $"{result.GetProperty("provider").GetString()}: {result.GetProperty("error").GetString()}");
+        }
     }
 }

@@ -55,6 +55,15 @@ public class TrtInferenceTests
         ];
     }
 
+    // Lowest builder optimization level plus an engine cache in a stable temp directory:
+    // the first run on a machine pays the TensorRT build (~25 s), later runs reuse it.
+    private static readonly Dictionary<string, string> FastTrtOptions = new()
+    {
+        ["trt_builder_optimization_level"] = "0",
+        ["trt_engine_cache_enable"] = "1",
+        ["trt_engine_cache_path"] = Path.Combine(Path.GetTempPath(), "linml-test-trt-cache"),
+    };
+
     private static bool TrtRunnable()
     {
         if (!HasFixture())
@@ -64,7 +73,7 @@ public class TrtInferenceTests
         try
         {
             var factory = new OnnxSessionFactory(NullLogger<OnnxSessionFactory>.Instance);
-            using var session = factory.CreateSession(Identify(FixturePath), ProviderId.Tensorrt);
+            using var session = factory.CreateSession(Identify(FixturePath), ProviderId.Tensorrt, FastTrtOptions);
             return true;
         }
         catch
@@ -82,7 +91,7 @@ public class TrtInferenceTests
         }
 
         var factory = new OnnxSessionFactory(NullLogger<OnnxSessionFactory>.Instance);
-        using var session = factory.CreateSession(Identify(FixturePath), ProviderId.Tensorrt);
+        using var session = factory.CreateSession(Identify(FixturePath), ProviderId.Tensorrt, FastTrtOptions);
 
         var outputs = session.Run(TinyInputs());
 
@@ -113,7 +122,7 @@ public class TrtInferenceTests
         // TRT 10 defaults to TF32 tensor cores, so logits differ from CPU
         // FP32 in the ~3rd decimal. Argmax agreement is the primary check,
         // with a TF32-class absolute tolerance.
-        using var trtSession = factory.CreateSession(model, ProviderId.Tensorrt);
+        using var trtSession = factory.CreateSession(model, ProviderId.Tensorrt, FastTrtOptions);
         var trtOutputs = trtSession.Run(inputs);
 
         Assert.Single(trtOutputs);
@@ -139,7 +148,7 @@ public class TrtInferenceTests
 
         var factory = new OnnxSessionFactory(NullLogger<OnnxSessionFactory>.Instance);
         using var session = factory.CreateSession(
-            Identify(FixturePath), ProviderId.Tensorrt, enableProfiling: true);
+            Identify(FixturePath), ProviderId.Tensorrt, FastTrtOptions, enableProfiling: true);
 
         try
         {

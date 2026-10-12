@@ -221,10 +221,13 @@ public class ExitCodeTests
         }
 
         var (exitCode, stdout, _) = await Task.Run(() => CliTestHost.Run(
-            "doctor",
-            "--model", CliTestHost.Fixture("model.onnx"),
-            "--inputs", CliTestHost.Fixture("inputs.json"),
-            "--json"));
+            [
+                "doctor",
+                "--model", CliTestHost.Fixture("model.onnx"),
+                "--inputs", CliTestHost.Fixture("inputs.json"),
+                "--json",
+                .. CliTestHost.FastTensorRtOptions(),
+            ]));
 
         Assert.Equal(0, exitCode);
         using var doc = JsonDocument.Parse(stdout);

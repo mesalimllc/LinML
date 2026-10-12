@@ -21,6 +21,7 @@ public sealed class CudaReadinessProbe
     /// </summary>
     public ProviderReadinessReport Probe(CancellationToken cancellationToken = default)
     {
+        LinML.Catalog.GpuDependencyLoader.PreloadVendored();
         var phaseResults = new List<ReadinessPhaseResult>();
         var durations = new Dictionary<ReadinessPhase, TimeSpan>();
 

@@ -26,6 +26,7 @@ public sealed class GenericReadinessProbe
         IReadOnlyDictionary<string, string>? epLibraries = null,
         CancellationToken cancellationToken = default)
     {
+        LinML.Catalog.GpuDependencyLoader.PreloadVendored();
         var phaseResults = new List<ReadinessPhaseResult>();
         var durations = new Dictionary<ReadinessPhase, TimeSpan>();
 

@@ -36,9 +36,52 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
 
     public string? PinnedVersion => _spec.Version;
 
-    public string? LibraryPath => File.Exists(_spec.LibraryPath(_installRoot))
-        ? _spec.LibraryPath(_installRoot)
-        : (_installRoot == ExecutionProviderCatalog.DefaultInstallRoot ? _spec.FindLibrary() : null);
+    public string? LibraryPath => WslVariantLibraryPath()
+        ?? (File.Exists(_spec.LibraryPath(_installRoot))
+            ? _spec.LibraryPath(_installRoot)
+            : (_installRoot == ExecutionProviderCatalog.DefaultInstallRoot ? _spec.FindLibrary() : null));
+
+    // The stock wheel's runtime libraries, looked up like LibraryPath: strictly under this
+    // catalog's root, widening to the default roots only for the default catalog.
+    private string? StockRuntimeDirectory()
+    {
+        string own = KnownPlugins.TensorrtRtx.LibraryPath(_installRoot);
+        if (File.Exists(own))
+        {
+            return Path.GetDirectoryName(own);
+        }
+
+        return _installRoot == ExecutionProviderCatalog.DefaultInstallRoot
+            ? KnownPlugins.WslVariantRuntimeDirectory()
+            : null;
+    }
+
+    // The WSL2 build lives in <root>/ep-plugins/trt-rtx-wsl2/linml_trt_rtx_ep, wherever the root is.
+    private bool IsWslVariant(string library) =>
+        _spec.Id == ProviderId.TensorrtRtx
+        && string.Equals(
+            Path.GetFileName(Path.GetDirectoryName(library)),
+            Path.GetFileName(KnownPlugins.TensorrtRtxWsl2.InstallSubdirectory),
+            StringComparison.Ordinal);
+
+    // The opted-in WSL2 build wins over the stock wheel on WSL2 hosts.
+    private string? WslVariantLibraryPath()
+    {
+        if (_spec.Id != ProviderId.TensorrtRtx || !IsWsl())
+        {
+            return null;
+        }
+
+        string own = KnownPlugins.TensorrtRtxWsl2.LibraryPath(_installRoot);
+        if (File.Exists(own))
+        {
+            return own;
+        }
+
+        return _installRoot == ExecutionProviderCatalog.DefaultInstallRoot
+            ? KnownPlugins.TensorrtRtxWsl2.FindLibrary()
+            : null;
+    }
 
     public ProviderReadyState ReadyState
     {
@@ -90,6 +133,20 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
             // native loader merely because they share the plugin directory.
             // Load them explicitly before ORT loads the plugin.
             string bundledDir = Path.GetDirectoryName(library) ?? _spec.InstallDirectory(_installRoot);
+            if (IsWslVariant(library))
+            {
+                // The WSL2 build links the TensorRT-RTX runtime that only the stock wheel
+                // bundles; without it the native load fails opaquely.
+                if (StockRuntimeDirectory() is not { } runtimeDir)
+                {
+                    failureReason = $"The WSL2 build of {Id} is vendored at {library}, but the stock {Id} wheel "
+                        + "that supplies its runtime libraries is not. Run 'linml setup --trt-rtx-wsl2'.";
+                    return false;
+                }
+
+                _bundledLibraryHandles.AddRange(PluginInstaller.LoadBundledLibraries(runtimeDir, _spec.LibraryFileName));
+            }
+
             _bundledLibraryHandles.AddRange(
                 PluginInstaller.LoadBundledLibraries(bundledDir, _spec.LibraryFileName));
             _registrar.Register(_spec.RegistrationName, library);
@@ -160,7 +217,7 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
             if (devices.Count == 0)
             {
                 string detail = Id == ProviderId.TensorrtRtx && IsWsl()
-                    ? $"{Id} is registered, but in WSL2 virtual PCI mapping blocks device enumeration (see docs/compatibility.md). Use custom build or bare-metal Linux."
+                    ? $"{Id} is registered, but in WSL2 virtual PCI mapping blocks device enumeration (see docs/compatibility.md). Opt in to the patched WSL2 build with 'linml setup --trt-rtx-wsl2', or use bare-metal Linux."
                     : $"{Id} is registered but exposes no EP devices on this host.";
                 return Result(ProviderEnsureStatus.NoDevices, detail);
             }
@@ -195,7 +252,12 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
     private static bool IsLinuxX64() =>
         OperatingSystem.IsLinux() && RuntimeInformation.ProcessArchitecture == Architecture.X64;
 
-    internal static bool IsWsl()
+    /// <summary>Whether this host is WSL2. Replaceable so tests can exercise WSL-only selection anywhere.</summary>
+    internal static Func<bool> WslProbe { get; set; } = DetectWsl;
+
+    internal static bool IsWsl() => WslProbe();
+
+    private static bool DetectWsl()
     {
         try
         {
