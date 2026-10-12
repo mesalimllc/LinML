@@ -164,24 +164,9 @@ public static class CatalogCommand
                     Console.WriteLine($"=== Installing {shortName} ({spec.Version}) ===");
                 }
 
-                if (force && Directory.Exists(installDir))
-                {
-                    try
-                    {
-                        Directory.Delete(installDir, recursive: true);
-                    }
-                    catch (Exception ex)
-                    {
-                        if (!json)
-                        {
-                            Console.Error.WriteLine($"Failed to clear existing installation at {installDir}: {ex.Message}");
-                        }
-                    }
-                }
-
                 try
                 {
-                    bool wasDownloaded = await installer.InstallAsync(spec, installRoot, CancellationToken.None);
+                    bool wasDownloaded = await installer.InstallAsync(spec, installRoot, CancellationToken.None, force: force);
                     string status = wasDownloaded ? "Installed" : "AlreadyInstalled";
 
                     if (!json)

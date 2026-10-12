@@ -55,4 +55,17 @@ public class NvidiaSmiParsingTests
 
         Assert.Empty(devices);
     }
+
+    [Fact]
+    public void FallbackNvidiaDevice_YieldsGenericNvidiaDevice()
+    {
+        var devices = OnnxProviderDiscovery.ExtractDevices(
+            [new HardwareEvidence { Kind = "nvidia-device", Description = "NVIDIA character device detected (/dev/nvidiactl)", Source = "devfs" }]);
+
+        var device = Assert.Single(devices);
+        Assert.Equal("gpu0", device.Id);
+        Assert.Equal("NVIDIA GPU", device.Name);
+        Assert.Equal("NVIDIA", device.Vendor);
+        Assert.Null(device.MemoryBytes);
+    }
 }

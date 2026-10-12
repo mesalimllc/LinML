@@ -68,8 +68,7 @@ public static class SetupCommand
             {
                 string libraryPath = rec.Spec.LibraryPath(installRoot);
                 string installDir = rec.Spec.InstallDirectory(installRoot);
-                string? existingLib = rec.Spec.FindLibrary(root);
-                bool alreadyInstalled = existingLib is not null && File.Exists(existingLib);
+                bool alreadyInstalled = File.Exists(libraryPath);
 
                 if (dryRun)
                 {
@@ -81,7 +80,7 @@ public static class SetupCommand
                     {
                         if (plannedStatus == "AlreadyInstalled")
                         {
-                            Console.WriteLine($"  • {rec.ShortName}: Already installed ({existingLib ?? libraryPath})");
+                            Console.WriteLine($"  • {rec.ShortName}: Already installed ({libraryPath})");
                         }
                         else
                         {
@@ -93,7 +92,7 @@ public static class SetupCommand
                         Provider: rec.ShortName,
                         Version: rec.Spec.Version,
                         Status: plannedStatus,
-                        LibraryPath: existingLib ?? libraryPath,
+                        LibraryPath: libraryPath,
                         InstallDirectory: installDir,
                         Reason: rec.Reason,
                         Error: null));
@@ -106,14 +105,14 @@ public static class SetupCommand
                         Provider: rec.ShortName,
                         Version: rec.Spec.Version,
                         Status: "AlreadyInstalled",
-                        LibraryPath: existingLib!,
-                        InstallDirectory: Path.GetDirectoryName(existingLib)!,
+                        LibraryPath: libraryPath,
+                        InstallDirectory: installDir,
                         Reason: rec.Reason,
                         Error: null));
 
                     if (!json)
                     {
-                        Console.WriteLine($"  • {rec.ShortName}: Already installed ({existingLib})");
+                        Console.WriteLine($"  • {rec.ShortName}: Already installed ({libraryPath})");
                     }
                     continue;
                 }
@@ -123,21 +122,9 @@ public static class SetupCommand
                     Console.Write($"  • {rec.ShortName} ({rec.Spec.Version}): Installing... ");
                 }
 
-                if (force && Directory.Exists(installDir))
-                {
-                    try
-                    {
-                        Directory.Delete(installDir, recursive: true);
-                    }
-                    catch
-                    {
-                        // best-effort cleanup
-                    }
-                }
-
                 try
                 {
-                    bool installed = await installer.InstallAsync(rec.Spec, installRoot, CancellationToken.None);
+                    bool installed = await installer.InstallAsync(rec.Spec, installRoot, CancellationToken.None, force: force);
                     string status = installed ? "Installed" : "AlreadyInstalled";
 
                     if (!json)
@@ -210,7 +197,13 @@ public static class SetupCommand
         var report = discovery.Discover();
         var devices = report.Devices;
 
-        bool hasAmdRocm = Directory.Exists("/sys/class/kfd") || File.Exists("/dev/kfd");
+        bool hasKfd = Directory.Exists("/sys/class/kfd") || File.Exists("/dev/kfd");
+        bool hasRocmUserspace = Directory.Exists("/opt/rocm")
+            || File.Exists("/opt/rocm/lib/libmigraphx_c.so.3")
+            || File.Exists("/opt/rocm/lib/libmigraphx_c.so")
+            || IsCommandOnPath("rocm-smi");
+        bool hasAmdRocm = hasKfd && hasRocmUserspace;
+
         bool isWsl2 = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("WSL_DISTRO_NAME"))
                       || File.Exists("/proc/sys/fs/binfmt_misc/WSLInterop");
 
@@ -232,20 +225,30 @@ public static class SetupCommand
                 var lines = File.ReadAllLines("/proc/cpuinfo");
                 foreach (var line in lines)
                 {
-                    if (line.StartsWith("vendor_id", StringComparison.OrdinalIgnoreCase))
+                    var parts = line.Split(':', 2);
+                    if (parts.Length != 2)
                     {
-                        var val = line.Split(':', 2)[1].Trim();
+                        continue;
+                    }
+
+                    string key = parts[0].Trim();
+                    string val = parts[1].Trim();
+
+                    if (key.Equals("vendor_id", StringComparison.OrdinalIgnoreCase))
+                    {
                         if (val.Contains("Intel", StringComparison.OrdinalIgnoreCase)) vendor = "Intel";
                         else if (val.Contains("AMD", StringComparison.OrdinalIgnoreCase)) vendor = "AMD";
                     }
-                    else if (line.StartsWith("model name", StringComparison.OrdinalIgnoreCase))
+                    else if (key.Equals("model name", StringComparison.OrdinalIgnoreCase))
                     {
-                        model = line.Split(':', 2)[1].Trim();
+                        model = val;
                     }
-                    else if (line.StartsWith("flags", StringComparison.OrdinalIgnoreCase) || line.StartsWith("Features", StringComparison.OrdinalIgnoreCase))
+                    else if (key.Equals("flags", StringComparison.OrdinalIgnoreCase) || key.Equals("Features", StringComparison.OrdinalIgnoreCase))
                     {
-                        var flags = line.Split(':', 2)[1].Trim();
-                        if (flags.Contains("avx2") || flags.Contains("avx512") || flags.Contains("neon") || flags.Contains("asimd"))
+                        if (val.Contains("avx2", StringComparison.OrdinalIgnoreCase)
+                            || val.Contains("avx512", StringComparison.OrdinalIgnoreCase)
+                            || val.Contains("neon", StringComparison.OrdinalIgnoreCase)
+                            || val.Contains("asimd", StringComparison.OrdinalIgnoreCase))
                         {
                             hasVectors = true;
                         }
@@ -286,23 +289,37 @@ public static class SetupCommand
             return list;
         }
 
+        bool isLinuxX64 = OperatingSystem.IsLinux() && string.Equals(hardware.Cpu.Architecture, "x64", StringComparison.OrdinalIgnoreCase);
+
+        // Prebuilt catalog plugins currently only target Linux x86_64
+        if (!isLinuxX64)
+        {
+            return list;
+        }
+
         // NVIDIA GPU detected
         var nvidiaGpu = hardware.Devices.FirstOrDefault(d => string.Equals(d.Vendor, "NVIDIA", StringComparison.OrdinalIgnoreCase));
         if (nvidiaGpu is not null)
         {
-            string? note = hardware.IsWsl2
-                ? "WSL2 environment: Built-in CUDA EP is active; TensorRT-RTX EP provides INT4/FP8 acceleration for RTX GPUs."
-                : null;
-
-            list.Add(new ProviderRecommendation(
-                Spec: KnownPlugins.TensorrtRtx,
-                ShortName: "trt-rtx",
-                Reason: $"NVIDIA GPU detected ({nvidiaGpu.Name})",
-                Note: note));
+            // Stock TensorRT-RTX PyPI wheel registers 0 devices under WSL2 due to virtual PCI bus mapping.
+            // Under WSL2, built-in CUDA EP is active and recommended instead.
+            // On bare-metal Linux, TensorRT-RTX requires RTX Ampere+ architecture (Compute Capability 8.0+).
+            if (hardware.IsWsl2)
+            {
+                // WSL2: stock trt-rtx wheel is blocked; built-in CUDA EP is active.
+            }
+            else if (IsRtxAmpereOrNewer(nvidiaGpu.Name))
+            {
+                list.Add(new ProviderRecommendation(
+                    Spec: KnownPlugins.TensorrtRtx,
+                    ShortName: "trt-rtx",
+                    Reason: $"NVIDIA RTX GPU detected ({nvidiaGpu.Name})",
+                    Note: null));
+            }
         }
 
         // x86_64 / Intel CPU or CPU vector extensions detected
-        if (hardware.Cpu.Architecture is "x64" or "arm64")
+        if (isLinuxX64)
         {
             string reason = hardware.Cpu.Vendor == "Intel"
                 ? $"Intel CPU detected ({hardware.Cpu.Model}) with Deep Learning Boost / AVX"
@@ -315,17 +332,95 @@ public static class SetupCommand
                 Note: null));
         }
 
-        // AMD ROCm GPU detected
+        // AMD ROCm GPU detected with user-space runtime
         if (hardware.HasAmdRocm)
         {
             list.Add(new ProviderRecommendation(
                 Spec: KnownPlugins.MigraphX,
                 ShortName: "migraphx",
-                Reason: "AMD ROCm GPU detected (/dev/kfd)",
+                Reason: "AMD ROCm compute platform detected (/dev/kfd and /opt/rocm)",
                 Note: null));
         }
 
         return list;
+    }
+
+    internal static bool IsRtxAmpereOrNewer(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return false;
+        }
+
+        // Explicit non-Ampere older architectures
+        if (name.Contains("GTX", StringComparison.OrdinalIgnoreCase) ||
+            name.Contains("Tesla", StringComparison.OrdinalIgnoreCase) ||
+            name.Contains("Quadro", StringComparison.OrdinalIgnoreCase) ||
+            name.Contains("V100", StringComparison.OrdinalIgnoreCase) ||
+            name.Contains("P100", StringComparison.OrdinalIgnoreCase) ||
+            name.Contains("K80", StringComparison.OrdinalIgnoreCase) ||
+            name.Contains("T4", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        // Turing RTX 20xx series (sm_75) is pre-Ampere
+        if (System.Text.RegularExpressions.Regex.IsMatch(name, @"\bRTX\s*20\d\d\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+        {
+            return false;
+        }
+
+        // Ampere+ datacenter / enterprise GPUs
+        if (name.Contains("A100", StringComparison.OrdinalIgnoreCase) ||
+            name.Contains("H100", StringComparison.OrdinalIgnoreCase) ||
+            name.Contains("H200", StringComparison.OrdinalIgnoreCase) ||
+            name.Contains("B100", StringComparison.OrdinalIgnoreCase) ||
+            name.Contains("B200", StringComparison.OrdinalIgnoreCase) ||
+            name.Contains("L4", StringComparison.OrdinalIgnoreCase) ||
+            name.Contains("L40", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        // RTX 30xx (Ampere), 40xx (Ada), 50xx (Blackwell), RTX Axxxx, or Ada Generation
+        if (name.Contains("Ada", StringComparison.OrdinalIgnoreCase) ||
+            name.Contains("Blackwell", StringComparison.OrdinalIgnoreCase) ||
+            System.Text.RegularExpressions.Regex.IsMatch(name, @"\bRTX\s*(30|40|50)\d\d\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase) ||
+            System.Text.RegularExpressions.Regex.IsMatch(name, @"\bRTX\s*A\d\d\d\d\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase) ||
+            System.Text.RegularExpressions.Regex.IsMatch(name, @"\b\d\d\d\d\s*Ada\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+        {
+            return true;
+        }
+
+        // Generic fallback: check if it contains "RTX"
+        return name.Contains("RTX", StringComparison.OrdinalIgnoreCase);
+    }
+
+    internal static bool IsCommandOnPath(string command)
+    {
+        string? pathEnv = Environment.GetEnvironmentVariable("PATH");
+        if (string.IsNullOrWhiteSpace(pathEnv))
+        {
+            return false;
+        }
+
+        var separator = OperatingSystem.IsWindows() ? ';' : ':';
+        foreach (var dir in pathEnv.Split(separator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            try
+            {
+                if (File.Exists(Path.Combine(dir, command)))
+                {
+                    return true;
+                }
+            }
+            catch
+            {
+                // ignore invalid path entries
+            }
+        }
+
+        return false;
     }
 
     private static void PrintHeader(bool dryRun)
@@ -357,12 +452,12 @@ public static class SetupCommand
 
         if (hardware.HasAmdRocm)
         {
-            Console.WriteLine("  ROCm: AMD KFD driver detected");
+            Console.WriteLine("  ROCm: AMD KFD driver and user-space runtime detected");
         }
 
         if (hardware.IsWsl2)
         {
-            Console.WriteLine("  Environment: WSL2 (Windows Subsystem for Linux)");
+            Console.WriteLine("  Environment: WSL2 (Windows Subsystem for Linux; built-in CUDA EP active)");
         }
 
         Console.WriteLine();

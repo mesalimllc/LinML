@@ -14,13 +14,21 @@ internal sealed class PluginInstaller(HttpMessageHandler? httpHandler = null)
 {
     private readonly HttpMessageHandler? _httpHandler = httpHandler;
 
-    /// <summary>Installs the plugin unless its library is already present.</summary>
+    /// <summary>Installs the plugin unless its library is already present, or forces reinstallation if <paramref name="force"/> is true.</summary>
+    /// <param name="spec">Specification of the plugin package to install.</param>
+    /// <param name="installRoot">Target root directory for installation.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <param name="force">If true, re-downloads and replaces the existing installation atomically.</param>
     /// <returns>True if this call vendored it; false if it was already present.</returns>
     /// <exception cref="InvalidDataException">The download failed sha256 verification.</exception>
-    public async Task<bool> InstallAsync(PluginPackageSpec spec, string installRoot, CancellationToken cancellationToken)
+    public async Task<bool> InstallAsync(
+        PluginPackageSpec spec,
+        string installRoot,
+        CancellationToken cancellationToken,
+        bool force = false)
     {
         string finalDir = spec.InstallDirectory(installRoot);
-        if (File.Exists(spec.LibraryPath(installRoot)))
+        if (!force && File.Exists(spec.LibraryPath(installRoot)))
         {
             CreateRequiredSymlinks(finalDir);
             return false;
@@ -46,7 +54,7 @@ internal sealed class PluginInstaller(HttpMessageHandler? httpHandler = null)
                     $"Wheel for {spec.Id} did not contain {spec.PackagePrefix}{spec.LibraryFileName}.");
             }
 
-            return Promote(stage, finalDir, spec.LibraryFileName);
+            return Promote(stage, finalDir, spec.LibraryFileName, force);
         }
         finally
         {
@@ -192,21 +200,41 @@ internal sealed class PluginInstaller(HttpMessageHandler? httpHandler = null)
     /// install is never deleted: installs only ever appear complete, and a
     /// directory without the library can only be a leftover from an older,
     /// interrupted or nested install, which is moved aside and the rename retried.
+    /// If <paramref name="force"/> is true, replaces an existing installation atomically.
     /// </summary>
+    /// <param name="stage">Staging directory containing verified extracted assets.</param>
+    /// <param name="finalDir">Target installation directory.</param>
+    /// <param name="libraryFileName">Expected plugin library filename.</param>
+    /// <param name="force">If true, replaces existing directory.</param>
     /// <returns>True if the stage was moved into place; false if another installer finished first.</returns>
-    internal static bool Promote(string stage, string finalDir, string libraryFileName)
+    internal static bool Promote(string stage, string finalDir, string libraryFileName, bool force = false)
     {
         string library = Path.Combine(finalDir, libraryFileName);
         for (int attempt = 0; attempt < 2; attempt++)
         {
             try
             {
+                if (force && Directory.Exists(finalDir))
+                {
+                    string aside = $"{finalDir}.stale-{Guid.NewGuid():N}";
+                    try
+                    {
+                        Directory.Move(finalDir, aside);
+                    }
+                    catch (IOException)
+                    {
+                        // A concurrent installer moved the leftover first.
+                    }
+
+                    TryDeleteDirectory(aside);
+                }
+
                 Directory.Move(stage, finalDir);
                 return true;
             }
             catch (IOException) when (Directory.Exists(finalDir))
             {
-                if (File.Exists(library))
+                if (!force && File.Exists(library))
                 {
                     return false;
                 }
@@ -225,7 +253,7 @@ internal sealed class PluginInstaller(HttpMessageHandler? httpHandler = null)
             }
         }
 
-        return File.Exists(library)
+        return !force && File.Exists(library)
             ? false
             : throw new IOException($"Could not move {stage} into place at {finalDir}.");
     }

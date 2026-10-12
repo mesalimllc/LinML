@@ -152,6 +152,49 @@ public sealed class OnnxProviderDiscovery : IProviderDiscovery
             _logger.LogDebug(ex, "nvidia-smi probe failed (may not be installed or no NVIDIA hardware)");
         }
 
+        // Fall back to sysfs and devfs if nvidia-smi yielded no evidence
+        if (evidence.Count == 0 && OperatingSystem.IsLinux())
+        {
+            try
+            {
+                bool hasDevNode = File.Exists("/dev/nvidiactl") || File.Exists("/dev/nvidia0");
+                bool hasPciDevice = false;
+
+                if (Directory.Exists("/sys/bus/pci/devices"))
+                {
+                    foreach (var dir in Directory.EnumerateDirectories("/sys/bus/pci/devices"))
+                    {
+                        var vendorPath = Path.Combine(dir, "vendor");
+                        if (File.Exists(vendorPath))
+                        {
+                            var vendor = File.ReadAllText(vendorPath).Trim();
+                            if (string.Equals(vendor, "0x10de", StringComparison.OrdinalIgnoreCase))
+                            {
+                                hasPciDevice = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (hasDevNode || hasPciDevice)
+                {
+                    evidence.Add(new HardwareEvidence
+                    {
+                        Kind = "nvidia-device",
+                        Description = hasPciDevice
+                            ? "NVIDIA PCI device detected (vendor 0x10de)"
+                            : "NVIDIA character device detected (/dev/nvidiactl)",
+                        Source = hasPciDevice ? "sysfs" : "devfs"
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "sysfs/devfs NVIDIA probe failed");
+            }
+        }
+
         return evidence;
     }
 
@@ -177,6 +220,17 @@ public sealed class OnnxProviderDiscovery : IProviderDiscovery
                     });
                 }
             }
+        }
+
+        if (devices.Count == 0 && evidence.Any(e => e.Kind == "nvidia-device"))
+        {
+            devices.Add(new DeviceIdentity
+            {
+                Id = "gpu0",
+                Name = "NVIDIA GPU",
+                Vendor = "NVIDIA",
+                MemoryBytes = null
+            });
         }
 
         return devices;

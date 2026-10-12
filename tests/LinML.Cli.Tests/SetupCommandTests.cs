@@ -133,4 +133,70 @@ public class SetupCommandTests
         Assert.Contains(recs, r => r.ShortName == "openvino");
         Assert.DoesNotContain(recs, r => r.ShortName == "trt-rtx");
     }
+
+    [Fact]
+    public void DetermineRecommendations_NvidiaGpu_OnWsl2_DoesNotSelectTrtRtx()
+    {
+        var hw = new SetupCommand.HostHardwareInfo(
+            Cpu: new SetupCommand.CpuInfo("x64", "Intel", "Core i9", 16, true),
+            Devices: [new DeviceIdentity { Id = "gpu0", Name = "NVIDIA GeForce RTX 5070", Vendor = "NVIDIA", MemoryBytes = 12L * 1024 * 1024 * 1024 }],
+            HasAmdRocm: false,
+            IsWsl2: true);
+
+        var recs = SetupCommand.DetermineRecommendations(hw, all: false);
+
+        // Under WSL2, stock trt-rtx PyPI wheel is blocked due to virtual PCI bus mapping; built-in CUDA EP is active.
+        Assert.DoesNotContain(recs, r => r.ShortName == "trt-rtx");
+        Assert.Contains(recs, r => r.ShortName == "openvino");
+    }
+
+    [Fact]
+    public void DetermineRecommendations_OlderNvidiaGpu_DoesNotSelectTrtRtx()
+    {
+        var hw = new SetupCommand.HostHardwareInfo(
+            Cpu: new SetupCommand.CpuInfo("x64", "Intel", "Core i7", 8, true),
+            Devices: [new DeviceIdentity { Id = "gpu0", Name = "GeForce GTX 1080 Ti", Vendor = "NVIDIA", MemoryBytes = 11L * 1024 * 1024 * 1024 }],
+            HasAmdRocm: false,
+            IsWsl2: false);
+
+        var recs = SetupCommand.DetermineRecommendations(hw, all: false);
+
+        Assert.DoesNotContain(recs, r => r.ShortName == "trt-rtx");
+        Assert.Contains(recs, r => r.ShortName == "openvino");
+    }
+
+    [Fact]
+    public void DetermineRecommendations_Arm64_DoesNotSelectOpenVino()
+    {
+        var hw = new SetupCommand.HostHardwareInfo(
+            Cpu: new SetupCommand.CpuInfo("arm64", "ARM", "Cortex-A78", 8, true),
+            Devices: [],
+            HasAmdRocm: false,
+            IsWsl2: false);
+
+        var recs = SetupCommand.DetermineRecommendations(hw, all: false);
+
+        // Prebuilt openvino wheel targets manylinux_2_28_x86_64; must not recommend on arm64
+        Assert.DoesNotContain(recs, r => r.ShortName == "openvino");
+    }
+
+    [Theory]
+    [InlineData("NVIDIA GeForce RTX 5070", true)]
+    [InlineData("NVIDIA GeForce RTX 4090", true)]
+    [InlineData("NVIDIA GeForce RTX 3080", true)]
+    [InlineData("NVIDIA RTX A6000", true)]
+    [InlineData("NVIDIA A100-PCIE-40GB", true)]
+    [InlineData("NVIDIA H100 80GB HBM3", true)]
+    [InlineData("NVIDIA L4", true)]
+    [InlineData("GeForce GTX 1080 Ti", false)]
+    [InlineData("GeForce GTX 1660 SUPER", false)]
+    [InlineData("NVIDIA GeForce RTX 2080", false)]
+    [InlineData("Tesla T4", false)]
+    [InlineData("Tesla V100", false)]
+    [InlineData("NVIDIA GPU", false)]
+    public void IsRtxAmpereOrNewer_FiltersAccurately(string gpuName, bool expected)
+    {
+        bool actual = SetupCommand.IsRtxAmpereOrNewer(gpuName);
+        Assert.Equal(expected, actual);
+    }
 }
