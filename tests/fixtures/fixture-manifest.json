@@ -8,7 +8,7 @@
   },
   "inputs": [
     {
-      "name": "input",
+      "name": "x",
       "type": "float32",
       "shape": [3, 2]
     }
@@ -25,7 +25,7 @@
   },
   "outputs": [
     {
-      "name": "output",
+      "name": "y",
       "type": "float32",
       "shape": [3, 2]
     }
@@ -36,8 +36,8 @@
     "cpuDeterministic": 0.0,
     "cpuVsCuda": { "rtol": 1e-5, "atol": 1e-6 }
   },
-  "sha256": "ede6e710b4dc79ef12907b670a58ad7c5bb06bf259a3afbbe612abc901248b11",
-  "sizeBytes": 239,
+  "sha256": "405746c1bf0ce3e702e1399cbdfd3db8ac8753436992a23dfc7732d6deebfa3b",
+  "sizeBytes": 221,
   "generatedBy": "bash scripts/fetch-test-fixture.sh (embeds a BCL-only C# generator; MatMul+Add, opset 17, IR 10)",
   "license": "Self-generated, no external license"
 }

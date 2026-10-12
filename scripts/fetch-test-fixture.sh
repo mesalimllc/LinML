@@ -56,7 +56,7 @@ EOF
 cat > "$GEN_DIR/Program.cs" << 'CSEOF'
 // LinML fixture generator: emits model.onnx (MatMul+Add, opset 17, IR 10)
 // using only BCL protobuf encoding. No external packages, no Python.
-// Model: output = input @ weight + bias, weight=I(2x2), bias=[10,20].
+// Model: output = x @ weight + bias, weight=I(2x2), bias=[10,20].
 // input/output: float32 [3,2].
 using System.Buffers.Binary;
 using System.Security.Cryptography;
@@ -64,13 +64,13 @@ using System.Security.Cryptography;
 var outputPath = args.Length > 0 ? args[0] : throw new InvalidOperationException("usage: GenFixture <output.onnx>");
 
 var graph = Concat(
-    Msg(1, Node(["input", "weight"], ["mm_out"], "MatMul", "MatMul_0")),
-    Msg(1, Node(["mm_out", "bias"], ["output"], "Add", "Add_1")),
+    Msg(1, Node(["x", "weight"], ["mm_out"], "MatMul", "MatMul_0")),
+    Msg(1, Node(["mm_out", "bias"], ["y"], "Add", "Add_1")),
     Str(2, "matmul-add-tiny"),
     Msg(5, Tensor("weight", [2, 2], [1, 0, 0, 1])),
     Msg(5, Tensor("bias", [2], [10, 20])),
-    Msg(11, ValueInfo("input", [3, 2])),
-    Msg(12, ValueInfo("output", [3, 2])));
+    Msg(11, ValueInfo("x", [3, 2])),
+    Msg(12, ValueInfo("y", [3, 2])));
 
 var model = Concat(
     Varint(1, 10),

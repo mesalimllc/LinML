@@ -34,6 +34,7 @@ public static class Program
         rootCommand.Subcommands.Add(ProvidersCommand.Create(provider, jsonOption));
         rootCommand.Subcommands.Add(DoctorCommand.Create(provider, jsonOption));
         rootCommand.Subcommands.Add(RunCommand.Create(provider, jsonOption));
+        rootCommand.Subcommands.Add(InspectCommand.Create(provider, jsonOption));
         rootCommand.Subcommands.Add(BenchCommand.Create(provider, jsonOption));
         rootCommand.Subcommands.Add(ServeCommand.Create(provider));
 
@@ -67,6 +68,8 @@ public static class Program
         services.AddSingleton<IInferenceSessionFactory, OnnxSessionFactory>();
         services.AddSingleton<OnnxSessionFactory>();
         services.AddSingleton<ModelSmokeRunner>();
+        services.AddSingleton<IModelInspector, OnnxModelInspector>();
+        services.AddSingleton<OnnxModelInspector>();
 
         // Providers
         services.AddSingleton<CudaReadinessProbe>();
