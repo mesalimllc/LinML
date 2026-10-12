@@ -87,11 +87,29 @@ Root cause in `evidence/trt-rtx-wsl2-block.md`; upstream issue
 [#13](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI/issues/13), fix proposed
 in [PR #12](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI/pull/12).
 
-Workaround: `scripts/build-trt-rtx-custom.sh` clones NVIDIA/TensorRT-RTX-EP-ABI,
-applies a two-part fallback patch, and builds a patched
+Workaround: `scripts/build-trt-rtx-custom.sh` builds a patched
 `libonnxruntime_providers_nv_tensorrt_rtx.so` into
 `~/.local/linml-deps/ep-plugins/trt-rtx-custom/`. The CLI picks it up via
 `TRT_RTX_CUSTOM_EP` (one env var; `env-gpu-deps.sh` also honors it).
+
+There are two tiers, because upstream PR #12 has two commits:
+
+| Tier | Source | Contains | When to use |
+|------|--------|----------|-------------|
+| `local` (default) | upstream `main` + local patch | first fix only — device enumeration (`bd8604b`) | PR #12 not merged; single display adapter |
+| `upstream` | PR head `wsl2-cuda-fallback` | both fixes, incl. per-GPU registration (`6777daf`) | WSL2 with multiple display adapters; want the complete fix |
+
+The script auto-detects the tier: it applies the local patch only when the
+source lacks `src/tensorrt_rtx_device_selection.h` (the marker the second fix
+introduces). Build the complete tier with:
+
+```bash
+EP_REPO=https://github.com/tonythethompson/TensorRT-RTX-EP-ABI.git \
+EP_BRANCH=wsl2-cuda-fallback \
+OUT_DIR=$HOME/.local/linml-deps/ep-plugins/trt-rtx-custom-pr \
+  bash scripts/build-trt-rtx-custom.sh
+```
+
 Verified: patched build enumerates the RTX 5070 in WSL2 and runs MNIST with
 exact output `[11, 22, 13, 24, 15, 26]`.
 
@@ -99,7 +117,7 @@ The patch is intentionally NOT in the main publish — it is a platform
 workaround maintained as a separate artifact. When upstream merges PR #12,
 the custom build becomes unnecessary and the vendored wheel is the only path.
 
-### 7. TRT engine cache is an operator choice, not a default
+### 8. TRT engine cache is an operator choice, not a default
 TRT rebuilds engines every process (~44 s for MNIST) unless
 `trt_engine_cache_enable`/`trt_engine_cache_path` are set. The CLI does not
 set a default cache path (writable-dir policy is the caller's); the
