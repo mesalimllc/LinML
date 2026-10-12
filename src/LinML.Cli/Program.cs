@@ -32,6 +32,7 @@ public static class Program
 
         // Subcommands
         rootCommand.Subcommands.Add(CatalogCommand.Create(jsonOption));
+        rootCommand.Subcommands.Add(SetupCommand.Create(provider, jsonOption));
         rootCommand.Subcommands.Add(ProvidersCommand.Create(provider, jsonOption));
         rootCommand.Subcommands.Add(DoctorCommand.Create(provider, jsonOption));
         rootCommand.Subcommands.Add(RunCommand.Create(provider, jsonOption));
