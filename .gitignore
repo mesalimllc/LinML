@@ -46,3 +46,12 @@ coverage.*
 # ORT profiles written by `linml run --profile` (to the working directory)
 onnxruntime_profile__*.json
 /.agents/skills/daytona
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+dist/
+build/
+*.egg-info/
+.pytest_cache/

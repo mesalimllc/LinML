@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "linml"
+version = "0.3.0"
+description = "Linux ONNX Runtime inference integration layer and client library"
+readme = "README.md"
+authors = [{ name = "Trackdub LLC", email = "cloud@trackdub.com" }]
+license = { text = "MIT" }
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+keywords = ["onnx", "onnxruntime", "inference", "machine-learning", "cuda", "tensorrt", "openvino", "linux"]
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+numpy = ["numpy>=1.20"]
+test = ["pytest>=7.0", "numpy>=1.20"]
+
+[project.scripts]
+linml = "linml.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["linml*"]

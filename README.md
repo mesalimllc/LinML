@@ -24,7 +24,8 @@ LinML also provides `LinML.Catalog`, the Linux counterpart to WinML's `Execution
 - [Quick Start](#quick-start)
   - [1. Install Pre-built CLI (Recommended)](#1-install-pre-built-cli-recommended)
   - [2. Install C# NuGet Packages](#2-install-c-nuget-packages)
-  - [3. Build from Source](#3-build-from-source)
+  - [3. Install Python Package (`linml`)](#3-install-python-package-linml)
+  - [4. Build from Source](#4-build-from-source)
 - [CLI Reference](#cli-reference)
   - [Global Options & Exit Codes](#global-options--exit-codes)
   - [Provider Discovery (`linml providers list`)](#provider-discovery-linml-providers-list)
@@ -33,6 +34,7 @@ LinML also provides `LinML.Catalog`, the Linux counterpart to WinML's `Execution
   - [Model Inference (`linml run`)](#model-inference-linml-run)
   - [Benchmarking Suite (`linml bench`)](#benchmarking-suite-linml-bench)
   - [Persistent Session Serving (`linml serve`)](#persistent-session-serving-linml-serve)
+- [Python Client Library (`linml`)](#python-client-library-linml)
 - [LinML.Catalog Library](#linmlcatalog-library)
 - [Architecture](#architecture)
 - [Documentation](#documentation)
@@ -106,7 +108,28 @@ dotnet add package LinML.Contracts
 
 ---
 
-### 3. Build from Source
+### 3. Install Python Package (`linml`)
+
+LinML is also distributed as a Python package with zero required runtime dependencies and optional NumPy integration:
+
+```bash
+pip install linml
+```
+
+High-level inference with NumPy:
+```python
+import numpy as np
+import linml
+
+with linml.InferenceSession("model.onnx", provider="cuda") as session:
+    x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+    result = session.predict(x=x)
+    print("Output:", result.outputs["y"].to_numpy())
+```
+
+---
+
+### 4. Build from Source
 
 #### Prerequisites
 - **Ubuntu 24.04+ or Debian 12+** (tested on Ubuntu 24.04 and 26.04)
@@ -480,6 +503,78 @@ linml serve --model model.onnx --provider cuda --warmup-inputs warmup.json
   - Shutdown: Send EOF (`Ctrl+D` or closing stdin) to shut down cleanly with exit code `0`.
 
 **Latency Advantage**: Post-warmup latency drops from ~2.6 seconds per cold startup down to **~1 ms per request**.
+
+---
+
+## Python Client Library (`linml`)
+
+The `linml` Python package brings LinML's hardware abstraction, daemon serving, and diagnostic inspection to Python ML pipelines and Jupyter notebooks.
+
+### Installation
+
+```bash
+pip install linml
+```
+
+### 1. In-Memory Inference Session
+
+`linml.InferenceSession` manages an underlying `linml serve` process with an in-memory session, delivering ~1 ms inference latency with automatic resource cleanup:
+
+```python
+import numpy as np
+import linml
+
+# Execute with GPU acceleration and automatic CPU fallback
+with linml.InferenceSession("model.onnx", provider="cuda") as session:
+    x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+    
+    # Keyword arguments or dictionary
+    result = session.predict(x=x)
+    print(f"Provider: {result.selected_provider}")
+    print(f"Latency:  {result.latency_ms:.2f} ms")
+    
+    # Access outputs as NumPy arrays
+    y = result.outputs["y"].to_numpy()
+
+    # Or use standard ONNX Runtime session.run() syntax:
+    outputs = session.run(["y"], {"x": x})
+```
+
+### 2. HTTP REST Daemon Client (`linml.InferenceClient`)
+
+Connect directly to any remote or containerized `linml serve --port <port>` microservice:
+
+```python
+import linml
+
+client = linml.InferenceClient("http://127.0.0.1:8080")
+
+# Check service health and provider readiness
+health = client.health()
+print(f"Status: {health.status}, Active Provider: {health.selected_provider}")
+
+# Submit prediction
+result = client.predict({"x": [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]})
+print("Result:", result.outputs["y"].data)
+```
+
+### 3. Model Inspection & Diagnostics
+
+Inspect model graph topology, inputs/outputs, and execution provider compatibility warnings from Python:
+
+```python
+import linml
+
+report = linml.inspect("model.onnx")
+
+print(f"Format: ONNX IR v{report.ir_version}")
+print(f"Opset:  {[(op.domain, op.version) for op in report.opsets]}")
+for inp in report.inputs:
+    print(f"Input:  {inp.name} ({inp.data_type}, shape={inp.shape}, dynamic={inp.is_dynamic})")
+
+for warning in report.compatibility_warnings:
+    print(f"Warning [{warning.provider}]: {warning.message}")
+```
 
 ---
 

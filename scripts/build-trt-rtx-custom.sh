@@ -96,6 +96,14 @@ if [ ! -f "$PATCH_FILE" ]; then
     exit 1
 fi
 
+# If the WSL2 fix is already in the source (PR #12 head branch, or upstream
+# after merge), do not re-apply the local patch — the anchors have moved.
+# Marker: the fix introduces src/tensorrt_rtx_device_selection.h.
+PATCH_MODE="local"
+if grep -q 'tensorrt_rtx_device_selection' "$PATCH_FILE"; then
+    PATCH_MODE="upstream"
+    echo "WSL2 fix already present in '$EP_BRANCH' — skipping local patch"
+else
 python3 - "$PATCH_FILE" << 'PYEOF'
 import sys
 path = sys.argv[1]
@@ -154,6 +162,7 @@ src = src.replace(old2, new2, 1)
 open(path, 'w').write(src)
 print("patched tensorrt_rtx_provider_factory.cc (WSL2 fallback)")
 PYEOF
+fi
 
 # --- Build --------------------------------------------------------------------
 
@@ -186,20 +195,43 @@ cp "$PLUGIN" "$OUT_DIR/libonnxruntime_providers_nv_tensorrt_rtx.so"
 
 GIT_COMMIT=$(git -C "$BUILD_DIR/ep-abi" rev-parse HEAD 2>/dev/null || echo "unknown")
 BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+if [ "$PATCH_MODE" = "upstream" ]; then
+    SOURCE_DESC="built from \`$EP_REPO\` @ \`$EP_BRANCH\` (${GIT_COMMIT}), which already contains the WSL2 fix (no local patch applied)"
+else
+    SOURCE_DESC="built from \`$EP_REPO\` @ \`$EP_BRANCH\` (${GIT_COMMIT}) **plus the local WSL2 patch** applied by this script"
+fi
 
 cat > "$OUT_DIR/PATCHED-BUILD.md" << EOF
 # TensorRT-RTX EP — patched build (WSL2 fallback)
 
-Built from NVIDIA/TensorRT-RTX-EP-ABI @ ${GIT_COMMIT} (${EP_BRANCH}) with the
-WSL2 device-enumeration fallback (upstream PR
-https://github.com/NVIDIA/TensorRT-RTX-EP-ABI/pull/12).
+${SOURCE_DESC}.
+
+Upstream PR: https://github.com/NVIDIA/TensorRT-RTX-EP-ABI/pull/12
+Upstream issue: https://github.com/NVIDIA/TensorRT-RTX-EP-ABI/issues/13
 
 ## Why
 Unmodified, the EP registers but exposes zero devices under WSL2: ORT's PCI
 discovery reports the GPU as vendor 0x1414 (Microsoft virtual PCI) with a bus
-id the CUDA driver rejects (cudaDeviceGetByPCIBusId rc=101). The patch adds a
+id the CUDA driver rejects (cudaDeviceGetByPCIBusId rc=101). The fix adds a
 CUDA-enumeration fallback (first device with CC >= 8) so the EP works under
 WSL2 and behaves identically on native Linux.
+
+## Patch contents (depends on how this artifact was built)
+- \`local\` mode (clone upstream \`main\` + apply patch): only the first fix,
+  device enumeration (\`bd8604b\`). Use this when PR #12 is not merged and you
+  only have a single display adapter.
+- \`upstream\` mode (clone the PR branch): includes the second fix,
+  per-GPU registration (\`6777daf\`) — pairs Microsoft virtual adapters with
+  visible CUDA devices so extra display adapters do not receive a null
+  allocator. This is the more complete artifact.
+
+To build the more complete artifact:
+\`\`\`bash
+EP_REPO=https://github.com/tonythethompson/TensorRT-RTX-EP-ABI.git \\
+EP_BRANCH=wsl2-cuda-fallback \\
+OUT_DIR=\$HOME/.local/linml-deps/ep-plugins/trt-rtx-custom-pr \\
+  bash scripts/build-trt-rtx-custom.sh
+\`\`\`
 
 ## Reproduce
 \`\`\`bash
@@ -212,7 +244,8 @@ TRT_RTX_SDK=/path/to/sdk CUDA_ROOT=/usr/local/cuda-13 \\
 
 ## Use
 \`\`\`bash
-export LINML_EP_LIBRARIES="NvTensorRTRTXExecutionProvider=$OUT_DIR/libonnxruntime_providers_nv_tensorrt_rtx.so"
+export TRT_RTX_CUSTOM_EP=$OUT_DIR/libonnxruntime_providers_nv_tensorrt_rtx.so
+source scripts/env-gpu-deps.sh
 linml run --provider trt-rtx --model model.onnx --inputs inputs.json
 \`\`\`
 
@@ -225,7 +258,7 @@ EOF
 echo ""
 echo "=== Built ==="
 ls -la "$OUT_DIR"
-echo ""
-echo "Next: source scripts/env-gpu-deps.sh"
+echo "Next: export TRT_RTX_CUSTOM_EP=\"$OUT_DIR/libonnxruntime_providers_nv_tensorrt_rtx.so\""
+echo "  source scripts/env-gpu-deps.sh"
 echo "  linml providers list   # patched EP appears after registration"
 echo "  linml run --provider trt-rtx --model ... --inputs ..."

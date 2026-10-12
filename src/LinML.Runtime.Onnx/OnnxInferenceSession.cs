@@ -50,8 +50,7 @@ public sealed class OnnxInferenceSession : IInferenceSession
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var tensor = CreateTensor(input);
-            namedInputs.Add(NamedOnnxValue.CreateFromTensor(input.Name, tensor));
+            namedInputs.Add(CreateNamedOnnxValue(input));
         }
 
         // Run inference
@@ -77,7 +76,7 @@ public sealed class OnnxInferenceSession : IInferenceSession
         return outputs;
     }
 
-    private static DenseTensor<float> CreateTensor(TensorInput input)
+    private static NamedOnnxValue CreateNamedOnnxValue(TensorInput input)
     {
         // Validate data length matches shape
         var expectedLength = 1;
@@ -92,7 +91,16 @@ public sealed class OnnxInferenceSession : IInferenceSession
                 $"Tensor '{input.Name}' has {input.Data.Count} elements but shape {string.Join("x", input.Shape)} requires {expectedLength}.");
         }
 
-        return new DenseTensor<float>(input.Data.ToArray(), input.Shape.ToArray());
+        var shapeArray = input.Shape.ToArray();
+        return input.DataType switch
+        {
+            TensorDataType.Int64 => NamedOnnxValue.CreateFromTensor(
+                input.Name, new DenseTensor<long>(input.Data.Select(f => (long)f).ToArray(), shapeArray)),
+            TensorDataType.Int32 => NamedOnnxValue.CreateFromTensor(
+                input.Name, new DenseTensor<int>(input.Data.Select(f => (int)f).ToArray(), shapeArray)),
+            _ => NamedOnnxValue.CreateFromTensor(
+                input.Name, new DenseTensor<float>(input.Data.ToArray(), shapeArray))
+        };
     }
 
     public void Dispose()
