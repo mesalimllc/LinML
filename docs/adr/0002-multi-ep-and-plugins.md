@@ -80,28 +80,54 @@ fallback chain down to CPU.)
 `scripts/fetch-ep-plugins.sh` and asserts every `KnownPlugins` spec pins
 the same wheel URL and sha256. A pin bump on either side fails CI.
 
-### 7. WSL2 TRT-RTX fallback (patched build)
+### 7. WSL2 TRT-RTX fallback is an out-of-tree opt-in build
 The unmodified TRT-RTX EP enumerates zero devices under WSL2 (virtual PCI
-vendor `0x1414`, bus-id rejected by `cudaDeviceGetByPCIBusId` rc=101).
-Root cause in `evidence/trt-rtx-wsl2-block.md`; upstream issue
+vendor `0x1414`, bus-id rejected by `cudaDeviceGetByPCIBusId` rc=101; CUDA
+sees the real device as `0000:0B:00.0`). Root cause in
+`evidence/trt-rtx-wsl2-block.md`; upstream issue
 [#13](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI/issues/13), fix proposed
 in [PR #12](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI/pull/12).
 
-Workaround: `scripts/build-trt-rtx-custom.sh` builds a patched
-`libonnxruntime_providers_nv_tensorrt_rtx.so` into
-`~/.local/linml-deps/ep-plugins/trt-rtx-custom/`. The CLI picks it up via
-`TRT_RTX_CUSTOM_EP` (one env var; `env-gpu-deps.sh` also honors it).
+We ship a patched build as an **opt-in GitHub release**
+(`ep-trt-rtx-wsl2-0.4.0-wsl2p1`), mirroring the MIGraphX EP (`ep-migraphx-*`):
 
-There are two tiers, because upstream PR #12 has two commits:
+- `scripts/build-trt-rtx-ep.sh` pins the PR head commit, builds, and packages a
+  byte-stable `linml-trt-rtx-ep-<ver>-linux-x64.zip` (EP `.so`, Apache-2.0
+  license, change notice, `build-info.json`).
+- `scripts/fetch-ep-plugins.sh trt-rtx-wsl2` vendors it into
+  `ep-plugins/trt-rtx-wsl2/` after fetching the stock wheel, which supplies the
+  TensorRT-RTX runtime libraries.
+- `env-gpu-deps.sh` resolves the TRT-RTX library as
+  `TRT_RTX_CUSTOM_EP` → vendored WSL2 build → stock wheel; installing the
+  release is the opt-in.
+- `ProviderArgs.ResolveEpLibraries` honours `TRT_RTX_CUSTOM_EP` so the CLI
+  picks the patched `.so` for `--provider trt-rtx`.
+
+The catalog is deliberately unchanged: `KnownPlugins.TensorrtRtx` still pins
+the stock wheel. The patched build is a variant of the *same* `ProviderId`, and
+a second spec would collide with the one-spec-per-provider lookups
+(`FirstOrDefault(p => p.Id == ...)`) used across the CLI and catalog.
+
+The archive carries only the Apache-2.0 EP `.so` (it dynamically links
+`libtensorrt_rtx.so.1` / CUDA 13, not the SDK). It is **not** built in CI: the
+TensorRT-RTX SDK is license-gated (no public tarball; the PyPI packages are
+wrappers), unlike AMD's public ROCm image for MIGraphX, so the release is built
+where the SDK is present and published manually. Verified: the patched build is
+*selected* in WSL2 (no fallback) and MNIST returns the exact output
+`[11, 22, 13, 24, 15, 26]`.
+
+For local development, `scripts/build-trt-rtx-custom.sh` builds the same EP
+directly into `~/.local/linml-deps/ep-plugins/trt-rtx-custom/`, also selected
+with `TRT_RTX_CUSTOM_EP`. It has two tiers, because upstream PR #12 has two
+commits:
 
 | Tier | Source | Contains | When to use |
 |------|--------|----------|-------------|
 | `local` (default) | upstream `main` + local patch | first fix only — device enumeration (`bd8604b`) | PR #12 not merged; single display adapter |
 | `upstream` | PR head `wsl2-cuda-fallback` | both fixes, incl. per-GPU registration (`6777daf`) | WSL2 with multiple display adapters; want the complete fix |
 
-The script auto-detects the tier: it applies the local patch only when the
-source lacks `src/tensorrt_rtx_device_selection.h` (the marker the second fix
-introduces). Build the complete tier with:
+It auto-detects the tier (applying the local patch only when the source lacks
+`src/tensorrt_rtx_device_selection.h`); build the complete tier with:
 
 ```bash
 EP_REPO=https://github.com/tonythethompson/TensorRT-RTX-EP-ABI.git \
@@ -110,12 +136,8 @@ OUT_DIR=$HOME/.local/linml-deps/ep-plugins/trt-rtx-custom-pr \
   bash scripts/build-trt-rtx-custom.sh
 ```
 
-Verified: patched build enumerates the RTX 5070 in WSL2 and runs MNIST with
-exact output `[11, 22, 13, 24, 15, 26]`.
-
-The patch is intentionally NOT in the main publish — it is a platform
-workaround maintained as a separate artifact. When upstream merges PR #12,
-the custom build becomes unnecessary and the vendored wheel is the only path.
+When PR #12 merges (or NVIDIA ships a fixed wheel) the patched build is
+unnecessary; the vendored wheel becomes the only path.
 
 ### 8. TRT engine cache is an operator choice, not a default
 TRT rebuilds engines every process (~44 s for MNIST) unless
@@ -155,4 +177,6 @@ limitation and the fix are documented in `docs/compatibility.md`.
   MNIST argmax 8, no fallback.
 - Option scoping: bad `trt:` option → TRT fails, CUDA succeeds (no leak).
 - WSL2 TRT-RTX block: `evidence/trt-rtx-wsl2-block.md` (PCI vendor/bus-id
-  mismatch, measured rc codes).
+  mismatch, measured rc codes). The patched PR-head build (both changes) is
+  *selected* in WSL2 with no fallback and MNIST exact output
+  `[11, 22, 13, 24, 15, 26]`; the enumeration-only patch alone still fell back.

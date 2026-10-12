@@ -12,6 +12,13 @@ public static class ProviderArgs
     /// <summary>Environment variable with ';'-separated name=path plugin EP libraries.</summary>
     public const string EpLibrariesEnvVar = "LINML_EP_LIBRARIES";
 
+    /// <summary>
+    /// Environment variable pointing at a locally built TRT-RTX plugin .so.
+    /// Overrides the vendored wheel for the trt-rtx provider; used for the
+    /// WSL2 fallback build (scripts/build-trt-rtx-ep.sh). See docs/compatibility.md.
+    /// </summary>
+    public const string TrtRtxCustomEpEnvVar = "TRT_RTX_CUSTOM_EP";
+
     /// <summary>Known providers and their accepted --provider aliases.</summary>
     private static readonly (string[] Aliases, ProviderId Id)[] KnownProviders =
     [
@@ -119,7 +126,21 @@ public static class ProviderArgs
 
                 if (!alreadySpecified)
                 {
-                    var libraryPath = spec.FindLibrary(customRoot);
+                    string? libraryPath = null;
+
+                    // TRT_RTX_CUSTOM_EP points at a locally built plugin .so and
+                    // takes precedence over the vendored wheel (it is how the WSL2
+                    // fallback build is selected).
+                    if (spec.Id == ProviderId.TensorrtRtx)
+                    {
+                        var custom = Environment.GetEnvironmentVariable(TrtRtxCustomEpEnvVar);
+                        if (!string.IsNullOrWhiteSpace(custom) && File.Exists(custom))
+                        {
+                            libraryPath = custom;
+                        }
+                    }
+
+                    libraryPath ??= spec.FindLibrary(customRoot);
                     if (libraryPath is not null)
                     {
                         var pluginDir = Path.GetDirectoryName(libraryPath);
