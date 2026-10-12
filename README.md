@@ -353,8 +353,34 @@ CPUExecutionProvider             15420.1 inf/s   0.06 ms     0.03 ms     0.14 ms
 
 ### Persistent Session Serving (`linml serve`)
 
-When performing repeated inference, one-shot process startup adds overhead. `linml serve` keeps a long-lived ONNX session warm in memory and serves inference requests over `stdin`/`stdout` using JSON Lines (streaming protocol):
+When performing repeated inference, one-shot process startup adds overhead. `linml serve` keeps a long-lived ONNX session warm in memory and serves inference requests either as an **HTTP REST daemon** or over **JSON Lines stdio**:
 
+#### 1. HTTP REST Daemon Mode (`--port <port>`)
+Run as a local HTTP microservice:
+```bash
+linml serve --model model.onnx --provider cuda --port 8080 --warmup-inputs warmup.json
+```
+
+- **Endpoints**:
+  - `GET /health` or `GET /v1/health`: Readiness probe returning model metadata, selected provider, and fallback chain.
+  - `POST /v1/models/predict` or `POST /predict`: Submit JSON tensor inputs `{"tensors":[...]}` and receive structured `InferenceResult`.
+  - `POST /shutdown` or `POST /v1/shutdown`: Gracefully shut down the server.
+- **Example Usage**:
+```bash
+# Check health
+curl http://localhost:8080/health
+
+# Submit prediction
+curl -X POST http://localhost:8080/v1/models/predict \
+  -H "Content-Type: application/json" \
+  -d @inputs.json
+
+# Graceful shutdown
+curl -X POST http://localhost:8080/shutdown
+```
+
+#### 2. JSON Lines Stdio Mode (Default)
+When `--port` is omitted, requests are streamed over stdin/stdout:
 ```bash
 linml serve --model model.onnx --provider cuda --warmup-inputs warmup.json
 ```
@@ -364,7 +390,8 @@ linml serve --model model.onnx --provider cuda --warmup-inputs warmup.json
   - `stdout`: Emits one `InferenceResult` JSON object per line.
   - Errors: Emits `{"error":"..."}` for bad inputs without terminating the server.
   - Shutdown: Send EOF (`Ctrl+D` or closing stdin) to shut down cleanly with exit code `0`.
-- **Latency Advantage**: Post-warmup latency drops from ~2.6 seconds per cold startup down to **~1 ms per request**.
+
+**Latency Advantage**: Post-warmup latency drops from ~2.6 seconds per cold startup down to **~1 ms per request**.
 
 ---
 

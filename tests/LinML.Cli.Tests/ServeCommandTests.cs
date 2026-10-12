@@ -139,4 +139,127 @@ public class ServeCommandTests
         Assert.Equal(0, exitCode);
         Assert.True(string.IsNullOrWhiteSpace(stdout));
     }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(0)]
+    [InlineData(65536)]
+    public async Task Serve_InvalidPort_Returns2(int invalidPort)
+    {
+        var (exitCode, _, stderr) = await Task.Run(() => CliTestHost.RunWithStdin(
+            [],
+            "serve", "--model", CliTestHost.Fixture("model.onnx"), "--port", invalidPort.ToString()));
+
+        Assert.Equal(2, exitCode);
+        Assert.Contains("Invalid port number", stderr);
+    }
+
+    [Fact]
+    public async Task ServeHttp_HealthAndPredictAndShutdown_SucceedsEndToEnd()
+    {
+        if (!HasTinyFixture())
+        {
+            return;
+        }
+
+        int port = GetAvailablePort();
+        using var client = new HttpClient();
+        string baseUrl = $"http://127.0.0.1:{port}";
+
+        // Start serve in HTTP mode in background task
+        var serveTask = Task.Run(() => CliTestHost.RunWithStdin(
+            [],
+            "serve", "--model", CliTestHost.Fixture("model.onnx"),
+            "--provider", "cpu",
+            "--port", port.ToString()));
+
+        // Poll /health until server is ready
+        bool ready = false;
+        for (int i = 0; i < 50; i++)
+        {
+            try
+            {
+                var healthResp = await client.GetAsync($"{baseUrl}/health");
+                if (healthResp.IsSuccessStatusCode)
+                {
+                    ready = true;
+                    break;
+                }
+            }
+            catch
+            {
+                await Task.Delay(100);
+            }
+        }
+        Assert.True(ready, "Server failed to start within timeout");
+
+        // 1. GET / (root metadata)
+        var rootResp = await client.GetAsync($"{baseUrl}/");
+        Assert.True(rootResp.IsSuccessStatusCode);
+        var rootJson = await rootResp.Content.ReadAsStringAsync();
+        using (var doc = JsonDocument.Parse(rootJson))
+        {
+            Assert.Equal("LinML", doc.RootElement.GetProperty("service").GetString());
+            Assert.Equal("ready", doc.RootElement.GetProperty("status").GetString());
+        }
+
+        // 2. GET /health
+        var healthResponse = await client.GetAsync($"{baseUrl}/health");
+        Assert.True(healthResponse.IsSuccessStatusCode);
+        var healthJson = await healthResponse.Content.ReadAsStringAsync();
+        using (var doc = JsonDocument.Parse(healthJson))
+        {
+            Assert.Equal("healthy", doc.RootElement.GetProperty("status").GetString());
+            Assert.Equal("CPUExecutionProvider", doc.RootElement.GetProperty("selectedProvider").GetString());
+        }
+
+        // 3. POST /health should return 405 Method Not Allowed
+        var postHealth = await client.PostAsync($"{baseUrl}/health", new StringContent("{}", System.Text.Encoding.UTF8, "application/json"));
+        Assert.Equal(System.Net.HttpStatusCode.MethodNotAllowed, postHealth.StatusCode);
+
+        // 4. POST /v1/models/predict with valid inputs
+        var inputJson = File.ReadAllText(CliTestHost.Fixture("inputs.json"));
+        var predictResp = await client.PostAsync(
+            $"{baseUrl}/v1/models/predict",
+            new StringContent(inputJson, System.Text.Encoding.UTF8, "application/json"));
+        Assert.True(predictResp.IsSuccessStatusCode);
+        var predictBody = await predictResp.Content.ReadAsStringAsync();
+        Assert.Equal([11f, 22f, 13f, 24f, 15f, 26f], OutputData(predictBody));
+
+        // 5. POST /predict (short route alias)
+        var aliasResp = await client.PostAsync(
+            $"{baseUrl}/predict",
+            new StringContent(inputJson, System.Text.Encoding.UTF8, "application/json"));
+        Assert.True(aliasResp.IsSuccessStatusCode);
+
+        // 6. POST /v1/models/predict with bad JSON returns 400 Bad Request
+        var badResp = await client.PostAsync(
+            $"{baseUrl}/v1/models/predict",
+            new StringContent("{bad-json}", System.Text.Encoding.UTF8, "application/json"));
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, badResp.StatusCode);
+
+        // 7. GET /not-found returns 404
+        var notFoundResp = await client.GetAsync($"{baseUrl}/unknown-route");
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, notFoundResp.StatusCode);
+
+        // 8. POST /v1/shutdown shuts down cleanly
+        var shutdownResp = await client.PostAsync(
+            $"{baseUrl}/v1/shutdown",
+            new StringContent("{}", System.Text.Encoding.UTF8, "application/json"));
+        Assert.True(shutdownResp.IsSuccessStatusCode);
+
+        // Server exits with code 0
+        var (exitCode, stdout, stderr) = await serveTask;
+        Assert.Equal(0, exitCode);
+        Assert.Contains("Serving HTTP:", stderr);
+    }
+
+    private static int GetAvailablePort()
+    {
+        using var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        listener.Start();
+        int port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
+        listener.Stop();
+        return port;
+    }
 }
