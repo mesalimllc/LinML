@@ -134,7 +134,9 @@ jobs:
       - name: Verify CLI publish
         run: |
           bash scripts/verify-linux-publish.sh dist/linml-linux-x64
-          bash scripts/verify-linux-publish.sh dist/linml-linux-arm64
+          # The arm64 binary can't run on this x64 runner (Exec format error); it is
+          # verified natively on the ARM64 runner in ci.yml. Just check it was produced.
+          test -x dist/linml-linux-arm64/linml
 
       - name: Package CLI release assets
         run: |
