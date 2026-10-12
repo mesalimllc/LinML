@@ -29,11 +29,14 @@ def find_linml_binary() -> Optional[List[str]]:
     """
     # 1. Explicit environment override
     env_bin = os.environ.get("LINML_BIN")
-    if env_bin and os.path.exists(env_bin):
+    if env_bin:
+        bin_path = Path(env_bin).resolve()
+        if not bin_path.is_file():
+            raise ValueError(f"LINML_BIN points to non-existent file: {env_bin}")
         if env_bin.endswith(".dll"):
             dotnet = shutil.which("dotnet") or str(Path.home() / ".dotnet" / "dotnet")
-            return [dotnet, str(Path(env_bin).resolve())]
-        return [str(Path(env_bin).resolve())]
+            return [dotnet, str(bin_path)]
+        return [str(bin_path)]
 
     # 2. Packaged binary within python wheel directory
     pkg_dir = Path(__file__).resolve().parent

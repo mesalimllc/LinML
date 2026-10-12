@@ -27,7 +27,10 @@ class InferenceClient:
                 data = json.loads(body)
                 return HealthResponse.from_dict(data)
         except urllib.error.HTTPError as e:
-            err_body = e.read().decode("utf-8")
+            try:
+                err_body = e.read().decode("utf-8")
+            except Exception:
+                err_body = "(unable to read error response)"
             raise RuntimeError(f"HTTP {e.code} checking server health: {err_body}") from e
 
     def predict(
@@ -83,7 +86,10 @@ class InferenceClient:
                 data = json.loads(body)
                 return InferenceResult.from_dict(data)
         except urllib.error.HTTPError as e:
-            err_body = e.read().decode("utf-8")
+            try:
+                err_body = e.read().decode("utf-8")
+            except Exception:
+                err_body = "(unable to read error response)"
             raise RuntimeError(f"HTTP {e.code} during inference: {err_body}") from e
 
     def shutdown(self) -> bool:

@@ -7,7 +7,7 @@ import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
-from .binary import get_linml_binary, run_linml_cli
+from .binary import get_dotnet_env, get_linml_binary, run_linml_cli
 from .models import InferenceResult, ModelInspectionReport, TensorSpec
 
 
@@ -160,7 +160,7 @@ def main():
 
     full_cmd = base_cmd + sys.argv[1:]
     try:
-        res = subprocess.run(full_cmd)
+        res = subprocess.run(full_cmd, env=get_dotnet_env())
         sys.exit(res.returncode)
     except KeyboardInterrupt:
         sys.exit(130)

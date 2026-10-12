@@ -29,5 +29,17 @@ class TestBinary(unittest.TestCase):
                 else:
                     os.environ.pop("LINML_BIN", None)
 
+    def test_env_override_nonexistent_raises_value_error(self):
+        old_val = os.environ.get("LINML_BIN")
+        try:
+            os.environ["LINML_BIN"] = "/nonexistent/fake_linml_path"
+            with self.assertRaises(ValueError):
+                find_linml_binary()
+        finally:
+            if old_val is not None:
+                os.environ["LINML_BIN"] = old_val
+            else:
+                os.environ.pop("LINML_BIN", None)
+
 if __name__ == "__main__":
     unittest.main()

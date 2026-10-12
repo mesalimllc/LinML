@@ -66,7 +66,7 @@ class InferenceSession:
 
         self._process = subprocess.Popen(
             cmd,
-            stdout=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
             text=True,
             env=get_dotnet_env(),
@@ -83,9 +83,14 @@ class InferenceSession:
         while time.time() < deadline:
             # Check if process crashed early
             if self._process.poll() is not None:
-                stderr = self._process.stderr.read() if self._process.stderr else ""
+                stderr_output = ""
+                if self._process.stderr:
+                    try:
+                        stderr_output = self._process.stderr.read()
+                    except Exception:
+                        stderr_output = "(stderr unavailable)"
                 raise RuntimeError(
-                    f"LinML serve process exited prematurely with code {self._process.returncode}: {stderr}"
+                    f"LinML serve process exited prematurely with code {self._process.returncode}: {stderr_output}"
                 )
             try:
                 health = self._client.health()
