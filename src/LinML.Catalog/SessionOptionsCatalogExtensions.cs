@@ -27,6 +27,35 @@ public static class SessionOptionsCatalogExtensions
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(provider);
 
+        if (provider.Source == ProviderSource.BuiltIn)
+        {
+            if (provider.Id == LinML.Contracts.ProviderId.Cpu)
+            {
+                // CPU is default in ONNX Runtime sessions.
+                return new ProviderAppendResult(true, provider.Id);
+            }
+
+            try
+            {
+                IReadOnlyList<OrtEpDevice> builtInDevices = SelectDevices(provider.GetDevices(), preferredDeviceTypes);
+                if (builtInDevices.Count > 0)
+                {
+                    options.AppendEpDevices(builtInDevices, providerOptions);
+                    return new ProviderAppendResult(true, provider.Id);
+                }
+
+                var optDict = providerOptions is null
+                    ? new Dictionary<string, string>()
+                    : new Dictionary<string, string>(providerOptions);
+                options.AppendExecutionProvider(provider.Id.Value, optDict);
+                return new ProviderAppendResult(true, provider.Id);
+            }
+            catch (OnnxRuntimeException ex)
+            {
+                return new ProviderAppendResult(false, provider.Id, $"Appending {provider.Id} failed: {ex.Message}");
+            }
+        }
+
         IReadOnlyList<OrtEpDevice> devices = SelectDevices(provider.GetDevices(), preferredDeviceTypes);
         if (devices.Count == 0)
         {

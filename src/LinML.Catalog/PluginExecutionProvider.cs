@@ -149,7 +149,10 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
             IReadOnlyList<OrtEpDevice> devices = GetDevices();
             if (devices.Count == 0)
             {
-                return Result(ProviderEnsureStatus.NoDevices, $"{Id} is registered but exposes no EP devices on this host.");
+                string detail = Id == ProviderId.TensorrtRtx && IsWsl()
+                    ? $"{Id} is registered, but in WSL2 virtual PCI mapping blocks device enumeration (see docs/compatibility.md). Use custom build or bare-metal Linux."
+                    : $"{Id} is registered but exposes no EP devices on this host.";
+                return Result(ProviderEnsureStatus.NoDevices, detail);
             }
 
             return new ProviderEnsureResult(
@@ -181,4 +184,17 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
 
     private static bool IsLinuxX64() =>
         OperatingSystem.IsLinux() && RuntimeInformation.ProcessArchitecture == Architecture.X64;
+
+    private static bool IsWsl()
+    {
+        try
+        {
+            return File.Exists("/proc/sys/fs/binfmt_misc/WSLInterop")
+                || (File.Exists("/proc/version") && File.ReadAllText("/proc/version").Contains("microsoft", StringComparison.OrdinalIgnoreCase));
+        }
+        catch
+        {
+            return false;
+        }
+    }
 }

@@ -37,6 +37,7 @@ internal sealed class PluginInstaller(HttpMessageHandler? httpHandler = null)
 
             Directory.CreateDirectory(stage);
             ExtractFlat(wheel, spec.PackagePrefix, stage);
+            CreateRequiredSymlinks(stage);
             if (!File.Exists(Path.Combine(stage, spec.LibraryFileName)))
             {
                 throw new InvalidDataException(
@@ -113,6 +114,43 @@ internal sealed class PluginInstaller(HttpMessageHandler? httpHandler = null)
         name.EndsWith(".so", StringComparison.Ordinal)
         || name.Contains(".so.", StringComparison.Ordinal)
         || name.EndsWith(".json", StringComparison.Ordinal);
+
+    /// <summary>
+    /// Creates SONAME symlinks that plugin libraries (like TensorRT-RTX) require at runtime.
+    /// </summary>
+    internal static void CreateRequiredSymlinks(string directory)
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return;
+        }
+
+        string[] sonamePairs =
+        [
+            "libtensorrt_rtx.so.1.6.1", "libtensorrt_rtx.so.1",
+            "libtensorrt_onnxparser_rtx.so.1.6.1", "libtensorrt_onnxparser_rtx.so.1",
+            "libcudart.so.13.4.36", "libcudart.so.13"
+        ];
+
+        for (int i = 0; i < sonamePairs.Length; i += 2)
+        {
+            string targetName = sonamePairs[i];
+            string linkName = sonamePairs[i + 1];
+            string targetPath = Path.Combine(directory, targetName);
+            string linkPath = Path.Combine(directory, linkName);
+
+            if (File.Exists(targetPath) && !File.Exists(linkPath))
+            {
+                try
+                {
+                    File.CreateSymbolicLink(linkPath, targetName);
+                }
+                catch (IOException)
+                {
+                }
+            }
+        }
+    }
 
     /// <summary>
     /// Moves <paramref name="stage"/> to <paramref name="finalDir"/>. The rename

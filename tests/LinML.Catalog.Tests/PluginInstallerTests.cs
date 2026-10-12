@@ -98,4 +98,25 @@ public class PluginInstallerTests
         Assert.False(File.Exists(Path.Combine(dir, "stale.txt")));
         Assert.Empty(Directory.GetDirectories(dir));
     }
+
+    [Fact]
+    public void CreateRequiredSymlinks_CreatesRelativeSonameLinksOnLinux()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return;
+        }
+
+        using var root = new TempDir();
+        string targetFile = Path.Combine(root.Path, "libtensorrt_rtx.so.1.6.1");
+        File.WriteAllText(targetFile, "dummy");
+
+        PluginInstaller.CreateRequiredSymlinks(root.Path);
+
+        string linkFile = Path.Combine(root.Path, "libtensorrt_rtx.so.1");
+        Assert.True(File.Exists(linkFile));
+        var linkTarget = File.ResolveLinkTarget(linkFile, returnFinalTarget: false);
+        Assert.NotNull(linkTarget);
+        Assert.Equal("libtensorrt_rtx.so.1.6.1", linkTarget.Name);
+    }
 }

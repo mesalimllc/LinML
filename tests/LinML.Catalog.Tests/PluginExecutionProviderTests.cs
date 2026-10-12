@@ -148,18 +148,54 @@ public class PluginExecutionProviderTests
     }
 
     [Fact]
-    public void Catalog_ListsOpenVino_AndFindsItById()
+    public void Catalog_ListsAllProviders_AndFindsThemById()
     {
         using var root = new TempDir();
         ExecutionProviderCatalog catalog = ExecutionProviderCatalog.Create(root.Path);
 
-        IExecutionProvider? openVino = catalog.Find(Contracts.ProviderId.OpenVino);
+        // Built-ins
+        IExecutionProvider? cpu = catalog.Find(Contracts.ProviderId.Cpu);
+        Assert.NotNull(cpu);
+        Assert.Equal(ProviderSource.BuiltIn, cpu.Source);
+        Assert.Equal(ProviderReadyState.Ready, cpu.ReadyState);
 
+        IExecutionProvider? cuda = catalog.Find(Contracts.ProviderId.Cuda);
+        Assert.NotNull(cuda);
+        Assert.Equal(ProviderSource.BuiltIn, cuda.Source);
+
+        IExecutionProvider? trt = catalog.Find(Contracts.ProviderId.Tensorrt);
+        Assert.NotNull(trt);
+        Assert.Equal(ProviderSource.BuiltIn, trt.Source);
+
+        // Plugins
+        IExecutionProvider? openVino = catalog.Find(Contracts.ProviderId.OpenVino);
         Assert.NotNull(openVino);
-        Assert.Single(catalog.FindAllProviders());
         Assert.Equal(ProviderSource.Plugin, openVino.Source);
         Assert.Equal("1.6.1", openVino.PinnedVersion);
-        Assert.Null(openVino.LibraryPath);
-        Assert.Null(catalog.Find(Contracts.ProviderId.Cuda));
+
+        IExecutionProvider? trtRtx = catalog.Find(Contracts.ProviderId.TensorrtRtx);
+        Assert.NotNull(trtRtx);
+        Assert.Equal(ProviderSource.Plugin, trtRtx.Source);
+        Assert.Equal("0.4.0", trtRtx.PinnedVersion);
+
+        IExecutionProvider? migraphx = catalog.Find(Contracts.ProviderId.MigraphX);
+        Assert.NotNull(migraphx);
+        Assert.Equal(ProviderSource.Plugin, migraphx.Source);
+        Assert.Equal("2611.1", migraphx.PinnedVersion);
+
+        Assert.Equal(6, catalog.FindAllProviders().Count);
+    }
+
+    [Fact]
+    public async Task BuiltIn_Cpu_EnsureReady_AlwaysSucceeds()
+    {
+        using var root = new TempDir();
+        ExecutionProviderCatalog catalog = ExecutionProviderCatalog.Create(root.Path);
+        IExecutionProvider cpu = catalog.Find(Contracts.ProviderId.Cpu)!;
+
+        ProviderEnsureResult result = await cpu.EnsureReadyAsync(new EnsureOptions(AllowDownloads: false));
+
+        Assert.Equal(ProviderEnsureStatus.Ready, result.Status);
+        Assert.True(result.IsReady);
     }
 }
