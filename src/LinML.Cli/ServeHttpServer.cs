@@ -207,6 +207,7 @@ internal sealed class ServeHttpServer : IAsyncDisposable, IDisposable
                     service = "LinML",
                     version = OnnxRuntimeDiagnostics.GetRuntimeVersion(),
                     status = "ready",
+                    processId = Environment.ProcessId,
                     model = Path.GetFileName(_modelIdentity.Path),
                     selectedProvider = _selectedProvider.ToString(),
                     endpoints = new[]
@@ -232,6 +233,7 @@ internal sealed class ServeHttpServer : IAsyncDisposable, IDisposable
                 await WriteJsonAsync(context, statusCode, new
                 {
                     status = isHealthy ? "healthy" : "unhealthy",
+                    processId = Environment.ProcessId,
                     model = _modelIdentity,
                     requestedProvider = _preferredProvider?.ToString() ?? "cpu",
                     selectedProvider = _selectedProvider.ToString(),

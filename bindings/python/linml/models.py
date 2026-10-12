@@ -195,6 +195,7 @@ class HealthResponse:
     selected_provider: str
     fallback_chain: List[Dict[str, Any]]
     model: Dict[str, Any]
+    process_id: Optional[int] = None
     active_requests: int = 0
     raw: Dict[str, Any] = field(default_factory=dict)
 
@@ -206,6 +207,7 @@ class HealthResponse:
             selected_provider=data.get("selectedProvider", ""),
             fallback_chain=data.get("fallbackChain", []),
             model=data.get("model", {}),
+            process_id=data.get("processId"),
             active_requests=data.get("activeRequests", 0),
             raw=data,
         )

@@ -40,88 +40,119 @@ class InferenceSession:
         self.require_provider = require_provider
         self.ep_options = ep_options or {}
         self.host = host
-        self.port = port or _get_free_port()
+        self._user_port = port
+        self.port = port
         self.startup_timeout = startup_timeout
         self.request_timeout = request_timeout
 
-        formatted_host = f"[{self.host}]" if ":" in self.host and not self.host.startswith("[") else self.host
-        self.endpoint = f"http://{formatted_host}:{self.port}"
-
+        self.endpoint = ""
         self._process: Optional[subprocess.Popen] = None
         self._client: Optional[InferenceClient] = None
+        self._server_verified = False
         self._closed = False
 
         self._start_server()
 
     def _start_server(self):
-        base_cmd = get_linml_binary()
-        cmd = base_cmd + [
-            "serve",
-            "--model", self.model_path,
-            "--host", self.host,
-            "--port", str(self.port),
-        ]
-
-        if self.provider:
-            cmd.extend(["--provider", self.provider])
-        if self.require_provider:
-            cmd.append("--require-provider")
-        for k, v in self.ep_options.items():
-            cmd.extend(["--ep-option", f"{k}={v}"])
-
-        self._process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-            text=True,
-            env=get_dotnet_env(),
-        )
-
-        self._client = InferenceClient(endpoint=self.endpoint, timeout=self.request_timeout)
-        health_client = InferenceClient(endpoint=self.endpoint, timeout=1.0)
-
-        # Wait for daemon readiness
-        deadline = time.time() + self.startup_timeout
-        started = False
+        max_attempts = 3 if self._user_port is None else 1
         last_err: Optional[Exception] = None
 
-        while time.time() < deadline:
-            # Check if process crashed early
-            if self._process.poll() is not None:
-                stderr_output = ""
-                if self._process.stderr:
-                    try:
-                        stderr_output = self._process.stderr.read()
-                    except Exception:
-                        stderr_output = "(stderr unavailable)"
-                raise RuntimeError(
-                    f"LinML serve process exited prematurely with code {self._process.returncode}: {stderr_output}"
-                )
-            try:
-                health = health_client.health()
-                if health.status.lower() in ("healthy", "ready"):
-                    # Verify model identity
-                    model_info = health.model
-                    if model_info and isinstance(model_info, dict):
-                        reported_path = model_info.get("path")
-                        if reported_path:
-                            try:
-                                if Path(reported_path).resolve() != Path(self.model_path).resolve():
-                                    time.sleep(0.05)
-                                    continue
-                            except Exception:
-                                pass
-                    started = True
-                    break
-            except Exception as e:
-                last_err = e
-                time.sleep(0.05)
+        for attempt in range(max_attempts):
+            self.port = self._user_port or _get_free_port()
+            formatted_host = f"[{self.host}]" if ":" in self.host and not self.host.startswith("[") else self.host
+            self.endpoint = f"http://{formatted_host}:{self.port}"
 
-        if not started:
-            self.close()
-            raise TimeoutError(
-                f"Timed out waiting for LinML server to start on {self.endpoint}: {last_err}"
+            base_cmd = get_linml_binary()
+            cmd = base_cmd + [
+                "serve",
+                "--model", self.model_path,
+                "--host", self.host,
+                "--port", str(self.port),
+            ]
+
+            if self.provider:
+                cmd.extend(["--provider", self.provider])
+            if self.require_provider:
+                cmd.append("--require-provider")
+            for k, v in self.ep_options.items():
+                cmd.extend(["--ep-option", f"{k}={v}"])
+
+            self._process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=True,
+                env=get_dotnet_env(),
             )
+
+            self._client = InferenceClient(endpoint=self.endpoint, timeout=self.request_timeout)
+            health_client = InferenceClient(endpoint=self.endpoint, timeout=1.0)
+
+            # Wait for daemon readiness
+            deadline = time.time() + self.startup_timeout
+            started = False
+
+            while time.time() < deadline:
+                # Check if process crashed early
+                if self._process.poll() is not None:
+                    stderr_output = ""
+                    if self._process.stderr:
+                        try:
+                            stderr_output = self._process.stderr.read()
+                        except Exception:
+                            stderr_output = "(stderr unavailable)"
+                    last_err = RuntimeError(
+                        f"LinML serve process exited prematurely with code {self._process.returncode}: {stderr_output}"
+                    )
+                    break
+
+                try:
+                    health = health_client.health()
+                    if health.status.lower() in ("healthy", "ready"):
+                        # Verify process identity
+                        if health.process_id is not None and health.process_id != self._process.pid:
+                            # Port claimed by unrelated server
+                            time.sleep(0.05)
+                            continue
+
+                        # Verify model identity
+                        model_info = health.model
+                        if model_info and isinstance(model_info, dict):
+                            reported_path = model_info.get("path")
+                            if reported_path:
+                                try:
+                                    if Path(reported_path).resolve() != Path(self.model_path).resolve():
+                                        time.sleep(0.05)
+                                        continue
+                                except Exception:
+                                    pass
+
+                        self._server_verified = True
+                        started = True
+                        break
+                except Exception as e:
+                    last_err = e
+                    time.sleep(0.05)
+
+            if started:
+                return
+
+            # Cleanup this attempt before next attempt
+            if self._process:
+                try:
+                    self._process.terminate()
+                    self._process.wait(timeout=1.0)
+                except Exception:
+                    try:
+                        self._process.kill()
+                    except Exception:
+                        pass
+                self._process = None
+
+        self.close()
+        raise TimeoutError(
+            f"Timed out waiting for LinML server to start on {self.endpoint}: {last_err}"
+        )
 
     def predict(
         self,
@@ -181,7 +212,7 @@ class InferenceSession:
         self._closed = True
 
         if self._client:
-            if self._process and self._process.poll() is None:
+            if self._server_verified and self._process and self._process.poll() is None:
                 try:
                     self._client.shutdown()
                 except Exception:

@@ -45,5 +45,25 @@ class TestSession(unittest.TestCase):
         endpoint = f"http://{formatted_host}:{session.port}"
         self.assertEqual(endpoint, "http://[::1]:8080")
 
+    def test_session_unrelated_process_rejected(self):
+        from unittest.mock import MagicMock
+        from linml.models import HealthResponse
+
+        session = linml.InferenceSession.__new__(linml.InferenceSession)
+        session.model_path = str(TINY_MODEL.resolve())
+        session._process = MagicMock()
+        session._process.pid = 12345
+        session._server_verified = False
+
+        unrelated_health = HealthResponse(
+            status="healthy",
+            service="LinML",
+            selected_provider="CPUExecutionProvider",
+            fallback_chain=[],
+            model={"path": str(TINY_MODEL.resolve())},
+            process_id=99999,
+        )
+        self.assertNotEqual(unrelated_health.process_id, session._process.pid)
+
 if __name__ == "__main__":
     unittest.main()
