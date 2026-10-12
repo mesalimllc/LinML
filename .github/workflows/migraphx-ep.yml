@@ -85,15 +85,29 @@ jobs:
           GH_REPO: ${{ github.repository }}
           TAG: ep-migraphx-${{ needs.build.outputs.version }}
         run: |
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "::error::Release $TAG already exists; its archive is pinned by sha256 and must not change. Bump EP_VERSION instead."
-            exit 1
+          # The release is created as a draft and published only once both
+          # assets are uploaded, so a failed upload never leaves a published
+          # release with missing files. Nothing can pin a draft, so a retry
+          # may replace it; a published release is never touched.
+          if gh release view "$TAG" --json isDraft --jq .isDraft > is_draft 2>/dev/null; then
+            if [ "$(cat is_draft)" != "true" ]; then
+              echo "::error::Release $TAG is already published; its archive is pinned by sha256 and must not change. Bump EP_VERSION instead."
+              exit 1
+            fi
+            echo "Replacing unfinished draft release $TAG."
+            gh release delete "$TAG" --yes --cleanup-tag
           fi
           sha="$(cut -d' ' -f1 dist/*.sha256)"
           gh release create "$TAG" dist/* \
+            --draft \
             --target "$GITHUB_SHA" \
             --prerelease \
             --title "MIGraphX EP plugin ${{ needs.build.outputs.version }}" \
             --notes "AMD MIGraphX plugin execution provider (onnxruntime-ep-amdgpu), built by scripts/build-migraphx-ep.sh at $GITHUB_SHA.
 
           Requires ROCm with MIGraphX >= 2.17 on the host. sha256: \`$sha\`"
+          for f in dist/*; do
+            gh release view "$TAG" --json assets --jq '.assets[].name' | grep -qxF "$(basename "$f")" \
+              || { echo "::error::Asset $(basename "$f") is missing from draft $TAG."; exit 1; }
+          done
+          gh release edit "$TAG" --draft=false

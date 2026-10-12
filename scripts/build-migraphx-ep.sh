@@ -42,6 +42,8 @@ MIGRAPHX_H_SHA256="1026dc365e65a8133bf19c78a902d313b66d61f56311f7d20f5b09070b6c9
 MIGRAPHX_HPP_SHA256="beedef15f010ca9c4d48e3e862165ffc43e0b0772ff8f28eb48236a52c72ff46"
 
 CMAKE_VERSION="4.2.3"
+NINJA_VERSION="1.13.2"
+PACKAGING_VERSION="26.3"
 
 # --- Paths --------------------------------------------------------------------
 
@@ -76,7 +78,8 @@ apt-get install -y --no-install-recommends \
     ca-certificates curl git patchelf python3 python3-venv unzip zip binutils
 
 python3 -m venv "$WORK/venv"
-"$WORK/venv/bin/pip" install --no-cache-dir "cmake==${CMAKE_VERSION}" ninja "packaging>=24.2"
+"$WORK/venv/bin/pip" install --no-cache-dir \
+    "cmake==${CMAKE_VERSION}" "ninja==${NINJA_VERSION}" "packaging==${PACKAGING_VERSION}"
 export PATH="$WORK/venv/bin:$PATH"
 export CXXFLAGS="-D__HIP_PLATFORM_AMD__=1 -w"
 
