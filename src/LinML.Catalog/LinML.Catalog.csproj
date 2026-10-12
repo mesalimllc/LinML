@@ -17,6 +17,9 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="LinML.Catalog.Tests" />
+    <InternalsVisibleTo Include="linml" />
+    <InternalsVisibleTo Include="LinML.Cli" />
+    <InternalsVisibleTo Include="LinML.Cli.Tests" />
   </ItemGroup>
 
   <ItemGroup>

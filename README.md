@@ -49,7 +49,7 @@ LinML also provides `LinML.Catalog`, the Linux counterpart to WinML's `Execution
 | **E** | CLI and native publishing | ✅ Done (publish verified, self-contained linux-x64) |
 | **F** | CI, evidence, and release flow | ✅ Done (CI green, GitHub Releases + NuGet.org OIDC) |
 
-**149 tests passing** across Catalog (27), Runtime (22), Policy (23), Integration (20), and CLI (57).
+**159 tests passing** across Catalog (31), Runtime (22), Policy (23), Integration (20), and CLI (63).
 
 ---
 
@@ -149,6 +149,31 @@ All subcommands accept:
 | `2` | **Invalid Arguments**: Bad option, missing required parameter, or input file not found. |
 | `3` | **Required Provider Unavailable**: Preferred provider was missing when `--require-provider` was specified. |
 | `4` | **Internal Error**: Unhandled exception or unexpected internal error. |
+
+---
+
+### Execution Provider Catalog (`linml catalog`)
+
+Inspect the multi-provider catalog and download/install pinned plugin execution providers (OpenVINO, TensorRT-RTX, MIGraphX) directly through the CLI without external shell or Python dependencies:
+
+```bash
+# List all 6 execution providers with type, version, readiness status, and location
+linml catalog list
+
+# JSON format
+linml catalog list --json
+
+# Install a specific plugin execution provider (download, verify SHA256, create symlinks)
+linml catalog install openvino
+linml catalog install trt-rtx
+linml catalog install migraphx
+
+# Install all plugin execution providers
+linml catalog install all
+
+# Force re-installation or specify custom cache root
+linml catalog install openvino --force --root ~/.local/linml-deps
+```
 
 ---
 
