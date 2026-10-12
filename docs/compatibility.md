@@ -91,6 +91,21 @@
     it). An EP only appears in `GetEpDevices` once its library is registered
     (`--ep-library` / `LINML_EP_LIBRARIES`).
   - Only the CPU device is verified; GPU/NPU need Intel hardware to test.
+- **MIGraphX plugin EP (AMD GPU):** AMD publishes no prebuilt plugin, so
+  LinML builds `libmigraphx-ep.so` from
+  [onnxruntime-ep-amdgpu](https://github.com/onnxruntime/onnxruntime-ep-amdgpu)
+  with `scripts/build-migraphx-ep.sh`. The `MIGraphX EP plugin` workflow runs
+  that script in `rocm/dev-ubuntu-24.04:10.0.0-full`, and a manual run with
+  `publish` attaches the archive to an `ep-migraphx-<version>` release. Every
+  input is pinned by commit or sha256: the EP release-branch commit, the ORT
+  1.31.0 release tarball, the `migraphx_libs` 2.17.0 wheel and the MIGraphX
+  headers. Notes:
+  - Building needs no GPU. At run time the host needs ROCm with MIGraphX
+    **>= 2.17** (`libmigraphx_c.so.3`). Older MIGraphX lacks symbols the EP uses
+    and fails to load. The plugin's RUNPATH is `$ORIGIN:/opt/rocm/lib`.
+  - The EP is built against the ORT 1.31.0 headers and negotiates the plugin
+    API down to v24.
+  - Not yet verified on AMD hardware in this repo.
 
 ## Up next
 
