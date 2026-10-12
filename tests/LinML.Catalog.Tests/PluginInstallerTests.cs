@@ -38,6 +38,43 @@ public class PluginInstallerTests
     }
 
     [Fact]
+    public async Task Install_WhenAlreadyPresent_WithForce_DownloadsAndReplaces()
+    {
+        using var root = new TempDir();
+        byte[] wheel = FakeWheel.Build();
+        PluginPackageSpec spec = FakeWheel.Spec(wheel);
+        var handler = new FakeWheelHandler(wheel);
+        var installer = new PluginInstaller(handler);
+        await installer.InstallAsync(spec, root.Path, CancellationToken.None);
+
+        bool forced = await installer.InstallAsync(spec, root.Path, CancellationToken.None, force: true);
+
+        Assert.True(forced);
+        Assert.Equal(2, handler.Requests);
+        Assert.True(File.Exists(spec.LibraryPath(root.Path)));
+    }
+
+    [Fact]
+    public async Task Install_WhenAlreadyPresent_WithForceFailingSha_PreservesExistingInstall()
+    {
+        using var root = new TempDir();
+        byte[] wheel = FakeWheel.Build();
+        PluginPackageSpec spec = FakeWheel.Spec(wheel);
+        var handler = new FakeWheelHandler(wheel);
+        var installer = new PluginInstaller(handler);
+        await installer.InstallAsync(spec, root.Path, CancellationToken.None);
+        Assert.True(File.Exists(spec.LibraryPath(root.Path)));
+
+        // Create a spec with mismatched hash to simulate download failure during force reinstall
+        PluginPackageSpec badSpec = FakeWheel.Spec(wheel, sha256: new string('0', 64));
+        await Assert.ThrowsAsync<InvalidDataException>(() =>
+            installer.InstallAsync(badSpec, root.Path, CancellationToken.None, force: true));
+
+        // The working installation must NOT be deleted or destroyed by the failed re-install attempt
+        Assert.True(File.Exists(spec.LibraryPath(root.Path)));
+    }
+
+    [Fact]
     public async Task Install_ShaMismatch_Throws_AndLeavesNothingBehind()
     {
         using var root = new TempDir();
