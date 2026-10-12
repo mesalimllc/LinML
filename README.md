@@ -177,6 +177,56 @@ linml catalog install openvino --force --root ~/.local/linml-deps
 
 ---
 
+### Hardware Auto-Setup (`linml setup`)
+
+Hardware-aware environment bootstrap and installer. Probes host compute accelerators (NVIDIA GPUs, Intel CPUs/GPUs, AMD ROCm GPUs, and CPU vector extensions) and automatically installs matching catalog execution provider plugins:
+
+```bash
+# Preview hardware detection and recommended plugins without installing
+linml setup --dry-run
+
+# Automatically install all matching vendor plugins for detected hardware
+linml setup
+
+# Install all catalog plugins regardless of hardware
+linml setup --all
+
+# Machine-readable output with hardware inventory and installation plan
+linml setup --dry-run --json
+```
+
+#### Example Output:
+```text
+LinML Hardware Auto-Setup (Dry Run)
+Probing host compute accelerators...
+
+Hardware Detected:
+  CPU: AMD Ryzen 7 5700X3D 8-Core Processor (x64, 16 logical cores)
+  GPU: NVIDIA GeForce RTX 5070 (11.9 GB VRAM)
+  Environment: WSL2 (Windows Subsystem for Linux)
+
+Recommended Execution Providers:
+  • trt-rtx    [NVIDIA GPU detected (NVIDIA GeForce RTX 5070)]
+             Note: WSL2 environment: Built-in CUDA EP is active; TensorRT-RTX EP provides INT4/FP8 acceleration for RTX GPUs.
+  • openvino   [CPU vector acceleration detected (AMD Ryzen 7 5700X3D 8-Core Processor)]
+
+Actions:
+  • trt-rtx: Already installed (~/.local/linml-deps/ep-plugins/trt-rtx/...)
+  • openvino: Already installed (~/.local/linml-deps/ep-plugins/openvino/...)
+
+Dry run complete: 2 up-to-date, 0 would be installed.
+Run 'linml setup' to execute the installation.
+```
+
+#### Options:
+- `--dry-run`: Probe hardware and display proposed installation plan without downloading or modifying files.
+- `--force`: Force re-download and re-installation even if already present.
+- `--all`: Install all catalog plugins regardless of detected hardware.
+- `--root <path>`: Custom catalog install root directory.
+- `--json`: Output machine-readable JSON hardware inventory, recommendations, and action plan.
+
+---
+
 ### Provider Discovery (`linml providers list`)
 
 Inspect the ONNX Runtime version, available execution providers, detected accelerators, and hardware diagnostics:
