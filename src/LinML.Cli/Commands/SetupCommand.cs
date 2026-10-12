@@ -31,11 +31,16 @@ public static class SetupCommand
         var dryRunOption = new Option<bool>("--dry-run") { Description = "Inspect hardware and display proposed installation plan without downloading" };
         var forceOption = new Option<bool>("--force") { Description = "Force re-installation even if already present" };
         var allOption = new Option<bool>("--all") { Description = "Install all catalog plugins regardless of detected hardware" };
+        var trtRtxWsl2Option = new Option<bool>("--trt-rtx-wsl2")
+        {
+            Description = "Opt in to the LinML-hosted patched TensorRT-RTX EP for WSL2 (requires WSL2 and an RTX Ampere+ GPU)"
+        };
 
         setupCommand.Options.Add(rootOption);
         setupCommand.Options.Add(dryRunOption);
         setupCommand.Options.Add(forceOption);
         setupCommand.Options.Add(allOption);
+        setupCommand.Options.Add(trtRtxWsl2Option);
         setupCommand.Options.Add(jsonOption);
 
         setupCommand.SetAction(async parseResult =>
@@ -44,6 +49,7 @@ public static class SetupCommand
             var dryRun = parseResult.GetValue(dryRunOption);
             var force = parseResult.GetValue(forceOption);
             var all = parseResult.GetValue(allOption);
+            var trtRtxWsl2 = parseResult.GetValue(trtRtxWsl2Option);
             var json = parseResult.GetValue(jsonOption);
 
             string installRoot = string.IsNullOrWhiteSpace(root)
@@ -51,13 +57,16 @@ public static class SetupCommand
                 : root;
 
             var hardware = ProbeHostHardware(services);
-            var recommendations = DetermineRecommendations(hardware, all);
+            var recommendations = DetermineRecommendations(hardware, all, trtRtxWsl2);
+            var gpuRecommendations = DetermineGpuDependencies(hardware, all);
+            var skipped = DescribeSkippedRecommendations(hardware, all, trtRtxWsl2);
+            var optIns = DetermineOptIns(hardware, trtRtxWsl2);
 
             if (!json)
             {
                 PrintHeader(dryRun);
                 PrintHardwareSummary(hardware);
-                PrintRecommendations(recommendations);
+                PrintRecommendations(recommendations, gpuRecommendations, skipped, optIns);
             }
 
             var installer = new PluginInstaller();
@@ -164,6 +173,76 @@ public static class SetupCommand
                 }
             }
 
+            var gpuInstaller = new GpuDependencyInstaller();
+            foreach (var rec in gpuRecommendations)
+            {
+                string installDir = rec.Spec.InstallDirectory(installRoot);
+                string libraryPath = rec.Spec.SentinelPath(installRoot);
+                bool alreadyInstalled = rec.Spec.IsInstalled(installRoot);
+
+                if (dryRun || (alreadyInstalled && !force))
+                {
+                    string plannedStatus = alreadyInstalled && !force ? "AlreadyInstalled" : "WouldInstall";
+                    if (!json)
+                    {
+                        Console.WriteLine(plannedStatus == "AlreadyInstalled"
+                            ? $"  • {rec.Spec.Id}: Already installed ({installDir})"
+                            : $"  • {rec.Spec.Id} ({rec.Spec.PipPackage}): Would pip-install to {installDir}");
+                    }
+
+                    actions.Add(new SetupActionResultDto(
+                        Provider: rec.Spec.Id,
+                        Version: rec.Spec.PipPackage,
+                        Status: plannedStatus,
+                        LibraryPath: libraryPath,
+                        InstallDirectory: installDir,
+                        Reason: rec.Reason,
+                        Error: null));
+                    continue;
+                }
+
+                if (!json)
+                {
+                    Console.Write($"  • {rec.Spec.Id} ({rec.Spec.PipPackage}): Installing (this can take several minutes)... ");
+                }
+
+                try
+                {
+                    bool installed = await gpuInstaller.InstallAsync(rec.Spec, installRoot, CancellationToken.None, force: force);
+                    if (!json)
+                    {
+                        Console.WriteLine("Done");
+                        Console.WriteLine($"    Path: {installDir}");
+                    }
+
+                    actions.Add(new SetupActionResultDto(
+                        Provider: rec.Spec.Id,
+                        Version: rec.Spec.PipPackage,
+                        Status: installed ? "Installed" : "AlreadyInstalled",
+                        LibraryPath: libraryPath,
+                        InstallDirectory: installDir,
+                        Reason: rec.Reason,
+                        Error: null));
+                }
+                catch (Exception ex) when (ex is InvalidOperationException or IOException or UnauthorizedAccessException)
+                {
+                    allSucceeded = false;
+                    if (!json)
+                    {
+                        Console.WriteLine($"FAILED: {ex.Message}");
+                    }
+
+                    actions.Add(new SetupActionResultDto(
+                        Provider: rec.Spec.Id,
+                        Version: rec.Spec.PipPackage,
+                        Status: "Failed",
+                        LibraryPath: libraryPath,
+                        InstallDirectory: installDir,
+                        Reason: rec.Reason,
+                        Error: ex.Message));
+                }
+            }
+
             // For ARM64 systems with no recommendations (not --all), we still need to process
             // dry-run scenarios where we want to show "AlreadyInstalled" status for existing plugins
             if (hardware.Cpu.Architecture == "arm64" || hardware.Cpu.Architecture == "aarch64")
@@ -214,6 +293,14 @@ public static class SetupCommand
                         reason = r.Reason,
                         note = r.Note
                     }),
+                    gpuDependencies = gpuRecommendations.Select(r => new
+                    {
+                        id = r.Spec.Id,
+                        package = r.Spec.PipPackage,
+                        reason = r.Reason
+                    }),
+                    skipped,
+                    optIn = optIns.Select(o => new { id = o.Id, description = o.Description, command = o.Command }),
                     actions,
                     success = allSucceeded
                 };
@@ -312,7 +399,8 @@ public static class SetupCommand
         return new CpuInfo(arch, vendor, model, cores, hasVectors);
     }
 
-    internal static List<ProviderRecommendation> DetermineRecommendations(HostHardwareInfo hardware, bool all)
+    internal static List<ProviderRecommendation> DetermineRecommendations(
+        HostHardwareInfo hardware, bool all, bool trtRtxWsl2 = false)
     {
         var list = new List<ProviderRecommendation>();
 
@@ -327,17 +415,20 @@ public static class SetupCommand
                     Reason: "Requested via --all",
                     Note: null));
             }
+
+            AddTrtRtxWsl2IfOptedIn(list, hardware, trtRtxWsl2);
             return list;
         }
 
         bool isLinuxX64 = OperatingSystem.IsLinux() && string.Equals(hardware.Cpu.Architecture, "x64", StringComparison.OrdinalIgnoreCase);
 
-        // x86_64 / Intel CPU or CPU vector extensions detected
-        if (isLinuxX64)
+        // The OpenVINO plugin EP targets Intel CPUs, GPUs and NPUs; on other x86_64
+        // vendors it registers but exposes no EP devices (observed on AMD Ryzen).
+        if (isLinuxX64 && HasIntelHardware(hardware))
         {
             string reason = hardware.Cpu.Vendor == "Intel"
                 ? $"Intel CPU detected ({hardware.Cpu.Model}) with Deep Learning Boost / AVX"
-                : $"CPU vector acceleration detected ({hardware.Cpu.Model})";
+                : "Intel GPU detected";
 
             list.Add(new ProviderRecommendation(
                 Spec: KnownPlugins.OpenVino,
@@ -377,10 +468,122 @@ public static class SetupCommand
                 Note: null));
         }
 
+        AddTrtRtxWsl2IfOptedIn(list, hardware, trtRtxWsl2);
+
         // ARM64: cannot recommend prebuilt plugins, but still allow processing of existing ones via --all
         // Note: ARM64 users can still run 'linml setup --all' to force install all plugins
 
         return list;
+    }
+
+    /// <summary>
+    /// Whether the opt-in patched TensorRT-RTX EP applies: WSL2 on linux-x64 with an
+    /// RTX Ampere+ NVIDIA GPU. The stock wheel registers but exposes no devices there.
+    /// </summary>
+    internal static bool IsTrtRtxWsl2Eligible(HostHardwareInfo hardware)
+    {
+        if (!hardware.IsWsl2
+            || !OperatingSystem.IsLinux()
+            || !string.Equals(hardware.Cpu.Architecture, "x64", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var nvidiaGpu = hardware.Devices.FirstOrDefault(d => string.Equals(d.Vendor, "NVIDIA", StringComparison.OrdinalIgnoreCase));
+        return nvidiaGpu is not null && IsRtxAmpereOrNewer(nvidiaGpu.Name);
+    }
+
+    // The patched EP links the TensorRT-RTX runtime only the stock wheel bundles, so
+    // the stock wheel is installed first when it is not already being installed.
+    private static void AddTrtRtxWsl2IfOptedIn(List<ProviderRecommendation> list, HostHardwareInfo hardware, bool requested)
+    {
+        if (!requested || !IsTrtRtxWsl2Eligible(hardware))
+        {
+            return;
+        }
+
+        if (!list.Any(r => r.Spec == KnownPlugins.TensorrtRtx))
+        {
+            list.Add(new ProviderRecommendation(
+                Spec: KnownPlugins.TensorrtRtx,
+                ShortName: "trt-rtx",
+                Reason: "Runtime libraries required by trt-rtx-wsl2",
+                Note: null));
+        }
+
+        list.Add(new ProviderRecommendation(
+            Spec: KnownPlugins.TensorrtRtxWsl2,
+            ShortName: "trt-rtx-wsl2",
+            Reason: "Opted in via --trt-rtx-wsl2 (WSL2 with RTX GPU detected)",
+            Note: "Patched build; replaces the stock wheel, which exposes no devices under WSL2."));
+    }
+
+    /// <summary>Optional installs worth offering on this host but never done without asking.</summary>
+    internal static List<OptInOffer> DetermineOptIns(HostHardwareInfo hardware, bool trtRtxWsl2Requested)
+    {
+        var offers = new List<OptInOffer>();
+        if (!trtRtxWsl2Requested && IsTrtRtxWsl2Eligible(hardware))
+        {
+            offers.Add(new OptInOffer(
+                Id: "trt-rtx-wsl2",
+                Description: "Patched TensorRT-RTX EP for WSL2 (the stock wheel exposes no devices here)",
+                Command: "linml setup --trt-rtx-wsl2"));
+        }
+
+        return offers;
+    }
+
+    internal static bool HasIntelHardware(HostHardwareInfo hardware) =>
+        string.Equals(hardware.Cpu.Vendor, "Intel", StringComparison.OrdinalIgnoreCase)
+        || hardware.Devices.Any(d => string.Equals(d.Vendor, "Intel", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// GPU runtime libraries (cuDNN, TensorRT) the NVIDIA execution providers need
+    /// at load time. Recommended on linux-x64 whenever an NVIDIA GPU is present,
+    /// including under WSL2, where the CUDA and TensorRT EPs are the active paths.
+    /// </summary>
+    internal static List<GpuDependencyRecommendation> DetermineGpuDependencies(HostHardwareInfo hardware, bool all)
+    {
+        if (all)
+        {
+            return KnownGpuDependencies.All
+                .Select(spec => new GpuDependencyRecommendation(spec, "Requested via --all"))
+                .ToList();
+        }
+
+        bool isLinuxX64 = OperatingSystem.IsLinux()
+            && string.Equals(hardware.Cpu.Architecture, "x64", StringComparison.OrdinalIgnoreCase);
+        var nvidiaGpu = hardware.Devices.FirstOrDefault(d => string.Equals(d.Vendor, "NVIDIA", StringComparison.OrdinalIgnoreCase));
+        if (!isLinuxX64 || nvidiaGpu is null)
+        {
+            return [];
+        }
+
+        string reason = $"NVIDIA GPU detected ({nvidiaGpu.Name})";
+        return
+        [
+            new GpuDependencyRecommendation(KnownGpuDependencies.Cudnn, reason),
+            new GpuDependencyRecommendation(KnownGpuDependencies.TensorRt, reason),
+        ];
+    }
+
+    /// <summary>Recommendations deliberately withheld, with the reason, so the omission is visible.</summary>
+    internal static List<string> DescribeSkippedRecommendations(HostHardwareInfo hardware, bool all, bool trtRtxWsl2 = false)
+    {
+        var skipped = new List<string>();
+        bool isLinuxX64 = OperatingSystem.IsLinux()
+            && string.Equals(hardware.Cpu.Architecture, "x64", StringComparison.OrdinalIgnoreCase);
+        if (!all && isLinuxX64 && !HasIntelHardware(hardware))
+        {
+            skipped.Add($"openvino: plugin EP targets Intel hardware; no Intel CPU/GPU detected ({hardware.Cpu.Model}). Use --all to install anyway.");
+        }
+
+        if (trtRtxWsl2 && !IsTrtRtxWsl2Eligible(hardware))
+        {
+            skipped.Add("trt-rtx-wsl2: requested, but it needs WSL2 with an RTX Ampere+ NVIDIA GPU, which was not detected.");
+        }
+
+        return skipped;
     }
 
     internal static bool IsRtxAmpereOrNewer(string? name)
@@ -501,7 +704,11 @@ public static class SetupCommand
         Console.WriteLine();
     }
 
-    private static void PrintRecommendations(List<ProviderRecommendation> recommendations)
+    private static void PrintRecommendations(
+        List<ProviderRecommendation> recommendations,
+        List<GpuDependencyRecommendation> gpuRecommendations,
+        List<string> skipped,
+        List<OptInOffer> optIns)
     {
         Console.WriteLine("Recommended Execution Providers:");
         if (recommendations.Count == 0)
@@ -519,6 +726,33 @@ public static class SetupCommand
                 }
             }
         }
+
+        if (gpuRecommendations.Count > 0)
+        {
+            Console.WriteLine();
+            Console.WriteLine("Recommended GPU runtime libraries:");
+            foreach (var rec in gpuRecommendations)
+            {
+                Console.WriteLine($"  • {rec.Spec.Id,-10} [{rec.Reason}]");
+            }
+        }
+
+        foreach (var note in skipped)
+        {
+            Console.WriteLine($"  - Skipped {note}");
+        }
+
+        if (optIns.Count > 0)
+        {
+            Console.WriteLine();
+            Console.WriteLine("Opt-in available:");
+            foreach (var offer in optIns)
+            {
+                Console.WriteLine($"  • {offer.Id,-12} {offer.Description}");
+                Console.WriteLine($"               Run: {offer.Command}");
+            }
+        }
+
         Console.WriteLine();
         Console.WriteLine("Actions:");
     }
@@ -562,6 +796,10 @@ public static class SetupCommand
         string ShortName,
         string Reason,
         string? Note);
+
+    internal sealed record OptInOffer(string Id, string Description, string Command);
+
+    internal sealed record GpuDependencyRecommendation(GpuDependencySpec Spec, string Reason);
 
     public sealed record SetupActionResultDto(
         string Provider,

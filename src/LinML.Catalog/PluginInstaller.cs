@@ -96,7 +96,7 @@ internal sealed class PluginInstaller(HttpMessageHandler? httpHandler = null)
 
     /// <summary>
     /// Copies the package's top-level native files (<c>*.so</c>, <c>*.so.*</c>)
-    /// and runtime data (<c>*.json</c>) into <paramref name="destination"/>,
+    /// runtime data (<c>*.json</c>) and notices (<c>*.md</c>) into <paramref name="destination"/>,
     /// stripping the package prefix. Python sources, dist-info and nested
     /// directories are skipped.
     /// </summary>
@@ -123,7 +123,8 @@ internal sealed class PluginInstaller(HttpMessageHandler? httpHandler = null)
     private static bool IsVendoredFile(string name) =>
         name.EndsWith(".so", StringComparison.Ordinal)
         || name.Contains(".so.", StringComparison.Ordinal)
-        || name.EndsWith(".json", StringComparison.Ordinal);
+        || name.EndsWith(".json", StringComparison.Ordinal)
+        || name.EndsWith(".md", StringComparison.Ordinal); // e.g. PATCH-NOTICE.md shipped with the patched WSL2 build
 
     /// <summary>
     /// Loads native libraries shipped beside a plugin before the plugin itself is

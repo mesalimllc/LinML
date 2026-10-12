@@ -89,12 +89,14 @@ fi
 
 # Convenience: default plugin EP library registration for OpenVINO
 # (vendored by scripts/fetch-ep-plugins.sh). The plugin resolves its bundled
-# OpenVINO runtime via RUNPATH $ORIGIN, so no add_path is needed.
+# OpenVINO runtime via RUNPATH $ORIGIN, so no add_path is needed. Registered
+# under the catalog's name ("linml.openvino"); the bare alias "openvino" is not
+# recognised by LinML's discovery or doctor.
 OPENVINO_EP="$DEPS/ep-plugins/openvino/onnxruntime_ep_openvino/libonnxruntime_providers_openvino_plugin.so"
 if [ -f "$OPENVINO_EP" ]; then
     case ";${LINML_EP_LIBRARIES:-};" in
-        *";openvino="*) ;;
-        *) LINML_EP_LIBRARIES="openvino=$OPENVINO_EP${LINML_EP_LIBRARIES:+;$LINML_EP_LIBRARIES}" ;;
+        *";linml.openvino="*|*";OpenVINOExecutionProvider="*|*";openvino="*) ;;
+        *) LINML_EP_LIBRARIES="linml.openvino=$OPENVINO_EP${LINML_EP_LIBRARIES:+;$LINML_EP_LIBRARIES}" ;;
     esac
     export LINML_EP_LIBRARIES
 fi

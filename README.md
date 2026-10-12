@@ -220,6 +220,9 @@ linml setup
 # Install all catalog plugins regardless of hardware
 linml setup --all
 
+# Opt in to the patched TensorRT-RTX EP for WSL2 (offered automatically when WSL2 + an RTX GPU are detected)
+linml setup --trt-rtx-wsl2
+
 # Machine-readable output with hardware inventory and installation plan
 linml setup --dry-run --json
 ```
@@ -247,10 +250,15 @@ Dry run complete: 2 up-to-date, 0 would be installed.
 Run 'linml setup' to execute the installation.
 ```
 
+`setup` also vendors the native GPU runtime libraries the NVIDIA providers load (cuDNN 9 and TensorRT 10, via pinned `pip install --target` into `~/.local/linml-deps`) when an NVIDIA GPU is detected. `linml` loads them itself at startup, so `LD_LIBRARY_PATH` / `source scripts/env-gpu-deps.sh` is no longer required for the TensorRT and CUDA EPs; a library already resolvable by name (your own `LD_LIBRARY_PATH` or a system install) is left alone. Requires `pip3` (or `python3 -m pip`).
+
+OpenVINO is recommended only when an Intel CPU or GPU is detected: the plugin EP registers on other vendors but exposes no devices (observed on AMD Ryzen). `--all` still installs it.
+
 #### Options:
 - `--dry-run`: Probe hardware and display proposed installation plan without downloading or modifying files.
 - `--force`: Force re-download and re-installation even if already present.
 - `--all`: Install all catalog plugins regardless of detected hardware.
+- `--trt-rtx-wsl2`: Opt in to the LinML-hosted patched TensorRT-RTX EP for WSL2 (requires WSL2 and an RTX Ampere+ GPU; installs the stock `trt-rtx` wheel first for its runtime libraries). When WSL2 and a supported GPU are detected, `linml setup` lists it under "Opt-in available" but never installs it without this flag. On WSL2 the patched build is preferred over the stock wheel automatically.
 - `--root <path>`: Custom catalog install root directory.
 - `--json`: Output machine-readable JSON hardware inventory, recommendations, and action plan.
 

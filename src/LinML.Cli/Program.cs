@@ -16,6 +16,13 @@ public static class Program
 {
     public static async Task<int> Main(string[] args)
     {
+        // Vendored cuDNN / TensorRT must be loaded before ORT first opens a provider
+        // library, so the CLI works without LD_LIBRARY_PATH from env-gpu-deps.sh.
+        if (!IsInformationalInvocation(args))
+        {
+            LinML.Catalog.GpuDependencyLoader.PreloadVendored();
+        }
+
         await using var provider = BuildServices();
 
         var rootCommand = new RootCommand("LinML: Linux ONNX Runtime inference integration layer");
@@ -42,6 +49,10 @@ public static class Program
 
         return rootCommand.Parse(args).Invoke();
     }
+
+    private static bool IsInformationalInvocation(string[] args) =>
+        args.Length == 0
+        || args.Any(a => a is "-h" or "--help" or "-?" or "--version");
 
     internal static ServiceProvider BuildServices()
     {

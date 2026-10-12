@@ -129,5 +129,65 @@ internal static class KnownPlugins
         LibraryFileName: "libmigraphx-ep.so",
         MinimumOrtVersion: new Version(1, 24, 0));
 
+    // Opt-in LinML-hosted patched TensorRT-RTX EP for WSL2 (release
+    // ep-trt-rtx-wsl2-0.4.0-wsl2p1, built by scripts/build-trt-rtx-ep.sh; fixes
+    // device enumeration on the WSL2 virtual PCI bus, upstream PR #12). Same EP
+    // name and ABI as the stock wheel, so it is a drop-in replacement and is
+    // deliberately NOT in All: it is not a separate provider, and installing it
+    // is opt-in. It dynamically links the TensorRT-RTX runtime that only the
+    // stock wheel bundles, so TensorrtRtx must be vendored too. Same pin, URL
+    // and digest as fetch_trt_rtx_wsl2 in scripts/fetch-ep-plugins.sh.
+    public static readonly PluginPackageSpec TensorrtRtxWsl2 = new(
+        Id: ProviderId.TensorrtRtx,
+        RegistrationName: "NvTensorRTRTXExecutionProvider",
+        Version: "0.4.0-wsl2p1",
+        WheelUrl: new Uri("https://github.com/trackdubllc/LinML/releases/download/ep-trt-rtx-wsl2-0.4.0-wsl2p1/linml-trt-rtx-ep-0.4.0-wsl2p1-linux-x64.zip"),
+        WheelSha256: "e87adedba3dfc86ea96cd7c6f5b9a965de584aeda971ee7792ae6d1e0074d2df",
+        PackagePrefix: "linml_trt_rtx_ep/",
+        InstallSubdirectory: Path.Combine("ep-plugins", "trt-rtx-wsl2", "linml_trt_rtx_ep"),
+        LibraryFileName: "libonnxruntime_providers_nv_tensorrt_rtx.so",
+        MinimumOrtVersion: new Version(1, 24, 0));
+
     public static IReadOnlyList<PluginPackageSpec> All { get; } = [OpenVino, TensorrtRtx, MigraphX];
+
+    /// <summary>
+    /// The opted-in WSL2 build of <paramref name="id"/>'s plugin, if one is vendored
+    /// and this host is WSL2; otherwise null. Preferred over the stock wheel, which
+    /// registers but exposes no devices under WSL2.
+    /// </summary>
+    internal static string? WslVariantLibrary(ProviderId id, string? root = null)
+    {
+        if (id != ProviderId.TensorrtRtx || !PluginExecutionProvider.IsWsl())
+        {
+            return null;
+        }
+
+        if (!string.IsNullOrWhiteSpace(root))
+        {
+            string own = TensorrtRtxWsl2.LibraryPath(root);
+            if (File.Exists(own))
+            {
+                return own;
+            }
+
+            // An explicit root that vendors the stock wheel keeps it; the search only
+            // widens to the default roots when the root has neither build.
+            if (File.Exists(TensorrtRtx.LibraryPath(root)))
+            {
+                return null;
+            }
+        }
+
+        return TensorrtRtxWsl2.FindLibrary(root);
+    }
+
+    /// <summary>
+    /// Directory of the stock wheel's runtime libraries, which the WSL2 build links
+    /// against by SONAME, or null if the stock wheel is not vendored.
+    /// </summary>
+    internal static string? WslVariantRuntimeDirectory(string? root = null)
+    {
+        string? stock = TensorrtRtx.FindLibrary(root);
+        return stock is null ? null : Path.GetDirectoryName(stock);
+    }
 }

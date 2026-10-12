@@ -183,7 +183,9 @@ public static class DoctorCommand
                             else
                             {
                                 string detail = p.Id == ProviderId.TensorrtRtx && PluginExecutionProvider.IsWsl()
-                                    ? "WSL2 virtual PCI mapping blocks device enumeration (see docs/compatibility.md)"
+                                    ? (libPath.Contains("trt-rtx-wsl2", StringComparison.Ordinal)
+                                        ? "patched WSL2 build registered but exposes no devices (see docs/compatibility.md)"
+                                        : "WSL2 virtual PCI mapping blocks device enumeration with the stock wheel; opt in with 'linml setup --trt-rtx-wsl2' (see docs/compatibility.md)")
                                     : "0 devices detected";
                                 catalogReports.Add(new CatalogDoctorReport(
                                     Id: shortId,
@@ -199,11 +201,28 @@ public static class DoctorCommand
                     }
                 }
 
+                // Native GPU runtime libraries (cuDNN, TensorRT) matter only with an NVIDIA GPU.
+                var gpuDependencyReports = new List<GpuDependencyDoctorReport>();
+                if (report.Devices.Any(d => string.Equals(d.Vendor, "NVIDIA", StringComparison.OrdinalIgnoreCase)))
+                {
+                    string depsRoot = string.IsNullOrWhiteSpace(root) ? ExecutionProviderCatalog.DefaultInstallRoot : root;
+                    foreach (var status in GpuDependencyLoader.GetStatus(depsRoot))
+                    {
+                        gpuDependencyReports.Add(new GpuDependencyDoctorReport(
+                            Id: status.Id,
+                            Description: status.Description,
+                            Status: status.Installed ? "Present" : "NotPresent",
+                            LibraryDirectory: status.LibraryDirectory,
+                            Hint: status.Installed ? null : "Run 'linml setup' to vendor missing GPU libraries."));
+                    }
+                }
+
                 var result = new
                 {
                     discovery = report,
                     readiness = readinessReports,
-                    catalog = catalogReports
+                    catalog = catalogReports,
+                    gpuDependencies = gpuDependencyReports
                 };
 
                 if (json)
@@ -222,6 +241,18 @@ public static class DoctorCommand
                     {
                         var status = r.IsReady ? "READY" : $"NOT READY ({r.FailedPhase}: {r.FailureReason})";
                         Console.WriteLine($"  {r.Provider}: {status}");
+                    }
+
+                    if (gpuDependencyReports.Count > 0)
+                    {
+                        Console.WriteLine();
+                        Console.WriteLine("GPU runtime libraries:");
+                        foreach (var g in gpuDependencyReports)
+                        {
+                            Console.WriteLine(g.Status == "Present"
+                                ? $"  {g.Id}: PRESENT ({g.LibraryDirectory})"
+                                : $"  {g.Id}: NOT PRESENT — {g.Hint}");
+                        }
                     }
 
                     if (catalogReports.Count > 0)
@@ -268,6 +299,13 @@ public static class DoctorCommand
         }
     };
 }
+
+public sealed record GpuDependencyDoctorReport(
+    string Id,
+    string Description,
+    string Status,
+    string? LibraryDirectory,
+    string? Hint);
 
 public sealed record CatalogDoctorReport(
     string Id,

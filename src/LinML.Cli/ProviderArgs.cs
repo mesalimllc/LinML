@@ -152,7 +152,16 @@ public static class ProviderArgs
 
                 if (libraryPath is null && !alreadySpecified)
                 {
-                    libraryPath = spec.FindLibrary(customRoot);
+                    // The opted-in WSL2 build outranks the stock wheel on WSL2 hosts.
+                    libraryPath = KnownPlugins.WslVariantLibrary(spec.Id, customRoot);
+                    if (libraryPath is not null && KnownPlugins.WslVariantRuntimeDirectory(customRoot) is { } runtimeDir)
+                    {
+                        // It links the TensorRT-RTX runtime that only the stock wheel bundles.
+                        BundledLibraryHandles.AddRange(
+                            PluginInstaller.LoadBundledLibraries(runtimeDir, spec.LibraryFileName));
+                    }
+
+                    libraryPath ??= spec.FindLibrary(customRoot);
                 }
 
                 if (libraryPath is not null)

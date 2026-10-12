@@ -36,9 +36,29 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
 
     public string? PinnedVersion => _spec.Version;
 
-    public string? LibraryPath => File.Exists(_spec.LibraryPath(_installRoot))
-        ? _spec.LibraryPath(_installRoot)
-        : (_installRoot == ExecutionProviderCatalog.DefaultInstallRoot ? _spec.FindLibrary() : null);
+    public string? LibraryPath => WslVariantLibraryPath()
+        ?? (File.Exists(_spec.LibraryPath(_installRoot))
+            ? _spec.LibraryPath(_installRoot)
+            : (_installRoot == ExecutionProviderCatalog.DefaultInstallRoot ? _spec.FindLibrary() : null));
+
+    // The opted-in WSL2 build wins over the stock wheel on WSL2 hosts.
+    private string? WslVariantLibraryPath()
+    {
+        if (_spec.Id != ProviderId.TensorrtRtx || !IsWsl())
+        {
+            return null;
+        }
+
+        string own = KnownPlugins.TensorrtRtxWsl2.LibraryPath(_installRoot);
+        if (File.Exists(own))
+        {
+            return own;
+        }
+
+        return _installRoot == ExecutionProviderCatalog.DefaultInstallRoot
+            ? KnownPlugins.TensorrtRtxWsl2.FindLibrary()
+            : null;
+    }
 
     public ProviderReadyState ReadyState
     {
@@ -90,6 +110,13 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
             // native loader merely because they share the plugin directory.
             // Load them explicitly before ORT loads the plugin.
             string bundledDir = Path.GetDirectoryName(library) ?? _spec.InstallDirectory(_installRoot);
+            if (string.Equals(library, KnownPlugins.WslVariantLibrary(_spec.Id, _installRoot), StringComparison.Ordinal)
+                && KnownPlugins.WslVariantRuntimeDirectory(_installRoot) is { } runtimeDir)
+            {
+                // The WSL2 build links the TensorRT-RTX runtime the stock wheel bundles.
+                _bundledLibraryHandles.AddRange(PluginInstaller.LoadBundledLibraries(runtimeDir, _spec.LibraryFileName));
+            }
+
             _bundledLibraryHandles.AddRange(
                 PluginInstaller.LoadBundledLibraries(bundledDir, _spec.LibraryFileName));
             _registrar.Register(_spec.RegistrationName, library);
@@ -160,7 +187,7 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
             if (devices.Count == 0)
             {
                 string detail = Id == ProviderId.TensorrtRtx && IsWsl()
-                    ? $"{Id} is registered, but in WSL2 virtual PCI mapping blocks device enumeration (see docs/compatibility.md). Use custom build or bare-metal Linux."
+                    ? $"{Id} is registered, but in WSL2 virtual PCI mapping blocks device enumeration (see docs/compatibility.md). Opt in to the patched WSL2 build with 'linml setup --trt-rtx-wsl2', or use bare-metal Linux."
                     : $"{Id} is registered but exposes no EP devices on this host.";
                 return Result(ProviderEnsureStatus.NoDevices, detail);
             }
