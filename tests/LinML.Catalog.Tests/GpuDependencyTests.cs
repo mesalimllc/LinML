@@ -144,4 +144,25 @@ public class GpuDependencyLoaderTests
 
         Assert.Null(ex);
     }
+
+    [Fact]
+    public void Cudnn_PreloadsVendoredCublasAndNvrtcBeforeCudnn()
+    {
+        var order = KnownGpuDependencies.Cudnn.PreloadLibraries.Select(Path.GetFileName).ToList();
+
+        // libcublas resolves libcublasLt by SONAME, and cuDNN's engines resolve both.
+        Assert.True(order.IndexOf("libcublasLt.so.13") < order.IndexOf("libcublas.so.13"));
+        Assert.True(order.IndexOf("libcublas.so.13") < order.IndexOf("libcudnn.so.9"));
+        Assert.Contains("libnvrtc.so.13", order);
+        Assert.All(KnownGpuDependencies.All, s =>
+            Assert.All(s.PreloadLibraries, l => Assert.False(Path.IsPathRooted(l), $"{s.Id}: {l} must be relative")));
+    }
+
+    [Fact]
+    public void LeanRuntime_IsScriptOnly_NotPreloadedOrInstalledBySetup()
+    {
+        Assert.False(KnownGpuDependencies.TensorRtLean.InstalledBySetup);
+        Assert.Empty(KnownGpuDependencies.TensorRtLean.PreloadLibraries);
+        Assert.True(KnownGpuDependencies.Cudnn.InstalledBySetup && KnownGpuDependencies.TensorRt.InstalledBySetup);
+    }
 }

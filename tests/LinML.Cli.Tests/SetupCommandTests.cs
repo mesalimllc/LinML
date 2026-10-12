@@ -223,52 +223,157 @@ public class SetupCommandTests
     }
 
     [Fact]
-    public void DetermineGpuDependencies_NoNvidiaGpu_SelectsNothing_AllSelectsEverything()
+    public void DetermineGpuDependencies_NoNvidiaGpu_SelectsNothing_EvenWithAll()
     {
         var hw = new SetupCommand.HostHardwareInfo(
             Cpu: new SetupCommand.CpuInfo("x64", "Intel", "Xeon", 8, true), Devices: [], HasAmdRocm: false, IsWsl2: false);
 
+        // Multi-gigabyte NVIDIA wheels that need pip are never pulled onto a non-NVIDIA host.
         Assert.Empty(SetupCommand.DetermineGpuDependencies(hw, all: false));
-        Assert.Equal(KnownGpuDependencies.All.Count, SetupCommand.DetermineGpuDependencies(hw, all: true).Count);
+        Assert.Empty(SetupCommand.DetermineGpuDependencies(hw, all: true));
     }
 
     [Fact]
-    public async Task Setup_CustomRoot_GpuDependenciesInstalled_ReportsAlreadyInstalled()
+    public void DetermineGpuDependencies_WithAll_OnNvidia_ExcludesScriptOnlyLeanRuntime()
     {
-        if (RuntimeInformation.ProcessArchitecture != Architecture.X64)
+        var recs = SetupCommand.DetermineGpuDependencies(WslRtx(), all: true);
+
+        Assert.Equal(["cudnn", "tensorrt"], recs.Select(r => r.Spec.Id).ToArray());
+        Assert.All(recs, r => Assert.Equal("Requested via --all", r.Reason));
+    }
+
+    [Fact]
+    public async Task GpuDependency_PipMissing_IsSkippedNotFailed()
+    {
+        using var tempRoot = new TempRoot();
+        var actions = new List<SetupCommand.SetupActionResultDto>();
+        var installer = new GpuDependencyInstaller((_, _) => throw new PipUnavailableException("no pip"));
+
+        bool ok = await SetupCommand.ProcessGpuDependencyAsync(
+            new SetupCommand.GpuDependencyRecommendation(KnownGpuDependencies.Cudnn, "r"),
+            tempRoot.Path, dryRun: false, force: false, json: true, installer, actions);
+
+        Assert.True(ok);
+        var action = Assert.Single(actions);
+        Assert.Equal("Skipped", action.Status);
+        Assert.Contains("no pip", action.Error);
+    }
+
+    [Fact]
+    public async Task GpuDependency_RealInstallFailure_StillFails()
+    {
+        using var tempRoot = new TempRoot();
+        var actions = new List<SetupCommand.SetupActionResultDto>();
+        var installer = new GpuDependencyInstaller((_, _) => Task.FromResult(new PipResult(1, "network down")));
+
+        bool ok = await SetupCommand.ProcessGpuDependencyAsync(
+            new SetupCommand.GpuDependencyRecommendation(KnownGpuDependencies.TensorRt, "r"),
+            tempRoot.Path, dryRun: false, force: false, json: true, installer, actions);
+
+        Assert.False(ok);
+        Assert.Equal("Failed", Assert.Single(actions).Status);
+    }
+
+    [Fact]
+    public void ProbeIntelDevices_ReadsPciVendorFromSysfs()
+    {
+        using var sys = new TempRoot();
+        void Device(string cls, string name, string vendor)
         {
-            return;
+            string dir = Path.Combine(sys.Path, cls, name, "device");
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(Path.Combine(dir, "vendor"), vendor + "\n");
         }
 
-        string tempDir = Path.Combine(Path.GetTempPath(), "linml-test-setup-gpu-" + Guid.NewGuid().ToString("N"));
-        try
+        Device("drm", "card0", "0x8086");          // Intel GPU
+        Device("drm", "card1", "0x1002");          // AMD GPU: not Intel
+        Device("drm", "card0-HDMI-A-1", "0x8086"); // connector node, not a device
+        Device("accel", "accel0", "0x8086");       // Intel NPU
+
+        var found = SetupCommand.ProbeIntelDevices(sys.Path);
+
+        Assert.Equal(["accel0", "card0"], found.Select(d => d.Id).Order(StringComparer.Ordinal).ToArray());
+        Assert.All(found, d => Assert.Equal("Intel", d.Vendor));
+        Assert.Empty(SetupCommand.ProbeIntelDevices(Path.Combine(sys.Path, "nonexistent")));
+    }
+
+    [Fact]
+    public void DetermineRecommendations_AmdCpuWithIntelGpu_SelectsOpenVino()
+    {
+        var hw = new SetupCommand.HostHardwareInfo(
+            Cpu: new SetupCommand.CpuInfo("x64", "AMD", "Ryzen", 8, true),
+            Devices: [new DeviceIdentity { Id = "card0", Name = "Intel GPU (card0)", Vendor = "Intel" }],
+            HasAmdRocm: false,
+            IsWsl2: false);
+
+        Assert.Contains(SetupCommand.DetermineRecommendations(hw, all: false), r => r.ShortName == "openvino");
+        Assert.Empty(SetupCommand.DescribeSkippedRecommendations(hw, all: false));
+    }
+
+    [Fact]
+    public void MixedNvidiaHost_OlderCardFirst_StillOffersAndRecommendsRtxFeatures()
+    {
+        DeviceIdentity Gpu(string id, string name) => new() { Id = id, Name = name, Vendor = "NVIDIA" };
+        var devices = new[] { Gpu("gpu0", "GeForce GTX 1080 Ti"), Gpu("gpu1", "NVIDIA GeForce RTX 5070") };
+        SetupCommand.HostHardwareInfo Host(bool wsl2) => new(
+            new SetupCommand.CpuInfo("x64", "AMD", "Ryzen", 8, true), devices, HasAmdRocm: false, IsWsl2: wsl2);
+
+        // WSL2: the patched plugin is offered because one card is supported.
+        Assert.True(SetupCommand.IsTrtRtxWsl2Eligible(Host(wsl2: true)));
+        Assert.Single(SetupCommand.DetermineOptIns(Host(wsl2: true), trtRtxWsl2Requested: false));
+
+        // Bare metal: the stock plugin is recommended for the supported card, not the first one.
+        var rec = Assert.Single(SetupCommand.DetermineRecommendations(Host(wsl2: false), all: false), r => r.ShortName == "trt-rtx");
+        Assert.Contains("RTX 5070", rec.Reason);
+    }
+
+    [Fact]
+    public void FindRootArgument_ReadsBothForms()
+    {
+        Assert.Equal("/x", Program.FindRootArgument(["doctor", "--root", "/x"]));
+        Assert.Equal("/y", Program.FindRootArgument(["setup", "--root=/y", "--json"]));
+        Assert.Null(Program.FindRootArgument(["doctor"]));
+        Assert.Null(Program.FindRootArgument(["doctor", "--root"]));
+    }
+
+    private sealed class TempRoot : IDisposable
+    {
+        public string Path { get; } = System.IO.Path.Combine(
+            System.IO.Path.GetTempPath(), "linml-test-" + Guid.NewGuid().ToString("N"));
+
+        public TempRoot() => Directory.CreateDirectory(Path);
+
+        public void Dispose()
         {
-            foreach (var spec in KnownGpuDependencies.All)
+            if (Directory.Exists(Path))
             {
-                string sentinel = spec.SentinelPath(tempDir);
-                Directory.CreateDirectory(Path.GetDirectoryName(sentinel)!);
-                File.WriteAllText(sentinel, "fake-so");
-            }
-
-            var (exitCode, stdout, _) = await Task.Run(() => CliTestHost.Run(
-                "setup", "--all", "--root", tempDir, "--dry-run", "--json"));
-
-            Assert.Equal(0, exitCode);
-            using var doc = JsonDocument.Parse(stdout);
-            var actions = doc.RootElement.GetProperty("actions").EnumerateArray().ToList();
-            foreach (var spec in KnownGpuDependencies.All)
-            {
-                var action = Assert.Single(actions, a => a.GetProperty("provider").GetString() == spec.Id);
-                Assert.Equal("AlreadyInstalled", action.GetProperty("status").GetString());
+                Directory.Delete(Path, recursive: true);
             }
         }
-        finally
+    }
+
+    [Fact]
+    public async Task GpuDependencies_InstalledUnderCustomRoot_ReportAlreadyInstalled_WithoutRunningPip()
+    {
+        using var tempRoot = new TempRoot();
+        var actions = new List<SetupCommand.SetupActionResultDto>();
+        var installer = new GpuDependencyInstaller((_, _) => throw new InvalidOperationException("pip must not run"));
+        foreach (var spec in KnownGpuDependencies.All)
         {
-            if (Directory.Exists(tempDir))
-            {
-                Directory.Delete(tempDir, recursive: true);
-            }
+            string sentinel = spec.SentinelPath(tempRoot.Path);
+            Directory.CreateDirectory(Path.GetDirectoryName(sentinel)!);
+            File.WriteAllText(sentinel, "fake-so");
         }
+
+        foreach (var spec in KnownGpuDependencies.All.Where(s => s.InstalledBySetup))
+        {
+            Assert.True(await SetupCommand.ProcessGpuDependencyAsync(
+                new SetupCommand.GpuDependencyRecommendation(spec, "r"),
+                tempRoot.Path, dryRun: false, force: false, json: true, installer, actions));
+        }
+
+        Assert.Equal(["cudnn", "tensorrt"], actions.Select(a => a.Provider).ToArray());
+        Assert.All(actions, a => Assert.Equal("AlreadyInstalled", a.Status));
     }
 
     private static SetupCommand.HostHardwareInfo WslRtx(string gpu = "NVIDIA GeForce RTX 5070", bool wsl2 = true) => new(

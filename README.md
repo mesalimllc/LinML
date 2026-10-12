@@ -250,7 +250,7 @@ Dry run complete: 2 up-to-date, 0 would be installed.
 Run 'linml setup' to execute the installation.
 ```
 
-`setup` also vendors the native GPU runtime libraries the NVIDIA providers load (cuDNN 9 and TensorRT 10, via pinned `pip install --target` into `~/.local/linml-deps`) when an NVIDIA GPU is detected. `linml` loads them itself at startup, so `LD_LIBRARY_PATH` / `source scripts/env-gpu-deps.sh` is no longer required for the TensorRT and CUDA EPs; a library already resolvable by name (your own `LD_LIBRARY_PATH` or a system install) is left alone. Requires `pip3` (or `python3 -m pip`).
+`setup` also vendors the native GPU runtime libraries the NVIDIA providers load (cuDNN 9 and TensorRT 10, via pinned `pip install --target` into `~/.local/linml-deps`) when an NVIDIA GPU is detected. `linml` loads them itself at startup, so `LD_LIBRARY_PATH` / `source scripts/env-gpu-deps.sh` is no longer required for the TensorRT and CUDA EPs; a library already resolvable by name (your own `LD_LIBRARY_PATH` or a system install) is left alone. Requires `pip3` (or `python3 -m pip`); without it that step is reported as skipped and the rest of setup still completes. GPU libraries are only installed on an NVIDIA linux-x64 host, also with `--all`.
 
 OpenVINO is recommended only when an Intel CPU or GPU is detected: the plugin EP registers on other vendors but exposes no devices (observed on AMD Ryzen). `--all` still installs it.
 

@@ -4,6 +4,10 @@ using System.Text;
 
 namespace LinML.Catalog;
 
+/// <summary>pip itself is not installed, so a GPU dependency could not even be attempted.</summary>
+internal sealed class PipUnavailableException(string message, Exception? inner = null)
+    : InvalidOperationException(message, inner);
+
 /// <summary>Result of one pip invocation.</summary>
 internal sealed record PipResult(int ExitCode, string Output);
 
@@ -114,8 +118,8 @@ internal sealed class GpuDependencyInstaller(
         }
         catch (Win32Exception ex)
         {
-            throw new InvalidOperationException(
-                "Neither 'pip3' nor 'python3 -m pip' is available; install python3-pip to vendor GPU dependencies.", ex);
+            throw new PipUnavailableException(
+                "Neither 'pip3' nor 'python3 -m pip' is available; install python3-pip (or run scripts/setup-gpu-deps.sh elsewhere) to vendor GPU libraries.", ex);
         }
     }
 

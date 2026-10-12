@@ -19,15 +19,15 @@ internal static class CudaStickyError
 {
     private static readonly string[] RuntimeNames = ["libcudart.so.13", "libcudart.so.12"];
 
+    private static readonly StickyErrorClearer Shared = new(ResolveCudaRuntime);
+
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate int GetLastErrorFn();
 
-    private static readonly Lazy<GetLastErrorFn?> Entry = new(Resolve);
-
     /// <summary>Clears the sticky error; returns the cleared <c>cudaError_t</c> (0 = none, or CUDA unavailable).</summary>
-    public static int Clear() => Entry.Value?.Invoke() ?? 0;
+    public static int Clear() => Shared.Clear();
 
-    private static GetLastErrorFn? Resolve()
+    private static Func<int>? ResolveCudaRuntime()
     {
         if (!OperatingSystem.IsLinux())
         {
@@ -36,15 +36,41 @@ internal static class CudaStickyError
 
         foreach (string name in RuntimeNames)
         {
-            // The CUDA runtime is already loaded by ORT's CUDA provider when it matters;
-            // this only binds to it and never loads it for a CPU-only host.
+            // Binds to a CUDA runtime that is already loaded (or loadable by name).
             if (NativeLibrary.TryLoad(name, out nint handle)
                 && NativeLibrary.TryGetExport(handle, "cudaGetLastError", out nint export))
             {
-                return Marshal.GetDelegateForFunctionPointer<GetLastErrorFn>(export);
+                return Marshal.GetDelegateForFunctionPointer<GetLastErrorFn>(export).Invoke;
             }
         }
 
         return null;
+    }
+}
+
+/// <summary>
+/// Calls a resolved <c>cudaGetLastError</c>, resolving it lazily and only caching a
+/// success. A lookup that fails (for example a CPU session created before any CUDA
+/// provider has loaded the runtime) is retried on the next call.
+/// </summary>
+internal sealed class StickyErrorClearer(Func<Func<int>?> resolve)
+{
+    private Func<int>? _clear;
+
+    public int Clear()
+    {
+        Func<int>? clear = _clear;
+        if (clear is null)
+        {
+            clear = resolve();
+            if (clear is null)
+            {
+                return 0;
+            }
+
+            _clear = clear;
+        }
+
+        return clear();
     }
 }

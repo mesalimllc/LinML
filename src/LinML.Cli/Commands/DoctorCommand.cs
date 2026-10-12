@@ -206,7 +206,7 @@ public static class DoctorCommand
                 if (report.Devices.Any(d => string.Equals(d.Vendor, "NVIDIA", StringComparison.OrdinalIgnoreCase)))
                 {
                     string depsRoot = string.IsNullOrWhiteSpace(root) ? ExecutionProviderCatalog.DefaultInstallRoot : root;
-                    foreach (var status in GpuDependencyLoader.GetStatus(depsRoot))
+                    foreach (var status in GpuDependencyLoader.GetStatus(depsRoot).Where(g => g.InstalledBySetup))
                     {
                         gpuDependencyReports.Add(new GpuDependencyDoctorReport(
                             Id: status.Id,

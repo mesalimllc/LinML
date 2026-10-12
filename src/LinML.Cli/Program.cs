@@ -20,7 +20,8 @@ public static class Program
         // library, so the CLI works without LD_LIBRARY_PATH from env-gpu-deps.sh.
         if (!IsInformationalInvocation(args))
         {
-            LinML.Catalog.GpuDependencyLoader.PreloadVendored();
+            // An explicit --root outranks LINML_DEPS and the default root.
+            LinML.Catalog.GpuDependencyLoader.PreloadVendored(FindRootArgument(args));
         }
 
         await using var provider = BuildServices();
@@ -48,6 +49,26 @@ public static class Program
         // Version is built-in via RootCommand (--version)
 
         return rootCommand.Parse(args).Invoke();
+    }
+
+    /// <summary>The value of <c>--root</c> / <c>--root=</c> if present (the catalog install root).</summary>
+    internal static string? FindRootArgument(string[] args)
+    {
+        for (int i = 0; i < args.Length; i++)
+        {
+            if (args[i] == "--root")
+            {
+                return i + 1 < args.Length && !string.IsNullOrWhiteSpace(args[i + 1]) ? args[i + 1] : null;
+            }
+
+            if (args[i].StartsWith("--root=", StringComparison.Ordinal))
+            {
+                string value = args[i]["--root=".Length..];
+                return string.IsNullOrWhiteSpace(value) ? null : value;
+            }
+        }
+
+        return null;
     }
 
     private static bool IsInformationalInvocation(string[] args) =>

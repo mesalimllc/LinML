@@ -2,7 +2,10 @@ namespace LinML.Catalog;
 
 /// <summary>
 /// A pinned native GPU runtime dependency (cuDNN, TensorRT) that is vendored as a
-/// pip wheel into <c>~/.local/linml-deps</c>. Mirrors the pins in
+/// pip wheel into <c>~/.local/linml-deps</c>. <see cref="PreloadLibraries"/> are paths
+/// relative to <see cref="InstallDirectory"/>, in load order (a library before the ones
+/// that resolve it by SONAME). <see cref="InstalledBySetup"/> is false for a dependency
+/// only the helper scripts install. Mirrors the pins in
 /// <c>scripts/setup-gpu-deps.sh</c>; <c>ScriptPinAgreementTests</c> keeps them equal.
 /// </summary>
 internal sealed record GpuDependencySpec(
@@ -12,7 +15,8 @@ internal sealed record GpuDependencySpec(
     string? IndexUrl,
     string InstallSubdirectory,
     string SentinelLibrary,
-    IReadOnlyList<string> PreloadLibraries)
+    IReadOnlyList<string> PreloadLibraries,
+    bool InstalledBySetup = true)
 {
     public string InstallDirectory(string installRoot) => Path.Combine(installRoot, InstallSubdirectory);
 
@@ -21,7 +25,7 @@ internal sealed record GpuDependencySpec(
 
     public bool IsInstalled(string installRoot) => File.Exists(SentinelPath(installRoot));
 
-    /// <summary>Directory holding the sentinel and preloaded libraries (the loader-path entry).</summary>
+    /// <summary>Directory holding the sentinel library.</summary>
     public string LibraryDirectory(string installRoot) =>
         Path.GetDirectoryName(SentinelPath(installRoot))!;
 }
@@ -39,7 +43,15 @@ internal static class KnownGpuDependencies
         IndexUrl: null,
         InstallSubdirectory: "cudnn",
         SentinelLibrary: Path.Combine("nvidia", "cudnn", "lib", "libcudnn.so.9"),
-        PreloadLibraries: ["libcudnn.so.9"]);
+        // The wheel also vendors cuBLAS 13 and NVRTC under nvidia/cu13/lib; cuDNN's
+        // engines resolve them by SONAME, so they load first (libcublas needs libcublasLt).
+        PreloadLibraries:
+        [
+            "nvidia/cu13/lib/libcublasLt.so.13",
+            "nvidia/cu13/lib/libcublas.so.13",
+            "nvidia/cu13/lib/libnvrtc.so.13",
+            "nvidia/cudnn/lib/libcudnn.so.9",
+        ]);
 
     /// <summary>TensorRT 10 classic runtime (<c>libnvinfer.so.10</c>), required by the TensorRT EP.</summary>
     public static readonly GpuDependencySpec TensorRt = new(
@@ -49,9 +61,14 @@ internal static class KnownGpuDependencies
         IndexUrl: NvidiaIndex,
         InstallSubdirectory: "tensorrt-libs",
         SentinelLibrary: Path.Combine("tensorrt_libs", "libnvinfer.so.10"),
-        PreloadLibraries: ["libnvinfer.so.10", "libnvinfer_plugin.so.10", "libnvonnxparser.so.10"]);
+        PreloadLibraries:
+        [
+            "tensorrt_libs/libnvinfer.so.10",
+            "tensorrt_libs/libnvinfer_plugin.so.10",
+            "tensorrt_libs/libnvonnxparser.so.10",
+        ]);
 
-    /// <summary>TensorRT 10 lean runtime.</summary>
+    /// <summary>TensorRT 10 lean runtime. Installed by the helper scripts only; nothing in the CLI loads it.</summary>
     public static readonly GpuDependencySpec TensorRtLean = new(
         Id: "tensorrt-lean",
         Description: "TensorRT 10 lean runtime (CUDA 13)",
@@ -59,7 +76,8 @@ internal static class KnownGpuDependencies
         IndexUrl: null,
         InstallSubdirectory: "tensorrt-lean",
         SentinelLibrary: Path.Combine("tensorrt_lean_libs", "libnvinfer_lean.so.10"),
-        PreloadLibraries: []);
+        PreloadLibraries: [],
+        InstalledBySetup: false);
 
     public static IReadOnlyList<GpuDependencySpec> All { get; } = [Cudnn, TensorRt, TensorRtLean];
 }

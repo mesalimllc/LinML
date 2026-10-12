@@ -102,8 +102,11 @@ internal sealed class FakeRegistrar : IOrtRegistrar
 
     public bool IsRegistered(string registrationName) => _registered.Contains(registrationName);
 
+    public List<(string Name, string Path)> Registrations { get; } = [];
+
     public void Register(string registrationName, string libraryPath)
     {
+        Registrations.Add((registrationName, libraryPath));
         if (RegisterThrows is not null)
         {
             throw RegisterThrows;

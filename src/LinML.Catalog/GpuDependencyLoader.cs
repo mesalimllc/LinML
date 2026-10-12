@@ -22,7 +22,7 @@ public static class GpuDependencyLoader
     private static readonly HashSet<string> Loaded = new(StringComparer.Ordinal);
     // Handles stay referenced for the life of the process; the libraries are never unloaded.
     private static readonly List<IntPtr> Handles = [];
-    private static bool _defaultRootDone;
+    private static readonly HashSet<string> Completed = new(StringComparer.Ordinal);
 
     /// <summary>Vendored dependency roots in priority order: <c>LINML_DEPS</c>, then the default root.</summary>
     internal static IReadOnlyList<string> CandidateRoots(string? customRoot = null)
@@ -48,8 +48,10 @@ public static class GpuDependencyLoader
     /// that fails to load is simply left for ORT to report when it is needed.
     /// </summary>
     /// <param name="installRoot">
-    /// Vendored dependency root to search first; <c>null</c> uses <c>LINML_DEPS</c>, then
-    /// <c>~/.local/linml-deps</c>. The default-root form is a no-op after the first call.
+    /// Vendored dependency root to search first, ahead of <c>LINML_DEPS</c> and
+    /// <c>~/.local/linml-deps</c>; <c>null</c> searches only those two. A library already
+    /// loaded in this process (by an earlier call or the caller's own loader path) is
+    /// never replaced, so the first root to supply a SONAME wins.
     /// </param>
     /// <returns>Absolute paths of the libraries loaded from a vendored directory by this call.</returns>
     public static IReadOnlyList<string> PreloadVendored(string? installRoot = null)
@@ -62,22 +64,25 @@ public static class GpuDependencyLoader
         List<string> loadedNow = [];
         lock (Gate)
         {
-            if (installRoot is null && _defaultRootDone)
+            string key = installRoot ?? string.Empty;
+            if (Completed.Contains(key))
             {
                 return loadedNow;
             }
 
-            foreach (GpuDependencySpec spec in KnownGpuDependencies.All)
+            bool allFound = true;
+            foreach (GpuDependencySpec spec in KnownGpuDependencies.All.Where(s => s.PreloadLibraries.Count > 0))
             {
                 string? root = CandidateRoots(installRoot).FirstOrDefault(spec.IsInstalled);
                 if (root is null)
                 {
+                    allFound = false; // may be vendored later in this process; look again next time
                     continue;
                 }
 
-                string directory = spec.LibraryDirectory(root);
-                foreach (string soname in spec.PreloadLibraries)
+                foreach (string relative in spec.PreloadLibraries)
                 {
+                    string soname = Path.GetFileName(relative);
                     if (Loaded.Contains(soname))
                     {
                         continue;
@@ -91,7 +96,7 @@ public static class GpuDependencyLoader
                         continue;
                     }
 
-                    string path = Path.Combine(directory, soname);
+                    string path = Path.Combine(spec.InstallDirectory(root), relative);
                     if (File.Exists(path) && NativeLibrary.TryLoad(path, out IntPtr handle))
                     {
                         Handles.Add(handle);
@@ -101,9 +106,9 @@ public static class GpuDependencyLoader
                 }
             }
 
-            if (installRoot is null)
+            if (allFound)
             {
-                _defaultRootDone = true;
+                Completed.Add(key);
             }
         }
 
@@ -120,10 +125,11 @@ public static class GpuDependencyLoader
                     spec.Id,
                     spec.Description,
                     root is not null,
-                    root is null ? null : spec.LibraryDirectory(root));
+                    root is null ? null : spec.LibraryDirectory(root),
+                    spec.InstalledBySetup);
             })
             .ToList();
 }
 
 /// <summary>Whether one GPU runtime dependency is vendored, and where.</summary>
-internal sealed record GpuDependencyStatus(string Id, string Description, bool Installed, string? LibraryDirectory);
+internal sealed record GpuDependencyStatus(string Id, string Description, bool Installed, string? LibraryDirectory, bool InstalledBySetup);

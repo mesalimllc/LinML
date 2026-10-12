@@ -176,71 +176,8 @@ public static class SetupCommand
             var gpuInstaller = new GpuDependencyInstaller();
             foreach (var rec in gpuRecommendations)
             {
-                string installDir = rec.Spec.InstallDirectory(installRoot);
-                string libraryPath = rec.Spec.SentinelPath(installRoot);
-                bool alreadyInstalled = rec.Spec.IsInstalled(installRoot);
-
-                if (dryRun || (alreadyInstalled && !force))
-                {
-                    string plannedStatus = alreadyInstalled && !force ? "AlreadyInstalled" : "WouldInstall";
-                    if (!json)
-                    {
-                        Console.WriteLine(plannedStatus == "AlreadyInstalled"
-                            ? $"  • {rec.Spec.Id}: Already installed ({installDir})"
-                            : $"  • {rec.Spec.Id} ({rec.Spec.PipPackage}): Would pip-install to {installDir}");
-                    }
-
-                    actions.Add(new SetupActionResultDto(
-                        Provider: rec.Spec.Id,
-                        Version: rec.Spec.PipPackage,
-                        Status: plannedStatus,
-                        LibraryPath: libraryPath,
-                        InstallDirectory: installDir,
-                        Reason: rec.Reason,
-                        Error: null));
-                    continue;
-                }
-
-                if (!json)
-                {
-                    Console.Write($"  • {rec.Spec.Id} ({rec.Spec.PipPackage}): Installing (this can take several minutes)... ");
-                }
-
-                try
-                {
-                    bool installed = await gpuInstaller.InstallAsync(rec.Spec, installRoot, CancellationToken.None, force: force);
-                    if (!json)
-                    {
-                        Console.WriteLine("Done");
-                        Console.WriteLine($"    Path: {installDir}");
-                    }
-
-                    actions.Add(new SetupActionResultDto(
-                        Provider: rec.Spec.Id,
-                        Version: rec.Spec.PipPackage,
-                        Status: installed ? "Installed" : "AlreadyInstalled",
-                        LibraryPath: libraryPath,
-                        InstallDirectory: installDir,
-                        Reason: rec.Reason,
-                        Error: null));
-                }
-                catch (Exception ex) when (ex is InvalidOperationException or IOException or UnauthorizedAccessException)
-                {
-                    allSucceeded = false;
-                    if (!json)
-                    {
-                        Console.WriteLine($"FAILED: {ex.Message}");
-                    }
-
-                    actions.Add(new SetupActionResultDto(
-                        Provider: rec.Spec.Id,
-                        Version: rec.Spec.PipPackage,
-                        Status: "Failed",
-                        LibraryPath: libraryPath,
-                        InstallDirectory: installDir,
-                        Reason: rec.Reason,
-                        Error: ex.Message));
-                }
+                allSucceeded &= await ProcessGpuDependencyAsync(
+                    rec, installRoot, dryRun, force, json, gpuInstaller, actions);
             }
 
             // For ARM64 systems with no recommendations (not --all), we still need to process
@@ -317,13 +254,117 @@ public static class SetupCommand
         return setupCommand;
     }
 
+    /// <summary>
+    /// Plans or installs one GPU runtime dependency and records the outcome in
+    /// <paramref name="actions"/>. A missing pip is a <c>Skipped</c> step, not a failure.
+    /// </summary>
+    /// <returns>False only when the install genuinely failed.</returns>
+    internal static async Task<bool> ProcessGpuDependencyAsync(
+        GpuDependencyRecommendation rec,
+        string installRoot,
+        bool dryRun,
+        bool force,
+        bool json,
+        GpuDependencyInstaller installer,
+        List<SetupActionResultDto> actions)
+    {
+        bool succeeded = true;
+        string installDir = rec.Spec.InstallDirectory(installRoot);
+        string libraryPath = rec.Spec.SentinelPath(installRoot);
+        bool alreadyInstalled = rec.Spec.IsInstalled(installRoot);
+
+        if (dryRun || (alreadyInstalled && !force))
+        {
+            string plannedStatus = alreadyInstalled && !force ? "AlreadyInstalled" : "WouldInstall";
+            if (!json)
+            {
+                Console.WriteLine(plannedStatus == "AlreadyInstalled"
+                    ? $"  • {rec.Spec.Id}: Already installed ({installDir})"
+                    : $"  • {rec.Spec.Id} ({rec.Spec.PipPackage}): Would pip-install to {installDir}");
+            }
+
+            actions.Add(new SetupActionResultDto(
+                Provider: rec.Spec.Id,
+                Version: rec.Spec.PipPackage,
+                Status: plannedStatus,
+                LibraryPath: libraryPath,
+                InstallDirectory: installDir,
+                Reason: rec.Reason,
+                Error: null));
+            return true;
+        }
+
+        if (!json)
+        {
+            Console.Write($"  • {rec.Spec.Id} ({rec.Spec.PipPackage}): Installing (this can take several minutes)... ");
+        }
+
+        try
+        {
+            bool installed = await installer.InstallAsync(rec.Spec, installRoot, CancellationToken.None, force: force);
+            if (!json)
+            {
+                Console.WriteLine("Done");
+                Console.WriteLine($"    Path: {installDir}");
+            }
+
+            actions.Add(new SetupActionResultDto(
+                Provider: rec.Spec.Id,
+                Version: rec.Spec.PipPackage,
+                Status: installed ? "Installed" : "AlreadyInstalled",
+                LibraryPath: libraryPath,
+                InstallDirectory: installDir,
+                Reason: rec.Reason,
+                Error: null));
+        }
+        catch (PipUnavailableException ex)
+        {
+            // Not a failed install: the prerequisite is absent. Report it, keep exit 0.
+            if (!json)
+            {
+                Console.WriteLine($"SKIPPED: {ex.Message}");
+            }
+
+            actions.Add(new SetupActionResultDto(
+                Provider: rec.Spec.Id,
+                Version: rec.Spec.PipPackage,
+                Status: "Skipped",
+                LibraryPath: libraryPath,
+                InstallDirectory: installDir,
+                Reason: rec.Reason,
+                Error: ex.Message));
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or IOException or UnauthorizedAccessException)
+        {
+            succeeded = false;
+            if (!json)
+            {
+                Console.WriteLine($"FAILED: {ex.Message}");
+            }
+
+            actions.Add(new SetupActionResultDto(
+                Provider: rec.Spec.Id,
+                Version: rec.Spec.PipPackage,
+                Status: "Failed",
+                LibraryPath: libraryPath,
+                InstallDirectory: installDir,
+                Reason: rec.Reason,
+                Error: ex.Message));
+        }
+
+        return succeeded;
+    }
+
     internal static HostHardwareInfo ProbeHostHardware(ServiceProvider services)
     {
         var cpu = ProbeCpu();
 
         var discovery = services.GetRequiredService<IProviderDiscovery>();
         var report = discovery.Discover();
-        var devices = report.Devices;
+
+        // Discovery reports NVIDIA devices only; add Intel GPUs / NPUs so the OpenVINO
+        // recommendation also covers an Intel accelerator next to a non-Intel CPU.
+        var devices = report.Devices.Concat(ProbeIntelDevices()).ToList();
 
         bool hasKfd = Directory.Exists("/sys/class/kfd") || File.Exists("/dev/kfd");
         bool hasRocmUserspace = Directory.Exists("/opt/rocm")
@@ -336,6 +377,52 @@ public static class SetupCommand
                       || File.Exists("/proc/sys/fs/binfmt_misc/WSLInterop");
 
         return new HostHardwareInfo(cpu, devices, hasAmdRocm, isWsl2);
+    }
+
+    /// <summary>
+    /// Intel GPUs (DRM) and NPUs (accel) from sysfs, by PCI vendor id 0x8086. Returns
+    /// nothing where those classes are absent, as under WSL2.
+    /// </summary>
+    internal static IReadOnlyList<DeviceIdentity> ProbeIntelDevices(string sysClassRoot = "/sys/class")
+    {
+        var found = new List<DeviceIdentity>();
+        foreach (var (className, label) in new[] { ("drm", "GPU"), ("accel", "NPU") })
+        {
+            string classDir = Path.Combine(sysClassRoot, className);
+            if (!Directory.Exists(classDir))
+            {
+                continue;
+            }
+
+            try
+            {
+                foreach (string device in Directory.EnumerateDirectories(classDir))
+                {
+                    string name = Path.GetFileName(device);
+                    // card0, accel0 - not connector nodes such as card0-HDMI-A-1 or renderD128.
+                    if (!System.Text.RegularExpressions.Regex.IsMatch(name, @"^(card|accel)\d+$"))
+                    {
+                        continue;
+                    }
+
+                    string vendorFile = Path.Combine(device, "device", "vendor");
+                    if (File.Exists(vendorFile)
+                        && string.Equals(File.ReadAllText(vendorFile).Trim(), "0x8086", StringComparison.OrdinalIgnoreCase))
+                    {
+                        found.Add(new DeviceIdentity { Id = name, Name = $"Intel {label} ({name})", Vendor = "Intel" });
+                    }
+                }
+            }
+            catch (IOException)
+            {
+                // Unreadable sysfs entries mean "not detected".
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
+        }
+
+        return found;
     }
 
     internal static CpuInfo ProbeCpu()
@@ -448,12 +535,15 @@ public static class SetupCommand
             {
                 // WSL2: stock trt-rtx wheel is blocked; built-in CUDA EP is active.
             }
-            else if (IsRtxAmpereOrNewer(nvidiaGpu.Name))
+            else if (hardware.Devices.FirstOrDefault(d =>
+                         string.Equals(d.Vendor, "NVIDIA", StringComparison.OrdinalIgnoreCase)
+                         && IsRtxAmpereOrNewer(d.Name)) is { } rtxGpu)
             {
+                // Any supported card counts, not only the first NVIDIA device reported.
                 list.Add(new ProviderRecommendation(
                     Spec: KnownPlugins.TensorrtRtx,
                     ShortName: "trt-rtx",
-                    Reason: $"NVIDIA RTX GPU detected ({nvidiaGpu.Name})",
+                    Reason: $"NVIDIA RTX GPU detected ({rtxGpu.Name})",
                     Note: null));
             }
         }
@@ -489,8 +579,8 @@ public static class SetupCommand
             return false;
         }
 
-        var nvidiaGpu = hardware.Devices.FirstOrDefault(d => string.Equals(d.Vendor, "NVIDIA", StringComparison.OrdinalIgnoreCase));
-        return nvidiaGpu is not null && IsRtxAmpereOrNewer(nvidiaGpu.Name);
+        return hardware.Devices.Any(d =>
+            string.Equals(d.Vendor, "NVIDIA", StringComparison.OrdinalIgnoreCase) && IsRtxAmpereOrNewer(d.Name));
     }
 
     // The patched EP links the TensorRT-RTX runtime only the stock wheel bundles, so
@@ -544,13 +634,8 @@ public static class SetupCommand
     /// </summary>
     internal static List<GpuDependencyRecommendation> DetermineGpuDependencies(HostHardwareInfo hardware, bool all)
     {
-        if (all)
-        {
-            return KnownGpuDependencies.All
-                .Select(spec => new GpuDependencyRecommendation(spec, "Requested via --all"))
-                .ToList();
-        }
-
+        // Even under --all: these are multi-gigabyte NVIDIA-only wheels that need pip,
+        // so they are never pulled onto a host without an NVIDIA GPU.
         bool isLinuxX64 = OperatingSystem.IsLinux()
             && string.Equals(hardware.Cpu.Architecture, "x64", StringComparison.OrdinalIgnoreCase);
         var nvidiaGpu = hardware.Devices.FirstOrDefault(d => string.Equals(d.Vendor, "NVIDIA", StringComparison.OrdinalIgnoreCase));
@@ -559,12 +644,11 @@ public static class SetupCommand
             return [];
         }
 
-        string reason = $"NVIDIA GPU detected ({nvidiaGpu.Name})";
-        return
-        [
-            new GpuDependencyRecommendation(KnownGpuDependencies.Cudnn, reason),
-            new GpuDependencyRecommendation(KnownGpuDependencies.TensorRt, reason),
-        ];
+        string reason = all ? "Requested via --all" : $"NVIDIA GPU detected ({nvidiaGpu.Name})";
+        return KnownGpuDependencies.All
+            .Where(spec => spec.InstalledBySetup)
+            .Select(spec => new GpuDependencyRecommendation(spec, reason))
+            .ToList();
     }
 
     /// <summary>Recommendations deliberately withheld, with the reason, so the omission is visible.</summary>
@@ -766,6 +850,11 @@ public static class SetupCommand
             int alreadyInstalled = actions.Count(a => a.Status == "AlreadyInstalled");
             Console.WriteLine($"Dry run complete: {alreadyInstalled} up-to-date, {wouldInstall} would be installed.");
             Console.WriteLine("Run 'linml setup' to execute the installation.");
+        }
+        else if (allSucceeded && actions.Any(a => a.Status == "Skipped"))
+        {
+            Console.WriteLine("Setup finished, but some steps were skipped (see above); the rest are ready.");
+            Console.WriteLine("Run 'linml doctor' to test readiness.");
         }
         else if (allSucceeded)
         {

@@ -29,7 +29,8 @@ add_path() {
 
 # cuDNN 9.x (required by CUDA EP Conv kernels) + cuBLAS (pip wheels)
 add_path "$DEPS/cudnn/nvidia/cudnn/lib"
-add_path "$DEPS/cudnn/nvidia/cublas/lib"
+add_path "$DEPS/cudnn/nvidia/cu13/lib"      # cuBLAS 13 / NVRTC (current wheel layout)
+add_path "$DEPS/cudnn/nvidia/cublas/lib"    # older wheel layout
 
 # TensorRT 10.x classic (libnvinfer.so.10) — required by TensorrtExecutionProvider
 add_path "$DEPS/tensorrt-libs/tensorrt_libs"
@@ -94,10 +95,31 @@ fi
 # recognised by LinML's discovery or doctor.
 OPENVINO_EP="$DEPS/ep-plugins/openvino/onnxruntime_ep_openvino/libonnxruntime_providers_openvino_plugin.so"
 if [ -f "$OPENVINO_EP" ]; then
-    case ";${LINML_EP_LIBRARIES:-};" in
-        *";linml.openvino="*|*";OpenVINOExecutionProvider="*|*";openvino="*) ;;
-        *) LINML_EP_LIBRARIES="linml.openvino=$OPENVINO_EP${LINML_EP_LIBRARIES:+;$LINML_EP_LIBRARIES}" ;;
-    esac
+    # Drop a stale bare "openvino=" mapping (exported by an older version of this
+    # script, which LinML does not recognise) while preserving every other provider
+    # mapping, including an intentional canonical OpenVINO override.
+    _linml_has_ov=""
+    if [ -n "${LINML_EP_LIBRARIES:-}" ]; then
+        _linml_rest=""
+        _linml_old_ifs="$IFS"
+        IFS=';'
+        for _linml_pair in $LINML_EP_LIBRARIES; do
+            case "$_linml_pair" in
+                openvino=*) ;;  # stale alias, drop
+                linml.openvino=*|OpenVINOExecutionProvider=*)
+                    _linml_has_ov=1
+                    _linml_rest="${_linml_rest:+$_linml_rest;}$_linml_pair" ;;
+                *) _linml_rest="${_linml_rest:+$_linml_rest;}$_linml_pair" ;;
+            esac
+        done
+        IFS="$_linml_old_ifs"
+        LINML_EP_LIBRARIES="$_linml_rest"
+        unset _linml_pair _linml_rest _linml_old_ifs
+    fi
+    if [ -z "$_linml_has_ov" ]; then
+        LINML_EP_LIBRARIES="linml.openvino=$OPENVINO_EP${LINML_EP_LIBRARIES:+;$LINML_EP_LIBRARIES}"
+    fi
+    unset _linml_has_ov
     export LINML_EP_LIBRARIES
 fi
 

@@ -9,12 +9,20 @@ All notable changes to LinML are documented here. This project follows [Semantic
 - **Vendored GPU libraries load without `LD_LIBRARY_PATH`** — the CLI, `ExecutionProviderCatalog`, session creation and the readiness probes preload them (SONAME-matched; public `GpuDependencyLoader.PreloadVendored()` for apps that open ORT sessions themselves), so `TensorrtExecutionProvider` no longer fails with `libnvinfer.so.10: cannot open shared object file` unless the env script was sourced. A library the loader already resolves by name is left alone.
 - **`linml setup --trt-rtx-wsl2`** — opt in to the patched TensorRT-RTX EP for WSL2 from the CLI (SHA-256 verified; installs the stock wheel's runtime libraries first). Detected WSL2 + RTX hosts see it under "Opt-in available"; it is never installed without the flag. On WSL2 the patched build is now preferred over the stock wheel by library resolution and `doctor`, without needing `env-gpu-deps.sh`.
 - **`linml doctor`** reports a "GPU runtime libraries" section on NVIDIA hosts.
+- `--root` is honoured for GPU libraries: `ExecutionProviderCatalog.Create(root)` and any CLI command given `--root` preload from that root ahead of `LINML_DEPS` and the default root.
+- cuDNN setup also preloads the cuBLAS 13 / NVRTC libraries its wheel vendors under `nvidia/cu13/lib` (`env-gpu-deps.sh` now adds that directory too).
+- `setup` detects Intel GPUs and NPUs from sysfs, so OpenVINO is recommended next to a non-Intel CPU when an Intel accelerator is present.
 
 ### Changed
 - **`linml setup` recommends OpenVINO only for Intel hardware.** The plugin EP registers but exposes no devices on AMD CPUs; the skip is printed, and `--all` still installs it.
 - Plugin extraction also keeps top-level `*.md` notices (e.g. `PATCH-NOTICE.md`) and the one-level `licenses/` directory, so redistributed plugins keep their licence and third-party notices. Re-run `linml setup --force` (or `--trt-rtx-wsl2 --force`) to add them to an existing install.
 
 ### Fixed
+- `setup` no longer fails when pip is missing: the GPU library step is reported as `Skipped` and the exit code is unchanged. GPU libraries are only ever recommended on linux-x64 with an NVIDIA GPU, even with `--all`, and the script-only `tensorrt-lean` is no longer installed by `setup`.
+- WSL2 eligibility for the patched TRT-RTX plugin, and the stock `trt-rtx` recommendation, consider every NVIDIA device rather than the first.
+- On WSL2 an inherited `LINML_EP_LIBRARIES` mapping that points at the stock wheel no longer hides an installed patched build; an explicit `--ep-library`, `TRT_RTX_CUSTOM_EP` or any other custom path still wins. Registering the patched build without the stock runtime reports a clear error instead of a native load failure.
+- The CUDA sticky-error clearing retries its CUDA runtime lookup instead of caching an early failure (for example a CPU session created first).
+- Re-sourcing `env-gpu-deps.sh` replaces a stale `openvino=` mapping while keeping other mappings and any canonical OpenVINO override.
 - **`bench --all-ready` failed the CUDA entry on WSL2** with `CUDA failure 101: invalid device ordinal` whenever TensorRT ran first. The TensorRT EP leaves a handled error latched in the thread's CUDA state (WSL2 virtual PCI bus id lookup) and the CUDA EP then reported it as its own; the stale error is now cleared after each session is created.
 - `scripts/env-gpu-deps.sh` registered OpenVINO under the alias `openvino`, which LinML discovery does not attribute to the plugin; it now uses the catalog name `linml.openvino`.
 

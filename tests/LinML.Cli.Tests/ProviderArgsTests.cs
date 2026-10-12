@@ -7,6 +7,7 @@ namespace LinML.Cli.Tests;
 /// <summary>
 /// Tests for ProviderArgs: provider aliases, EP library and EP option parsing.
 /// </summary>
+[Collection("WslProbe")]
 public class ProviderArgsTests
 {
     [Theory]
@@ -387,5 +388,69 @@ public class ProviderArgsTests
                 Directory.Delete(tempDir, recursive: true);
             }
         }
+    }
+
+    // ---- WSL2 build preference (fakes the WSL2 probe so it runs on any host) ----
+
+    private sealed class WslLayout : IDisposable
+    {
+        private readonly string? _envBefore = Environment.GetEnvironmentVariable(ProviderArgs.EpLibrariesEnvVar);
+        private readonly string? _customBefore = Environment.GetEnvironmentVariable("TRT_RTX_CUSTOM_EP");
+        private readonly Func<bool> _probeBefore = LinML.Catalog.PluginExecutionProvider.WslProbe;
+
+        public string Root { get; } = Path.Combine(Path.GetTempPath(), "linml-test-wsl-" + Guid.NewGuid().ToString("N"));
+        public string Stock => Path.Combine(Root, "ep-plugins", "trt-rtx", "onnxruntime_ep_nv_tensorrt_rtx", "libonnxruntime_providers_nv_tensorrt_rtx.so");
+        public string Patched => Path.Combine(Root, "ep-plugins", "trt-rtx-wsl2", "linml_trt_rtx_ep", "libonnxruntime_providers_nv_tensorrt_rtx.so");
+
+        public WslLayout(bool installStock = true, bool installPatched = true)
+        {
+            LinML.Catalog.PluginExecutionProvider.WslProbe = () => true;
+            Environment.SetEnvironmentVariable("TRT_RTX_CUSTOM_EP", null);
+            foreach (var (path, install) in new[] { (Stock, installStock), (Patched, installPatched) })
+            {
+                if (install)
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                    File.WriteAllText(path, "not-a-real-elf");
+                }
+            }
+        }
+
+        public void SetEnv(string? value) => Environment.SetEnvironmentVariable(ProviderArgs.EpLibrariesEnvVar, value);
+
+        public void Dispose()
+        {
+            LinML.Catalog.PluginExecutionProvider.WslProbe = _probeBefore;
+            Environment.SetEnvironmentVariable(ProviderArgs.EpLibrariesEnvVar, _envBefore);
+            Environment.SetEnvironmentVariable("TRT_RTX_CUSTOM_EP", _customBefore);
+            Directory.Delete(Root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void ResolveEpLibraries_Wsl_InheritedStockMapping_IsReplacedByInstalledPatch()
+    {
+        using var layout = new WslLayout();
+        layout.SetEnv($"NvTensorRTRTXExecutionProvider={layout.Stock}");
+
+        var result = ProviderArgs.ResolveEpLibraries([], ProviderId.TensorrtRtx, layout.Root);
+
+        Assert.Equal(layout.Patched, result["NvTensorRTRTXExecutionProvider"]);
+        Assert.Single(result);
+    }
+
+    [Fact]
+    public void ResolveEpLibraries_Wsl_ExplicitAndNonStockMappings_StayAuthoritative()
+    {
+        using var layout = new WslLayout();
+
+        layout.SetEnv("NvTensorRTRTXExecutionProvider=/opt/my-own/libonnxruntime_providers_nv_tensorrt_rtx.so");
+        var inherited = ProviderArgs.ResolveEpLibraries([], ProviderId.TensorrtRtx, layout.Root);
+        Assert.Equal("/opt/my-own/libonnxruntime_providers_nv_tensorrt_rtx.so", inherited["NvTensorRTRTXExecutionProvider"]);
+
+        layout.SetEnv($"NvTensorRTRTXExecutionProvider={layout.Stock}");
+        var explicitArg = ProviderArgs.ResolveEpLibraries(
+            [$"NvTensorRTRTXExecutionProvider={layout.Stock}"], ProviderId.TensorrtRtx, layout.Root);
+        Assert.Equal(layout.Stock, explicitArg["NvTensorRTRTXExecutionProvider"]);
     }
 }

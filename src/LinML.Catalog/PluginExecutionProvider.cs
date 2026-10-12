@@ -41,6 +41,29 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
             ? _spec.LibraryPath(_installRoot)
             : (_installRoot == ExecutionProviderCatalog.DefaultInstallRoot ? _spec.FindLibrary() : null));
 
+    // The stock wheel's runtime libraries, looked up like LibraryPath: strictly under this
+    // catalog's root, widening to the default roots only for the default catalog.
+    private string? StockRuntimeDirectory()
+    {
+        string own = KnownPlugins.TensorrtRtx.LibraryPath(_installRoot);
+        if (File.Exists(own))
+        {
+            return Path.GetDirectoryName(own);
+        }
+
+        return _installRoot == ExecutionProviderCatalog.DefaultInstallRoot
+            ? KnownPlugins.WslVariantRuntimeDirectory()
+            : null;
+    }
+
+    // The WSL2 build lives in <root>/ep-plugins/trt-rtx-wsl2/linml_trt_rtx_ep, wherever the root is.
+    private bool IsWslVariant(string library) =>
+        _spec.Id == ProviderId.TensorrtRtx
+        && string.Equals(
+            Path.GetFileName(Path.GetDirectoryName(library)),
+            Path.GetFileName(KnownPlugins.TensorrtRtxWsl2.InstallSubdirectory),
+            StringComparison.Ordinal);
+
     // The opted-in WSL2 build wins over the stock wheel on WSL2 hosts.
     private string? WslVariantLibraryPath()
     {
@@ -110,10 +133,17 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
             // native loader merely because they share the plugin directory.
             // Load them explicitly before ORT loads the plugin.
             string bundledDir = Path.GetDirectoryName(library) ?? _spec.InstallDirectory(_installRoot);
-            if (string.Equals(library, KnownPlugins.WslVariantLibrary(_spec.Id, _installRoot), StringComparison.Ordinal)
-                && KnownPlugins.WslVariantRuntimeDirectory(_installRoot) is { } runtimeDir)
+            if (IsWslVariant(library))
             {
-                // The WSL2 build links the TensorRT-RTX runtime the stock wheel bundles.
+                // The WSL2 build links the TensorRT-RTX runtime that only the stock wheel
+                // bundles; without it the native load fails opaquely.
+                if (StockRuntimeDirectory() is not { } runtimeDir)
+                {
+                    failureReason = $"The WSL2 build of {Id} is vendored at {library}, but the stock {Id} wheel "
+                        + "that supplies its runtime libraries is not. Run 'linml setup --trt-rtx-wsl2'.";
+                    return false;
+                }
+
                 _bundledLibraryHandles.AddRange(PluginInstaller.LoadBundledLibraries(runtimeDir, _spec.LibraryFileName));
             }
 
@@ -222,7 +252,12 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
     private static bool IsLinuxX64() =>
         OperatingSystem.IsLinux() && RuntimeInformation.ProcessArchitecture == Architecture.X64;
 
-    internal static bool IsWsl()
+    /// <summary>Whether this host is WSL2. Replaceable so tests can exercise WSL-only selection anywhere.</summary>
+    internal static Func<bool> WslProbe { get; set; } = DetectWsl;
+
+    internal static bool IsWsl() => WslProbe();
+
+    private static bool DetectWsl()
     {
         try
         {
