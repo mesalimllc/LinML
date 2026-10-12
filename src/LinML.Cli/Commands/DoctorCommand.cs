@@ -219,7 +219,11 @@ public static class DoctorCommand
 
                 bool vendoredPresent = gpuDependencyReports.Any(g => g.Status == "Present")
                     || catalogReports.Any(c => c.LibraryPath is not null);
-                var hints = DoctorHints.Build(readinessReports, vendoredPresent, DoctorHints.LocateEnvScript());
+                var hints = DoctorHints.Build(
+                    readinessReports,
+                    vendoredPresent,
+                    DoctorHints.LocateEnvScript(),
+                    catalogReports);
 
                 var result = new
                 {

@@ -21,6 +21,13 @@ internal static class DoctorHints
         && report.FailureReason is { } reason
         && LoaderFailureMarkers.Any(m => reason.Contains(m, StringComparison.Ordinal));
 
+    /// <summary>True when an installed catalog plugin failed to load its native library.</summary>
+    internal static bool IsLoaderFailure(CatalogDoctorReport report) =>
+        report.Status == "NotReady"
+        && report.LibraryPath is not null
+        && report.Details is { } details
+        && LoaderFailureMarkers.Any(m => details.Contains(m, StringComparison.Ordinal));
+
     /// <summary>
     /// Returns the hints to print: empty unless something is vendored on disk
     /// (<paramref name="vendoredPresent"/>) yet a provider failed to load a native library.
@@ -28,12 +35,15 @@ internal static class DoctorHints
     /// <param name="readiness">Per-provider readiness reports.</param>
     /// <param name="vendoredPresent">Whether any vendored GPU library or plugin EP exists on disk.</param>
     /// <param name="envScriptPath">Path to <c>env-gpu-deps.sh</c> if it can be located; otherwise <c>null</c>.</param>
+    /// <param name="catalog">Catalog plugin reports, including installed plugins that failed registration.</param>
     internal static IReadOnlyList<string> Build(
         IEnumerable<ProviderReadinessReport> readiness,
         bool vendoredPresent,
-        string? envScriptPath)
+        string? envScriptPath,
+        IEnumerable<CatalogDoctorReport>? catalog = null)
     {
-        if (!vendoredPresent || !readiness.Any(IsLoaderFailure))
+        if (!vendoredPresent
+            || (!readiness.Any(IsLoaderFailure) && !(catalog?.Any(IsLoaderFailure) ?? false)))
         {
             return [];
         }
