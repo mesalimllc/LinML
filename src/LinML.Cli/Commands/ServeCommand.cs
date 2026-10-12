@@ -64,12 +64,12 @@ public static class ServeCommand
                     return 2;
                 }
 
-                var epLibraries = ProviderArgs.ParseEpLibraries(epLibraryArgs);
+                var preferredProvider = ProviderArgs.ParseProvider(providerName);
+                var epLibraries = ProviderArgs.ResolveEpLibraries(epLibraryArgs, preferredProvider);
                 ProviderArgs.EnsureEpLibrariesRegistered(epLibraries);
                 var epOptions = ProviderArgs.ParseEpOptions(epOptionArgs);
 
                 var modelIdentity = await InputFiles.IdentifyModelAsync(model);
-                var preferredProvider = ProviderArgs.ParseProvider(providerName);
 
                 var selection = InferencePipeline.Select(
                     provider, modelIdentity, preferredProvider, requireProvider, epOptions);

@@ -20,6 +20,68 @@ internal sealed record PluginPackageSpec(
     public string InstallDirectory(string installRoot) => Path.Combine(installRoot, InstallSubdirectory);
 
     public string LibraryPath(string installRoot) => Path.Combine(InstallDirectory(installRoot), LibraryFileName);
+
+    public static readonly IReadOnlyList<string> DefaultCandidateRoots =
+    [
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "linml-deps"),
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".cache", "linml"),
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".cache", "linml", "ep-plugins")
+    ];
+
+    public string? FindLibrary(string? customRoot = null)
+    {
+        var candidateRoots = new List<string>();
+        if (!string.IsNullOrWhiteSpace(customRoot))
+        {
+            candidateRoots.Add(customRoot);
+        }
+
+        var envPlugin = Environment.GetEnvironmentVariable("LINML_PLUGIN_ROOT");
+        if (!string.IsNullOrWhiteSpace(envPlugin))
+        {
+            candidateRoots.Add(envPlugin);
+        }
+
+        var envDeps = Environment.GetEnvironmentVariable("LINML_DEPS");
+        if (!string.IsNullOrWhiteSpace(envDeps))
+        {
+            candidateRoots.Add(envDeps);
+        }
+
+        candidateRoots.AddRange(DefaultCandidateRoots);
+
+        foreach (var root in candidateRoots)
+        {
+            if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root))
+            {
+                continue;
+            }
+
+            var standardPath = LibraryPath(root);
+            if (File.Exists(standardPath))
+            {
+                return standardPath;
+            }
+
+            if (InstallSubdirectory.StartsWith("ep-plugins" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            {
+                var relSub = InstallSubdirectory.Substring("ep-plugins".Length + 1);
+                var subPath = Path.Combine(root, relSub, LibraryFileName);
+                if (File.Exists(subPath))
+                {
+                    return subPath;
+                }
+            }
+
+            var directPath = Path.Combine(root, LibraryFileName);
+            if (File.Exists(directPath))
+            {
+                return directPath;
+            }
+        }
+
+        return null;
+    }
 }
 
 /// <summary>Plugin EPs the catalog knows. Keep in sync with <c>scripts/fetch-ep-plugins.sh</c>.</summary>

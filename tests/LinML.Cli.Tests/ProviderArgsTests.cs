@@ -184,4 +184,62 @@ public class ProviderArgsTests
             ProviderArgs.EnsureEpLibrariesRegistered(
                 new Dictionary<string, string> { ["bogus"] = "/nonexistent/libbogus.so" }));
     }
+
+    [Fact]
+    public void GetShortName_ReturnsExpectedAliases()
+    {
+        Assert.Equal("cpu", ProviderArgs.GetShortName(ProviderId.Cpu));
+        Assert.Equal("cuda", ProviderArgs.GetShortName(ProviderId.Cuda));
+        Assert.Equal("tensorrt", ProviderArgs.GetShortName(ProviderId.Tensorrt));
+        Assert.Equal("trt-rtx", ProviderArgs.GetShortName(ProviderId.TensorrtRtx));
+        Assert.Equal("openvino", ProviderArgs.GetShortName(ProviderId.OpenVino));
+        Assert.Equal("migraphx", ProviderArgs.GetShortName(ProviderId.MigraphX));
+        Assert.Equal("qnn", ProviderArgs.GetShortName(ProviderId.Qnn));
+        Assert.Equal("CustomEP", ProviderArgs.GetShortName(new ProviderId("CustomEP")));
+    }
+
+    [Fact]
+    public void ResolveEpLibraries_BuiltInProvider_DoesNotAutoResolve()
+    {
+        var result = ProviderArgs.ResolveEpLibraries([], ProviderId.Cpu);
+        Assert.Empty(result);
+
+        result = ProviderArgs.ResolveEpLibraries([], ProviderId.Cuda);
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public void ResolveEpLibraries_ExplicitArg_OverridesAutoResolution()
+    {
+        var result = ProviderArgs.ResolveEpLibraries(
+            ["NvTensorRTRTXExecutionProvider=/custom/override.so"],
+            ProviderId.TensorrtRtx);
+
+        Assert.Equal("/custom/override.so", result["NvTensorRTRTXExecutionProvider"]);
+    }
+
+    [Fact]
+    public void ResolveEpLibraries_AutoResolvesFromCustomCatalogCache()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "linml-test-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var fakeTrtDir = Path.Combine(tempRoot, "ep-plugins", "trt-rtx", "onnxruntime_ep_nv_tensorrt_rtx");
+            Directory.CreateDirectory(fakeTrtDir);
+            var fakeSo = Path.Combine(fakeTrtDir, "libonnxruntime_providers_nv_tensorrt_rtx.so");
+            File.WriteAllText(fakeSo, "fake-so-content");
+
+            var result = ProviderArgs.ResolveEpLibraries([], ProviderId.TensorrtRtx, customRoot: tempRoot);
+
+            Assert.True(result.ContainsKey("NvTensorRTRTXExecutionProvider"));
+            Assert.Equal(fakeSo, result["NvTensorRTRTXExecutionProvider"]);
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
 }

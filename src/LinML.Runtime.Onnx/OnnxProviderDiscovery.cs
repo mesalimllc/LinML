@@ -40,8 +40,8 @@ public sealed class OnnxProviderDiscovery : IProviderDiscovery
             }
 
             // Plugin EPs registered via OrtEnv.RegisterExecutionProviderLibrary
-            // may not appear in GetAvailableProviders; merge EP devices so
-            // discovery reflects them (e.g. NvTensorRTRTXExecutionProvider).
+            // may not appear in GetAvailableProviders; merge EP devices and
+            // registered plugin names so discovery reflects them.
             foreach (var epDevice in OrtEnv.Instance().GetEpDevices())
             {
                 var id = new ProviderId(epDevice.EpName);
@@ -52,6 +52,21 @@ public sealed class OnnxProviderDiscovery : IProviderDiscovery
                     {
                         Phase = "discovery",
                         Message = $"Found plugin EP device: {epDevice.EpName} (vendor: {epDevice.EpVendor})",
+                        Severity = DiagnosticSeverity.Info
+                    });
+                }
+            }
+
+            foreach (var registeredName in PluginEpRegistry.RegisteredNames)
+            {
+                var id = new ProviderId(registeredName);
+                if (!availableProviders.Contains(id))
+                {
+                    availableProviders.Add(id);
+                    diagnostics.Add(new DiagnosticEntry
+                    {
+                        Phase = "discovery",
+                        Message = $"Found registered plugin EP: {registeredName}",
                         Severity = DiagnosticSeverity.Info
                     });
                 }

@@ -173,6 +173,42 @@ public class ExitCodeTests
         using var doc = JsonDocument.Parse(stdout);
         Assert.True(doc.RootElement.TryGetProperty("discovery", out _));
         Assert.True(doc.RootElement.TryGetProperty("readiness", out _));
+        Assert.True(doc.RootElement.TryGetProperty("catalog", out var catalog));
+        Assert.True(catalog.GetArrayLength() > 0);
+
+        var migraphx = catalog.EnumerateArray().First(p => p.GetProperty("id").GetString() == "migraphx");
+        Assert.Contains("linml catalog install migraphx", migraphx.GetProperty("hint").GetString());
+    }
+
+    [Fact]
+    public async Task Doctor_TextOutput_IncludesCatalogPluginHints()
+    {
+        var (exitCode, stdout, _) = await Task.Run(() => CliTestHost.Run(
+            "doctor"));
+
+        Assert.Equal(0, exitCode);
+        Assert.Contains("Catalog plugins:", stdout);
+        Assert.Contains("Run 'linml catalog install migraphx' to vendor missing libraries.", stdout);
+    }
+
+    [Fact]
+    public async Task Run_MissingRequiredPlugin_Returns3_WithInstallHint()
+    {
+        if (!File.Exists(CliTestHost.Fixture("model.onnx"))
+            || !File.Exists(CliTestHost.Fixture("inputs.json")))
+        {
+            return;
+        }
+
+        var (exitCode, _, stderr) = await Task.Run(() => CliTestHost.Run(
+            "run",
+            "--model", CliTestHost.Fixture("model.onnx"),
+            "--inputs", CliTestHost.Fixture("inputs.json"),
+            "--provider", "migraphx",
+            "--require-provider"));
+
+        Assert.Equal(3, exitCode);
+        Assert.Contains("Run 'linml catalog install migraphx' to vendor missing libraries.", stderr);
     }
 
     [Fact]
