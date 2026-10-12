@@ -120,6 +120,9 @@ jobs:
       - name: Publish CLI (Self-contained linux-arm64)
         run: |
           mkdir -p dist/linml-linux-arm64
+          # Directory.Build.props only lists linux-x64 in RuntimeIdentifiers, so the
+          # solution restore has no linux-arm64 target; restore it explicitly (as ci.yml does).
+          dotnet restore src/LinML.Cli/LinML.Cli.csproj -r linux-arm64
           dotnet publish src/LinML.Cli/LinML.Cli.csproj \
             -c Release \
             -r linux-arm64 \
