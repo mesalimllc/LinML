@@ -116,8 +116,22 @@ jobs:
             -p:Version=${{ steps.version.outputs.version }} \
             -o dist/linml-linux-x64
 
+      # Publish standalone CLI (linux-arm64, self-contained)
+      - name: Publish CLI (Self-contained linux-arm64)
+        run: |
+          mkdir -p dist/linml-linux-arm64
+          dotnet publish src/LinML.Cli/LinML.Cli.csproj \
+            -c Release \
+            -r linux-arm64 \
+            --self-contained true \
+            --no-restore \
+            -p:Version=${{ steps.version.outputs.version }} \
+            -o dist/linml-linux-arm64
+
       - name: Verify CLI publish
-        run: bash scripts/verify-linux-publish.sh dist/linml-linux-x64
+        run: |
+          bash scripts/verify-linux-publish.sh dist/linml-linux-x64
+          bash scripts/verify-linux-publish.sh dist/linml-linux-arm64
 
       - name: Package CLI release assets
         run: |
@@ -125,11 +139,20 @@ jobs:
           cp scripts/setup-gpu-deps.sh scripts/fetch-ep-plugins.sh scripts/env-gpu-deps.sh dist/linml-linux-x64/scripts/
           cp README.md LICENSE dist/linml-linux-x64/
 
+          mkdir -p dist/linml-linux-arm64/scripts
+          cp scripts/setup-gpu-deps.sh scripts/fetch-ep-plugins.sh scripts/env-gpu-deps.sh dist/linml-linux-arm64/scripts/
+          cp README.md LICENSE dist/linml-linux-arm64/
+
           mkdir -p artifacts/release
           VER="${{ steps.version.outputs.version }}"
           cd dist/linml-linux-x64
           tar -czf "../../artifacts/release/linml-${VER}-linux-x64.tar.gz" .
           cp "../../artifacts/release/linml-${VER}-linux-x64.tar.gz" "../../artifacts/release/linml-linux-x64.tar.gz"
+          cd ../..
+
+          cd dist/linml-linux-arm64
+          tar -czf "../../artifacts/release/linml-${VER}-linux-arm64.tar.gz" .
+          cp "../../artifacts/release/linml-${VER}-linux-arm64.tar.gz" "../../artifacts/release/linml-linux-arm64.tar.gz"
           cd ../..
 
           cd artifacts/release
