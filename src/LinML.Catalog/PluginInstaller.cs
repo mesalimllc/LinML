@@ -96,7 +96,7 @@ internal sealed class PluginInstaller(HttpMessageHandler? httpHandler = null)
 
     /// <summary>
     /// Copies the package's top-level native files (<c>*.so</c>, <c>*.so.*</c>)
-    /// runtime data (<c>*.json</c>) and notices (<c>*.md</c>) into <paramref name="destination"/>,
+    /// runtime data (<c>*.json</c>), notices (<c>*.md</c>) and the one-level <c>licenses/</c> directory into <paramref name="destination"/>,
     /// stripping the package prefix. Python sources, dist-info and nested
     /// directories are skipped.
     /// </summary>
@@ -111,13 +111,42 @@ internal sealed class PluginInstaller(HttpMessageHandler? httpHandler = null)
             }
 
             string name = entry.FullName[packagePrefix.Length..];
-            if (name.Length == 0 || name.Contains('/', StringComparison.Ordinal) || !IsVendoredFile(name))
+            if (name.Length == 0 || name.EndsWith('/'))
+            {
+                continue;
+            }
+
+            if (IsLicenseFile(name))
+            {
+                // Redistributed binaries keep their licence and third-party notices.
+                Directory.CreateDirectory(Path.Combine(destination, LicenseDirectory));
+                entry.ExtractToFile(Path.Combine(destination, name), overwrite: false);
+                continue;
+            }
+
+            if (name.Contains('/', StringComparison.Ordinal) || !IsVendoredFile(name))
             {
                 continue;
             }
 
             entry.ExtractToFile(Path.Combine(destination, name), overwrite: false);
         }
+    }
+
+    private const string LicenseDirectory = "licenses";
+
+    // licenses/<file>, one level deep: the only nested path that is extracted. A name
+    // with a further separator or a parent-directory segment is never accepted.
+    private static bool IsLicenseFile(string name)
+    {
+        const string prefix = LicenseDirectory + "/";
+        if (!name.StartsWith(prefix, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        string file = name[prefix.Length..];
+        return file.Length > 0 && !file.Contains('/', StringComparison.Ordinal) && file is not ("." or "..");
     }
 
     private static bool IsVendoredFile(string name) =>

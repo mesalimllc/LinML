@@ -10,12 +10,19 @@ namespace LinML.Catalog;
 /// <c>DT_NEEDED</c> entry. A library the loader can already resolve by name (the
 /// caller's <c>LD_LIBRARY_PATH</c> or a system install) is left alone.
 /// </summary>
-internal static class GpuDependencyLoader
+/// <remarks>
+/// <see cref="ExecutionProviderCatalog"/> and LinML's session factory call this
+/// automatically; an application that opens TensorRT or CUDA sessions through ONNX
+/// Runtime directly can call <see cref="PreloadVendored"/> once at startup instead of
+/// exporting <c>LD_LIBRARY_PATH</c>.
+/// </remarks>
+public static class GpuDependencyLoader
 {
     private static readonly object Gate = new();
     private static readonly HashSet<string> Loaded = new(StringComparer.Ordinal);
     // Handles stay referenced for the life of the process; the libraries are never unloaded.
     private static readonly List<IntPtr> Handles = [];
+    private static bool _defaultRootDone;
 
     /// <summary>Vendored dependency roots in priority order: <c>LINML_DEPS</c>, then the default root.</summary>
     internal static IReadOnlyList<string> CandidateRoots(string? customRoot = null)
@@ -40,6 +47,10 @@ internal static class GpuDependencyLoader
     /// Loads each installed dependency's runtime libraries. Never throws: a library
     /// that fails to load is simply left for ORT to report when it is needed.
     /// </summary>
+    /// <param name="installRoot">
+    /// Vendored dependency root to search first; <c>null</c> uses <c>LINML_DEPS</c>, then
+    /// <c>~/.local/linml-deps</c>. The default-root form is a no-op after the first call.
+    /// </param>
     /// <returns>Absolute paths of the libraries loaded from a vendored directory by this call.</returns>
     public static IReadOnlyList<string> PreloadVendored(string? installRoot = null)
     {
@@ -51,6 +62,11 @@ internal static class GpuDependencyLoader
         List<string> loadedNow = [];
         lock (Gate)
         {
+            if (installRoot is null && _defaultRootDone)
+            {
+                return loadedNow;
+            }
+
             foreach (GpuDependencySpec spec in KnownGpuDependencies.All)
             {
                 string? root = CandidateRoots(installRoot).FirstOrDefault(spec.IsInstalled);
@@ -84,13 +100,18 @@ internal static class GpuDependencyLoader
                     }
                 }
             }
+
+            if (installRoot is null)
+            {
+                _defaultRootDone = true;
+            }
         }
 
         return loadedNow;
     }
 
     /// <summary>Vendoring state of every known GPU dependency under <paramref name="installRoot"/>.</summary>
-    public static IReadOnlyList<GpuDependencyStatus> GetStatus(string installRoot) =>
+    internal static IReadOnlyList<GpuDependencyStatus> GetStatus(string installRoot) =>
         KnownGpuDependencies.All
             .Select(spec =>
             {

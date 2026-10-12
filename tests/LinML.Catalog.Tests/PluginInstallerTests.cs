@@ -186,4 +186,40 @@ public class PluginInstallerTests
         var handles = PluginInstaller.LoadBundledLibraries("/non/existent/path", "libtest.so");
         Assert.Empty(handles);
     }
+
+    [Fact]
+    public void ExtractFlat_KeepsLicensesDirectory_ButNoOtherNestedPath()
+    {
+        using var temp = new TempDir();
+        string wheel = Path.Combine(temp.Path, "p.zip");
+        using (var zip = System.IO.Compression.ZipFile.Open(wheel, System.IO.Compression.ZipArchiveMode.Create))
+        {
+            foreach (var (name, body) in new[]
+            {
+                ("pkg/libplugin.so", "so"),
+                ("pkg/PATCH-NOTICE.md", "notice"),
+                ("pkg/licenses/LICENSE", "apache"),
+                ("pkg/licenses/ThirdPartyNotices.txt", "third"),
+                ("pkg/licenses/deeper/EVIL", "x"),
+                ("pkg/other/libnested.so", "nested"),
+            })
+            {
+                var entry = zip.CreateEntry(name);
+                using var writer = new StreamWriter(entry.Open());
+                writer.Write(body);
+            }
+        }
+
+        string stage = Path.Combine(temp.Path, "stage");
+        Directory.CreateDirectory(stage);
+
+        PluginInstaller.ExtractFlat(wheel, "pkg/", stage);
+
+        Assert.Equal(
+            ["PATCH-NOTICE.md", "libplugin.so", "licenses/LICENSE", "licenses/ThirdPartyNotices.txt"],
+            Directory.EnumerateFiles(stage, "*", SearchOption.AllDirectories)
+                .Select(f => Path.GetRelativePath(stage, f).Replace('\\', '/'))
+                .Order(StringComparer.Ordinal)
+                .ToArray());
+    }
 }

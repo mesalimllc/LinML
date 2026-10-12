@@ -52,6 +52,7 @@ internal static class EpAppender
     {
         ArgumentNullException.ThrowIfNull(sessionOptions);
         ArgumentNullException.ThrowIfNull(provider);
+        LinML.Catalog.GpuDependencyLoader.PreloadVendored();
 
         // Plugin EPs (registered via PluginEpRegistry) use the V2 device-based API.
         PluginEpRegistry.EnsureRegistered(epLibraries);

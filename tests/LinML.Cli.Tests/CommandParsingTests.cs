@@ -55,11 +55,14 @@ public class CommandParsingTests
         // libnvinfer present; selection/execution fall back honestly to
         // CUDA then CPU. The run must succeed with correct outputs either way.
         var (exitCode, stdout, _) = await Task.Run(() => CliTestHost.Run(
-            "run",
-            "--model", CliTestHost.Fixture("model.onnx"),
-            "--inputs", CliTestHost.Fixture("inputs.json"),
-            "--provider", "trt",
-            "--json"));
+            [
+                "run",
+                "--model", CliTestHost.Fixture("model.onnx"),
+                "--inputs", CliTestHost.Fixture("inputs.json"),
+                "--provider", "trt",
+                "--json",
+                .. CliTestHost.FastTensorRtOptions(),
+            ]));
 
         Assert.Equal(0, exitCode);
         using var doc = JsonDocument.Parse(stdout);

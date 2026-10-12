@@ -8,6 +8,19 @@ internal static class CliTestHost
 {
     private static readonly object Gate = new();
 
+    /// <summary>
+    /// TensorRT EP options (<c>trt:</c>-scoped) that keep tests that must exercise the
+    /// TensorRT EP fast: the lowest builder optimization level, and an engine cache in a
+    /// stable temp directory so only the first run on a machine pays the ~25 s build.
+    /// Ignored on hosts where TensorRT is not loadable.
+    /// </summary>
+    public static string[] FastTensorRtOptions() =>
+    [
+        "--ep-option", "trt:trt_builder_optimization_level=0",
+        "--ep-option", "trt:trt_engine_cache_enable=1",
+        "--ep-option", "trt:trt_engine_cache_path=" + Path.Combine(Path.GetTempPath(), "linml-test-trt-cache"),
+    ];
+
     public static (int ExitCode, string Stdout, string Stderr) Run(params string[] args) =>
         RunWithStdin(null, args);
 
