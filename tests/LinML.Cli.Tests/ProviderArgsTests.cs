@@ -321,4 +321,71 @@ public class ProviderArgsTests
             Environment.SetEnvironmentVariable(envVar, original);
         }
     }
+
+    [Fact]
+    public void ResolveEpLibraries_TrtRtxCustomEp_OverridesEnvMapping()
+    {
+        // env-gpu-deps.sh exports a TRT-RTX mapping; setting TRT_RTX_CUSTOM_EP
+        // afterwards must still select the locally built plugin.
+        var tempDir = Path.Combine(Path.GetTempPath(), "linml-test-" + Guid.NewGuid().ToString("N"));
+        var libVar = ProviderArgs.EpLibrariesEnvVar;
+        var customVar = ProviderArgs.TrtRtxCustomEpEnvVar;
+        var originalLib = Environment.GetEnvironmentVariable(libVar);
+        var originalCustom = Environment.GetEnvironmentVariable(customVar);
+        try
+        {
+            Directory.CreateDirectory(tempDir);
+            var customSo = Path.Combine(tempDir, "libonnxruntime_providers_nv_tensorrt_rtx.so");
+            File.WriteAllText(customSo, "custom");
+
+            Environment.SetEnvironmentVariable(customVar, customSo);
+            Environment.SetEnvironmentVariable(
+                libVar,
+                "NvTensorRTRTXExecutionProvider=/env/stock/libonnxruntime_providers_nv_tensorrt_rtx.so");
+
+            var result = ProviderArgs.ResolveEpLibraries([], ProviderId.TensorrtRtx);
+
+            Assert.Equal(customSo, result["NvTensorRTRTXExecutionProvider"]);
+            Assert.Single(result);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(libVar, originalLib);
+            Environment.SetEnvironmentVariable(customVar, originalCustom);
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void ResolveEpLibraries_TrtRtxCustomEp_ExplicitArgStillWins()
+    {
+        // An explicit --ep-library must not be displaced by TRT_RTX_CUSTOM_EP.
+        var tempDir = Path.Combine(Path.GetTempPath(), "linml-test-" + Guid.NewGuid().ToString("N"));
+        var customVar = ProviderArgs.TrtRtxCustomEpEnvVar;
+        var originalCustom = Environment.GetEnvironmentVariable(customVar);
+        try
+        {
+            Directory.CreateDirectory(tempDir);
+            var customSo = Path.Combine(tempDir, "libonnxruntime_providers_nv_tensorrt_rtx.so");
+            File.WriteAllText(customSo, "custom");
+            Environment.SetEnvironmentVariable(customVar, customSo);
+
+            var result = ProviderArgs.ResolveEpLibraries(
+                ["NvTensorRTRTXExecutionProvider=/cli/explicit.so"],
+                ProviderId.TensorrtRtx);
+
+            Assert.Equal("/cli/explicit.so", result["NvTensorRTRTXExecutionProvider"]);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(customVar, originalCustom);
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, recursive: true);
+            }
+        }
+    }
 }

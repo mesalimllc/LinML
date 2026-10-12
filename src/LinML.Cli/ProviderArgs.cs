@@ -108,9 +108,17 @@ public static class ProviderArgs
             }
         }
 
+        // Keys named explicitly on the command line. These outrank both the
+        // inherited environment mapping and TRT_RTX_CUSTOM_EP.
+        var explicitArgKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var arg in args)
         {
             AddPair(result, arg, "--ep-library");
+            var eq = arg.IndexOf('=');
+            if (eq > 0)
+            {
+                explicitArgKeys.Add(arg[..eq].Trim());
+            }
         }
 
         if (requestedProvider is not null)
@@ -119,39 +127,51 @@ public static class ProviderArgs
             if (spec is not null)
             {
                 var shortName = GetShortName(spec.Id);
-                bool alreadySpecified = result.Keys.Any(k =>
-                    string.Equals(k, spec.RegistrationName, StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(k, spec.Id.Value, StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(k, shortName, StringComparison.OrdinalIgnoreCase));
+                bool MatchesProvider(string key) =>
+                    string.Equals(key, spec.RegistrationName, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(key, spec.Id.Value, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(key, shortName, StringComparison.OrdinalIgnoreCase);
 
-                if (!alreadySpecified)
+                bool explicitOnCommandLine = explicitArgKeys.Any(MatchesProvider);
+                bool alreadySpecified = result.Keys.Any(MatchesProvider);
+
+                string? libraryPath = null;
+
+                // TRT_RTX_CUSTOM_EP points at a locally built plugin .so. It is the
+                // documented override for trt-rtx, so it outranks a mapping inherited
+                // from the environment (env-gpu-deps.sh); an explicit --ep-library
+                // still wins over it.
+                if (spec.Id == ProviderId.TensorrtRtx && !explicitOnCommandLine)
                 {
-                    string? libraryPath = null;
-
-                    // TRT_RTX_CUSTOM_EP points at a locally built plugin .so and
-                    // takes precedence over the vendored wheel (it is how the WSL2
-                    // fallback build is selected).
-                    if (spec.Id == ProviderId.TensorrtRtx)
+                    var custom = Environment.GetEnvironmentVariable(TrtRtxCustomEpEnvVar);
+                    if (!string.IsNullOrWhiteSpace(custom) && File.Exists(custom))
                     {
-                        var custom = Environment.GetEnvironmentVariable(TrtRtxCustomEpEnvVar);
-                        if (!string.IsNullOrWhiteSpace(custom) && File.Exists(custom))
-                        {
-                            libraryPath = custom;
-                        }
+                        libraryPath = custom;
+                    }
+                }
+
+                if (libraryPath is null && !alreadySpecified)
+                {
+                    libraryPath = spec.FindLibrary(customRoot);
+                }
+
+                if (libraryPath is not null)
+                {
+                    // Drop any inherited/aliased mapping for this provider so it is
+                    // registered once, under the canonical name.
+                    foreach (var key in result.Keys.Where(MatchesProvider).ToList())
+                    {
+                        result.Remove(key);
                     }
 
-                    libraryPath ??= spec.FindLibrary(customRoot);
-                    if (libraryPath is not null)
+                    var pluginDir = Path.GetDirectoryName(libraryPath);
+                    if (!string.IsNullOrEmpty(pluginDir))
                     {
-                        var pluginDir = Path.GetDirectoryName(libraryPath);
-                        if (!string.IsNullOrEmpty(pluginDir))
-                        {
-                            BundledLibraryHandles.AddRange(
-                                PluginInstaller.LoadBundledLibraries(pluginDir, spec.LibraryFileName));
-                        }
-
-                        result[spec.RegistrationName] = libraryPath;
+                        BundledLibraryHandles.AddRange(
+                            PluginInstaller.LoadBundledLibraries(pluginDir, spec.LibraryFileName));
                     }
+
+                    result[spec.RegistrationName] = libraryPath;
                 }
             }
         }
