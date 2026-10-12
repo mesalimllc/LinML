@@ -101,7 +101,8 @@ public static class RunCommand
                     Duration = outcome.Duration,
                     Model = modelIdentity,
                     RuntimeVersion = OnnxRuntimeDiagnostics.GetRuntimeVersion(),
-                    Diagnostics = outcome.Diagnostics
+                    Diagnostics = outcome.Diagnostics,
+                    NodePlacements = outcome.NodePlacements ?? []
                 };
 
                 if (json)

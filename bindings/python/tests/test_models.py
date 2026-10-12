@@ -12,9 +12,17 @@ class TestModels(unittest.TestCase):
     def test_tensor_spec_from_scalar(self):
         spec = TensorSpec.from_any("val", 42)
         self.assertEqual(spec.name, "val")
-        self.assertEqual(spec.shape, [1])
+        self.assertEqual(spec.shape, [])
         self.assertEqual(spec.data, [42])
         self.assertEqual(spec.data_type, "int64")
+
+    def test_tensor_spec_bool_rejected(self):
+        with self.assertRaises(ValueError):
+            TensorSpec.from_any("flag", True)
+        with self.assertRaises(ValueError):
+            TensorSpec.from_any("flags", [True, False])
+        with self.assertRaises(ValueError):
+            TensorSpec.from_any("flags_np", np.array([True, False]))
 
     def test_tensor_spec_from_list(self):
         nested = [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]
@@ -45,6 +53,18 @@ class TestModels(unittest.TestCase):
         self.assertEqual(arr.dtype, np.float32)
         self.assertEqual(arr[1, 2], 6.0)
 
+    def test_tensor_output_scalar_to_numpy(self):
+        out = TensorOutput(
+            name="scalar_val",
+            data_type="float32",
+            shape=[],
+            data=[42.0]
+        )
+        arr = out.to_numpy()
+        self.assertIsInstance(arr, np.ndarray)
+        self.assertEqual(arr.shape, ())
+        self.assertEqual(float(arr), 42.0)
+
     def test_inference_result_parsing(self):
         raw = {
             "selectedProvider": "CPUExecutionProvider",
@@ -65,6 +85,21 @@ class TestModels(unittest.TestCase):
         self.assertIn("y", res.outputs)
         y = res.outputs["y"].to_numpy()
         self.assertEqual(list(y.flatten()), [11.0, 22.0, 13.0, 24.0, 15.0, 26.0])
+
+    def test_inference_result_parsing_duration_timespan(self):
+        raw = {
+            "selectedProvider": "CPUExecutionProvider",
+            "duration": "00:00:01.2500000",
+            "outputs": [],
+            "diagnostics": [
+                {"phase": "profile", "message": "Node 'MatMul_0' ran on CPUExecutionProvider"}
+            ]
+        }
+        res = InferenceResult.from_dict(raw)
+        self.assertEqual(res.latency_ms, 1250.0)
+        self.assertEqual(len(res.node_placements), 1)
+        self.assertEqual(res.node_placements[0]["nodeName"], "MatMul_0")
+        self.assertEqual(res.node_placements[0]["provider"], "CPUExecutionProvider")
 
     def test_health_response_parsing(self):
         raw = {

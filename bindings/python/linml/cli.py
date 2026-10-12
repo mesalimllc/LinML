@@ -89,6 +89,9 @@ def doctor(
     inputs: Optional[Union[str, Path]] = None,
 ) -> Dict[str, Any]:
     """Run linml doctor diagnostic probe."""
+    if model is not None and inputs is None:
+        raise ValueError("inputs must be provided when model is specified for linml.doctor()")
+
     args = ["doctor", "--json"]
     if model:
         args.extend(["--model", str(Path(model).resolve())])
@@ -152,6 +155,11 @@ def bench(
 def main():
     """Forward CLI invocations to the underlying linml binary."""
     import subprocess
+
+    if os.environ.get("LINML_PY_WRAPPER") == "1":
+        sys.stderr.write("Error: linml Python wrapper cannot launch itself recursively.\n")
+        sys.exit(1)
+
     try:
         base_cmd = get_linml_binary()
     except Exception as e:
@@ -159,8 +167,10 @@ def main():
         sys.exit(1)
 
     full_cmd = base_cmd + sys.argv[1:]
+    env = get_dotnet_env()
+    env["LINML_PY_WRAPPER"] = "1"
     try:
-        res = subprocess.run(full_cmd, env=get_dotnet_env())
+        res = subprocess.run(full_cmd, env=env)
         sys.exit(res.returncode)
     except KeyboardInterrupt:
         sys.exit(130)

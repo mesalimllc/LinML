@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -44,10 +45,29 @@ def find_linml_binary() -> Optional[List[str]]:
     if bundled_bin.is_file() and os.access(bundled_bin, os.X_OK):
         return [str(bundled_bin)]
 
-    # 3. System PATH lookup
+    # 3. System PATH lookup. Exclude the Python entry point wrapper script to prevent self-invocation loops.
     path_bin = shutil.which("linml")
     if path_bin:
-        return [path_bin]
+        path_path = Path(path_bin).resolve()
+        wrapper_paths = set()
+        if sys.argv and sys.argv[0]:
+            try:
+                wrapper_paths.add(Path(sys.argv[0]).resolve())
+            except Exception:
+                pass
+        wrapper_paths.add((Path(sys.executable).parent / "linml").resolve())
+
+        is_python_wrapper = path_path in wrapper_paths
+        if not is_python_wrapper:
+            try:
+                with open(path_path, "rb") as stream:
+                    shebang = stream.readline(256).lower()
+                is_python_wrapper = shebang.startswith(b"#!") and b"python" in shebang
+            except (OSError, UnicodeError):
+                pass
+
+        if not is_python_wrapper:
+            return [str(path_path)]
 
     # 4. Standard Linux user install directories
     user_candidates = [

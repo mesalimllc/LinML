@@ -29,7 +29,8 @@ class InferenceSession:
         ep_options: Optional[Dict[str, str]] = None,
         host: str = "127.0.0.1",
         port: Optional[int] = None,
-        startup_timeout: float = 15.0,
+        startup_timeout: float = 120.0,
+        request_timeout: float = 30.0,
     ):
         self.model_path = str(Path(model_path).resolve())
         if not os.path.isfile(self.model_path):
@@ -41,6 +42,10 @@ class InferenceSession:
         self.host = host
         self.port = port or _get_free_port()
         self.startup_timeout = startup_timeout
+        self.request_timeout = request_timeout
+
+        formatted_host = f"[{self.host}]" if ":" in self.host and not self.host.startswith("[") else self.host
+        self.endpoint = f"http://{formatted_host}:{self.port}"
 
         self._process: Optional[subprocess.Popen] = None
         self._client: Optional[InferenceClient] = None
@@ -72,8 +77,8 @@ class InferenceSession:
             env=get_dotnet_env(),
         )
 
-        endpoint = f"http://{self.host}:{self.port}"
-        self._client = InferenceClient(endpoint=endpoint, timeout=self.startup_timeout)
+        self._client = InferenceClient(endpoint=self.endpoint, timeout=self.request_timeout)
+        health_client = InferenceClient(endpoint=self.endpoint, timeout=1.0)
 
         # Wait for daemon readiness
         deadline = time.time() + self.startup_timeout
@@ -93,8 +98,19 @@ class InferenceSession:
                     f"LinML serve process exited prematurely with code {self._process.returncode}: {stderr_output}"
                 )
             try:
-                health = self._client.health()
-                if health.status in ("healthy", "ready"):
+                health = health_client.health()
+                if health.status.lower() in ("healthy", "ready"):
+                    # Verify model identity
+                    model_info = health.model
+                    if model_info and isinstance(model_info, dict):
+                        reported_path = model_info.get("path")
+                        if reported_path:
+                            try:
+                                if Path(reported_path).resolve() != Path(self.model_path).resolve():
+                                    time.sleep(0.05)
+                                    continue
+                            except Exception:
+                                pass
                     started = True
                     break
             except Exception as e:
@@ -104,7 +120,7 @@ class InferenceSession:
         if not started:
             self.close()
             raise TimeoutError(
-                f"Timed out waiting for LinML server to start on {endpoint}: {last_err}"
+                f"Timed out waiting for LinML server to start on {self.endpoint}: {last_err}"
             )
 
     def predict(
@@ -165,10 +181,11 @@ class InferenceSession:
         self._closed = True
 
         if self._client:
-            try:
-                self._client.shutdown()
-            except Exception:
-                pass
+            if self._process and self._process.poll() is None:
+                try:
+                    self._client.shutdown()
+                except Exception:
+                    pass
             self._client = None
 
         if self._process:

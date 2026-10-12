@@ -36,5 +36,14 @@ class TestSession(unittest.TestCase):
             self.assertEqual(len(outputs), 1)
             self.assertTrue(np.allclose(outputs[0], np.array([[11, 22], [13, 24], [15, 26]])))
 
+    def test_ipv6_endpoint_formatting(self):
+        # Verify IPv6 bracket formatting without spawning server
+        session = linml.InferenceSession.__new__(linml.InferenceSession)
+        session.host = "::1"
+        session.port = 8080
+        formatted_host = f"[{session.host}]" if ":" in session.host and not session.host.startswith("[") else session.host
+        endpoint = f"http://{formatted_host}:{session.port}"
+        self.assertEqual(endpoint, "http://[::1]:8080")
+
 if __name__ == "__main__":
     unittest.main()

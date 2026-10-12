@@ -41,5 +41,25 @@ class TestBinary(unittest.TestCase):
             else:
                 os.environ.pop("LINML_BIN", None)
 
+    def test_python_wrapper_excluded_from_path(self):
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmpdir:
+            fake_cli = Path(tmpdir) / "linml"
+            with open(fake_cli, "w") as f:
+                f.write("#!/usr/bin/env python3\nimport sys\n")
+            os.chmod(fake_cli, 0o755)
+
+            old_bin = os.environ.pop("LINML_BIN", None)
+            old_path = os.environ.get("PATH", "")
+            try:
+                os.environ["PATH"] = f"{tmpdir}{os.pathsep}{old_path}"
+                cmd = find_linml_binary()
+                if cmd:
+                    self.assertNotEqual(cmd, [str(fake_cli)])
+            finally:
+                os.environ["PATH"] = old_path
+                if old_bin:
+                    os.environ["LINML_BIN"] = old_bin
+
 if __name__ == "__main__":
     unittest.main()

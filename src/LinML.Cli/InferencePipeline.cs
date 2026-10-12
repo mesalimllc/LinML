@@ -24,7 +24,8 @@ internal sealed record ExecutionOutcome(
     ProviderId SelectedProvider,
     TimeSpan Duration,
     List<FallbackStep> FallbackChain,
-    List<DiagnosticEntry> Diagnostics);
+    List<DiagnosticEntry> Diagnostics,
+    IReadOnlyList<NodePlacement>? NodePlacements = null);
 
 /// <summary>Result of opening (but not running) a session, for `serve` startup.</summary>
 internal sealed record OpenSessionOutcome(
@@ -112,6 +113,7 @@ internal static class InferencePipeline
         IReadOnlyList<TensorOutput>? outputs = null;
         var selectedProvider = decision.SelectedProvider!;
         var duration = TimeSpan.Zero;
+        IReadOnlyList<NodePlacement> nodePlacements = [];
         foreach (var attempt in attemptOrder)
         {
             IInferenceSession? attemptSession;
@@ -152,14 +154,14 @@ internal static class InferencePipeline
 
                 if (profile)
                 {
-                    var placements = attemptSession.EndProfiling();
+                    nodePlacements = attemptSession.EndProfiling();
                     diagnostics.Add(new DiagnosticEntry
                     {
                         Phase = "profile",
                         Message = $"ORT profile written to {attemptSession.ProfilePath}",
                         Severity = DiagnosticSeverity.Info
                     });
-                    foreach (var placement in placements)
+                    foreach (var placement in nodePlacements)
                     {
                         diagnostics.Add(new DiagnosticEntry
                         {
@@ -178,11 +180,11 @@ internal static class InferencePipeline
             var attempted = string.Join(", ", fallbackChain.Select(f => f.Provider.ToString()));
             return new ExecutionOutcome(
                 false, 1, $"All providers failed at execution: {attempted}",
-                null, selectedProvider, TimeSpan.Zero, fallbackChain, diagnostics);
+                null, selectedProvider, TimeSpan.Zero, fallbackChain, diagnostics, []);
         }
 
         return new ExecutionOutcome(
-            true, 0, null, outputs, selectedProvider, duration, fallbackChain, diagnostics);
+            true, 0, null, outputs, selectedProvider, duration, fallbackChain, diagnostics, nodePlacements);
     }
 
     /// <summary>

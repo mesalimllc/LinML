@@ -43,5 +43,17 @@ class TestCliWrappers(unittest.TestCase):
         self.assertIn(auto_res.selected_provider, ("CPUExecutionProvider", "CUDAExecutionProvider"))
         self.assertIn("y", auto_res.outputs)
 
+    def test_doctor_model_without_inputs_raises(self):
+        if not TINY_MODEL.exists():
+            self.skipTest(f"Fixture {TINY_MODEL} not found")
+        with self.assertRaises(ValueError):
+            linml.doctor(model=TINY_MODEL)
+
+    def test_doctor_probe(self):
+        doc = linml.doctor()
+        self.assertIsInstance(doc, dict)
+        self.assertIn("discovery", doc)
+        self.assertIn("readiness", doc)
+
 if __name__ == "__main__":
     unittest.main()

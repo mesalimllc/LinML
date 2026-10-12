@@ -46,7 +46,8 @@ add_path "${ROCM_PATH:-/opt/rocm}/lib"
 export LD_LIBRARY_PATH
 
 # Convenience: default plugin EP library registration for TRT-RTX.
-TRT_RTX_EP="$DEPS/ep-plugins/trt-rtx/onnxruntime_ep_nv_tensorrt_rtx/libonnxruntime_providers_nv_tensorrt_rtx.so"
+TRT_RTX_DEFAULT_EP="$DEPS/ep-plugins/trt-rtx/onnxruntime_ep_nv_tensorrt_rtx/libonnxruntime_providers_nv_tensorrt_rtx.so"
+TRT_RTX_EP="${TRT_RTX_CUSTOM_EP:-$TRT_RTX_DEFAULT_EP}"
 if [ -f "$TRT_RTX_EP" ]; then
     case ";${LINML_EP_LIBRARIES:-};" in
         *"NvTensorRTRTXExecutionProvider="*|*"nvtensorrtrtx="*) ;;

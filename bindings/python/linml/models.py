@@ -30,6 +30,11 @@ class TensorSpec:
     def from_any(cls, name: str, value: Any, data_type: Optional[str] = None) -> "TensorSpec":
         """Convert a list, scalar, or numpy array to TensorSpec."""
         if HAS_NUMPY and isinstance(value, np.ndarray):
+            if np.issubdtype(value.dtype, np.bool_):
+                raise ValueError(
+                    "Boolean tensors are not currently supported by LinML. "
+                    "Convert to numeric (e.g. int32 or float32) before inference."
+                )
             shape = list(value.shape)
             flat = value.flatten().tolist()
             if data_type is None:
@@ -37,21 +42,29 @@ class TensorSpec:
                     data_type = "float16" if value.dtype == np.float16 else "float32"
                 elif np.issubdtype(value.dtype, np.integer):
                     data_type = "int64" if value.dtype == np.int64 else "int32"
-                elif np.issubdtype(value.dtype, np.bool_):
-                    data_type = "bool"
                 else:
                     data_type = "float32"
             return cls(name=name, data_type=data_type, shape=shape, data=flat)
 
         if isinstance(value, (list, tuple)):
-            # Calculate shape and flatten
             shape, flat = _infer_shape_and_flatten(value)
+            if any(isinstance(x, bool) for x in flat):
+                raise ValueError(
+                    "Boolean tensors are not currently supported by LinML. "
+                    "Convert to numeric (e.g. int32 or float32) before inference."
+                )
             dtype = data_type or ("int64" if all(isinstance(x, int) for x in flat) else "float32")
             return cls(name=name, data_type=dtype, shape=shape, data=flat)
 
+        if isinstance(value, bool):
+            raise ValueError(
+                "Boolean tensors are not currently supported by LinML. "
+                "Convert to numeric (e.g. int32 or float32) before inference."
+            )
+
         # Scalar
         dtype = data_type or ("int64" if isinstance(value, int) else "float32")
-        return cls(name=name, data_type=dtype, shape=[1], data=[value])
+        return cls(name=name, data_type=dtype, shape=[], data=[value])
 
 
 def _infer_shape_and_flatten(nested: Any) -> tuple[List[int], List[Any]]:
@@ -77,6 +90,22 @@ def _infer_shape_and_flatten(nested: Any) -> tuple[List[int], List[Any]]:
 
     _flatten(nested)
     return shape, flat
+
+
+def _parse_duration(val: Any) -> float:
+    if isinstance(val, (int, float)):
+        return float(val)
+    if isinstance(val, str):
+        # Format: [-][d.]hh:mm:ss[.fffffff]
+        import re
+        m = re.match(r"^(?:(\d+)\.)?(\d+):(\d+):(\d+(?:\.\d+)?)$", val.strip())
+        if m:
+            days = int(m.group(1) or 0)
+            hours = int(m.group(2))
+            minutes = int(m.group(3))
+            seconds = float(m.group(4))
+            return (days * 86400 + hours * 3600 + minutes * 60 + seconds) * 1000.0
+    return 0.0
 
 
 @dataclass
@@ -106,7 +135,7 @@ class TensorOutput:
         }
         np_dtype = dtype_map.get(self.data_type.lower(), np.float32)
         arr = np.array(self.data, dtype=np_dtype)
-        if self.shape:
+        if self.shape is not None:
             return arr.reshape(self.shape)
         return arr
 
@@ -132,12 +161,29 @@ class InferenceResult:
                 name=name, data_type=dtype, shape=shape, data=tensor_data
             )
 
+        # Parse latency: prefer latencyMs, fallback to duration TimeSpan string
+        latency_ms = data.get("latencyMs")
+        if latency_ms is None and "duration" in data:
+            latency_ms = _parse_duration(data["duration"])
+        else:
+            latency_ms = float(latency_ms or 0.0)
+
+        # Parse node placements: prefer nodePlacements, fallback to diagnostics parsing
+        node_placements = data.get("nodePlacements", [])
+        if not node_placements and "diagnostics" in data:
+            import re
+            for diag in data.get("diagnostics", []):
+                msg = diag.get("message", "")
+                m = re.match(r"Node '([^']+)' ran on (\w+)", msg)
+                if m:
+                    node_placements.append({"nodeName": m.group(1), "provider": m.group(2)})
+
         return cls(
             selected_provider=data.get("selectedProvider", ""),
-            latency_ms=float(data.get("latencyMs", 0.0)),
+            latency_ms=latency_ms,
             fallback_chain=data.get("fallbackChain", []),
             outputs=outputs_map,
-            node_placements=data.get("nodePlacements", []),
+            node_placements=node_placements,
             raw_response=data,
         )
 

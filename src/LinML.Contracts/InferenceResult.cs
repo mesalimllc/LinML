@@ -23,6 +23,9 @@ public sealed record InferenceResult
     /// <summary>Total inference duration.</summary>
     public required TimeSpan Duration { get; init; }
 
+    /// <summary>Inference duration in milliseconds.</summary>
+    public double LatencyMs => Duration.TotalMilliseconds;
+
     /// <summary>Model identity that was executed.</summary>
     public required ModelIdentity Model { get; init; }
 
@@ -31,6 +34,9 @@ public sealed record InferenceResult
 
     /// <summary>Diagnostics from execution.</summary>
     public IReadOnlyList<DiagnosticEntry> Diagnostics { get; init; } = [];
+
+    /// <summary>Per-node execution placement from ORT profiling.</summary>
+    public IReadOnlyList<NodePlacement> NodePlacements { get; init; } = [];
 }
 
 public sealed record FallbackStep
