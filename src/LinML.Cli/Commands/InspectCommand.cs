@@ -134,7 +134,10 @@ internal static class InspectCommand
             {
                 var shapeStr = output.Shape.Count == 0 ? "scalar" : $"[{string.Join(", ", output.Shape)}]";
                 var dynamicNote = output.IsDynamic ? "dynamic" : "static";
-                Console.WriteLine($"  • {output.Name}: {output.DataType} {shapeStr} ({dynamicNote})");
+                var symStr = output.SymbolicDimensions.Count > 0 && output.SymbolicDimensions.Any(s => !string.IsNullOrEmpty(s))
+                    ? $" (symbolic: {string.Join(", ", output.SymbolicDimensions)})"
+                    : "";
+                Console.WriteLine($"  • {output.Name}: {output.DataType} {shapeStr} ({dynamicNote}){symStr}");
             }
         }
 

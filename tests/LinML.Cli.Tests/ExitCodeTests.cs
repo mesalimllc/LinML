@@ -83,7 +83,7 @@ public class ExitCodeTests
 
         var badInputs = Path.Combine(Path.GetTempPath(), $"linml-bad-{Guid.NewGuid():N}.json");
         await File.WriteAllTextAsync(badInputs,
-            """{"tensors": [{"name": "input", "type": "float32", "shape": [2, 2], "data": [1, 2, 3, 4]}]}""");
+            """{"tensors": [{"name": "x", "type": "float32", "shape": [2, 2], "data": [1, 2, 3, 4]}]}""");
         try
         {
             var (exitCode, _, _) = await Task.Run(() => CliTestHost.Run(

@@ -8,7 +8,7 @@
   },
   "inputs": [
     {
-      "name": "input",
+      "name": "x",
       "type": "float32",
       "shape": [3, 2]
     }
@@ -25,7 +25,7 @@
   },
   "outputs": [
     {
-      "name": "output",
+      "name": "y",
       "type": "float32",
       "shape": [3, 2]
     }

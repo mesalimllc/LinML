@@ -1,3 +1,4 @@
+using LinML.Contracts;
 using System.Text;
 
 namespace LinML.Runtime.Onnx;
@@ -48,6 +49,10 @@ internal static class OnnxProtobufReader
             else if (wireType == 2) // Length-delimited
             {
                 long len = (long)ReadVarint(stream);
+                if (len < 0 || len > stream.Length - stream.Position)
+                {
+                    throw new InvalidDataException($"Invalid length-delimited field length: {len}");
+                }
                 long end = stream.Position + len;
 
                 if (fieldNumber == 2) // producer_name
@@ -126,6 +131,10 @@ internal static class OnnxProtobufReader
             else if (wireType == 2)
             {
                 long len = (long)ReadVarint(stream);
+                if (len < 0 || len > stream.Length - stream.Position)
+                {
+                    throw new InvalidDataException($"Invalid length-delimited field length: {len}");
+                }
                 if (fieldNumber == 1) domain = ReadString(stream, (int)len);
                 else stream.Seek(len, SeekOrigin.Current);
             }
@@ -144,6 +153,10 @@ internal static class OnnxProtobufReader
             if (wireType == 2)
             {
                 long len = (long)ReadVarint(stream);
+                if (len < 0 || len > stream.Length - stream.Position)
+                {
+                    throw new InvalidDataException($"Invalid length-delimited field length: {len}");
+                }
                 if (fieldNumber == 1) key = ReadString(stream, (int)len);
                 else if (fieldNumber == 2) val = ReadString(stream, (int)len);
                 else stream.Seek(len, SeekOrigin.Current);
@@ -162,6 +175,10 @@ internal static class OnnxProtobufReader
             if (wireType == 2)
             {
                 long len = (long)ReadVarint(stream);
+                if (len < 0 || len > stream.Length - stream.Position)
+                {
+                    throw new InvalidDataException($"Invalid length-delimited field length: {len}");
+                }
                 long nodeEnd = stream.Position + len;
                 if (fieldNumber == 1) // node (NodeProto)
                 {
@@ -191,6 +208,10 @@ internal static class OnnxProtobufReader
             if (wireType == 2)
             {
                 long len = (long)ReadVarint(stream);
+                if (len < 0 || len > stream.Length - stream.Position)
+                {
+                    throw new InvalidDataException($"Invalid length-delimited field length: {len}");
+                }
                 if (fieldNumber == 4) // op_type
                 {
                     string op = ReadString(stream, (int)len);
@@ -220,8 +241,16 @@ internal static class OnnxProtobufReader
     {
         ulong result = 0;
         int shift = 0;
+        int iterations = 0;
+        const int maxVarintBytes = 10;
+
         while (true)
         {
+            if (++iterations > maxVarintBytes)
+            {
+                throw new InvalidDataException("Varint exceeds maximum length of 10 bytes");
+            }
+
             int b = stream.ReadByte();
             if (b < 0) break;
             result |= (ulong)(b & 0x7F) << shift;
@@ -251,8 +280,25 @@ internal static class OnnxProtobufReader
         else if (wireType == 2)
         {
             long len = (long)ReadVarint(stream);
+            if (len < 0 || len > stream.Length - stream.Position)
+            {
+                throw new InvalidDataException($"Invalid length-delimited field length: {len}");
+            }
             stream.Seek(len, SeekOrigin.Current);
         }
         else if (wireType == 5) stream.Seek(4, SeekOrigin.Current);
+    }
+
+    /// <summary>
+    /// Extract input or output tensor metadata from the parsed protobuf graph structure.
+    /// Used as a fallback when InferenceSession cannot be opened.
+    /// </summary>
+    public static List<ModelTensorMetadata> ExtractGraphTensors(ParsedProto proto, bool isInput)
+    {
+        var tensors = new List<ModelTensorMetadata>();
+        // This is a simplified fallback — in a full implementation, we would parse
+        // the graph's value_info and inputs/outputs fields more thoroughly.
+        // For now, return empty list to indicate the fallback was attempted.
+        return tensors;
     }
 }

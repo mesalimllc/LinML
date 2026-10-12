@@ -39,7 +39,7 @@ public class CpuInferenceTests
         {
             new()
             {
-                Name = "input",
+                Name = "x",
                 DataType = TensorDataType.Float32,
                 Shape = [3, 2],
                 Data = [1, 2, 3, 4, 5, 6]
@@ -50,7 +50,7 @@ public class CpuInferenceTests
 
         Assert.Single(outputs);
         var output = outputs[0];
-        Assert.Equal("output", output.Name);
+        Assert.Equal("y", output.Name);
         Assert.Equal(new[] { 3, 2 }, output.Shape.ToArray());
 
         // Expected: [[11, 22], [13, 24], [15, 26]]
@@ -87,7 +87,7 @@ public class CpuInferenceTests
             {
                 new()
                 {
-                    Name = "input",
+                    Name = "x",
                     DataType = TensorDataType.Float32,
                     Shape = [3, 2],
                     Data = [1, 2, 3, 4, 5, 6]
@@ -149,7 +149,7 @@ public class CpuInferenceTests
         {
             new()
             {
-                Name = "input",
+                Name = "x",
                 DataType = TensorDataType.Float32,
                 Shape = [2, 2], // Wrong shape
                 Data = [1, 2, 3, 4]

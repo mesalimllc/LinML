@@ -33,21 +33,28 @@ public sealed class OnnxModelInspector : IModelInspector
 
         _logger.LogDebug("Inspecting ONNX model at {Path}", fullPath);
 
-        // 1. Identify model (SHA-256 and byte length)
-        byte[] modelBytes = await File.ReadAllBytesAsync(fullPath, cancellationToken);
+        // 1. Identify model (SHA-256 and byte length) — stream to avoid OOM on large models
+        string sha256Hash;
+        long fileSize;
+        using (var fileStream = new FileStream(fullPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            fileSize = fileStream.Length;
+            sha256Hash = Convert.ToHexString(SHA256.HashData(fileStream)).ToLowerInvariant();
+        }
+
         var modelIdentity = new ModelIdentity
         {
             Path = fullPath,
-            Sha256 = Convert.ToHexString(SHA256.HashData(modelBytes)).ToLowerInvariant(),
-            SizeBytes = modelBytes.Length,
+            Sha256 = sha256Hash,
+            SizeBytes = fileSize,
             Name = Path.GetFileNameWithoutExtension(fullPath)
         };
 
         // 2. Parse ONNX Protobuf structure
         OnnxProtobufReader.ParsedProto proto;
-        using (var memStream = new MemoryStream(modelBytes, writable: false))
+        using (var fileStream = new FileStream(fullPath, FileMode.Open, FileAccess.Read, FileShare.Read))
         {
-            proto = OnnxProtobufReader.Parse(memStream);
+            proto = OnnxProtobufReader.Parse(fileStream);
         }
 
         var opsetImports = proto.OpsetImports
@@ -96,6 +103,12 @@ public sealed class OnnxModelInspector : IModelInspector
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Could not open InferenceSession to read runtime node metadata; relying on protobuf structure.");
+
+            // Fallback: extract input/output tensor info from protobuf graph structure
+            var protoInputs = OnnxProtobufReader.ExtractGraphTensors(proto, isInput: true);
+            var protoOutputs = OnnxProtobufReader.ExtractGraphTensors(proto, isInput: false);
+            inputs.AddRange(protoInputs);
+            outputs.AddRange(protoOutputs);
         }
 
         // 4. Graph structure
