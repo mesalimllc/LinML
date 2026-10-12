@@ -79,6 +79,8 @@ jobs:
           tar -xzf /tmp/ort.tgz -C /tmp
           sudo cp /tmp/onnxruntime-linux-aarch64-${ORT_VERSION}/lib/libonnxruntime.so* /usr/lib/
           sudo ldconfig
+          echo "/tmp/onnxruntime-linux-aarch64-${ORT_VERSION}/lib" | sudo tee /etc/ld.so.conf.d/onnxruntime.conf
+          sudo ldconfig
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v6
@@ -92,7 +94,7 @@ jobs:
         run: dotnet build LinML.slnx -c Release --no-restore -m:1 -warnaserror
 
       - name: Test
-        run: dotnet test LinML.slnx -c Release --no-build -m:1 --logger "console;verbosity=normal"
+        run: LD_LIBRARY_PATH=/tmp/onnxruntime-linux-aarch64-1.31.0/lib:${LD_LIBRARY_PATH:-} dotnet test LinML.slnx -c Release --no-build -m:1 --logger "console;verbosity=normal"
 
       - name: Publish (linux-arm64)
         run: |
