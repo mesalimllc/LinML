@@ -33,7 +33,7 @@ public class CatalogCommandTests
         Assert.Equal(6, doc.RootElement.GetArrayLength());
 
         var ids = doc.RootElement.EnumerateArray()
-            .Select(e => e.GetProperty("Id").GetString())
+            .Select(e => e.GetProperty("id").GetString())
             .ToList();
 
         Assert.Contains("cpu", ids);
@@ -117,6 +117,25 @@ public class CatalogCommandTests
         Assert.False(isBuiltInMx);
         Assert.Single(migraphx);
         Assert.Equal(KnownPlugins.MigraphX.Id, migraphx[0].Id);
+
+        // Canonical raw ExecutionProvider names
+        var canonicalOv = CatalogCommand.ResolveInstallTargets("OpenVINOExecutionProvider", out string? errCOv, out bool isBuiltInCOv);
+        Assert.Null(errCOv);
+        Assert.False(isBuiltInCOv);
+        Assert.Single(canonicalOv);
+        Assert.Equal(KnownPlugins.OpenVino.Id, canonicalOv[0].Id);
+
+        var canonicalTrt = CatalogCommand.ResolveInstallTargets("TensorRTRtxExecutionProvider", out string? errCTrt, out bool isBuiltInCTrt);
+        Assert.Null(errCTrt);
+        Assert.False(isBuiltInCTrt);
+        Assert.Single(canonicalTrt);
+        Assert.Equal(KnownPlugins.TensorrtRtx.Id, canonicalTrt[0].Id);
+
+        var canonicalMx = CatalogCommand.ResolveInstallTargets("MIGraphXExecutionProvider", out string? errCMx, out bool isBuiltInCMx);
+        Assert.Null(errCMx);
+        Assert.False(isBuiltInCMx);
+        Assert.Single(canonicalMx);
+        Assert.Equal(KnownPlugins.MigraphX.Id, canonicalMx[0].Id);
 
         var cuda = CatalogCommand.ResolveInstallTargets("cuda", out string? errCuda, out bool isBuiltInCuda);
         Assert.Null(errCuda);

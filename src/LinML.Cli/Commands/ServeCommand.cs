@@ -77,8 +77,23 @@ public static class ServeCommand
                 }
 
                 var preferredProvider = ProviderArgs.ParseProvider(providerName);
+                var explicitLibraries = ProviderArgs.ParseEpLibraries(epLibraryArgs);
+                ProviderArgs.EnsureEpLibrariesRegistered(explicitLibraries);
+
                 var epLibraries = ProviderArgs.ResolveEpLibraries(epLibraryArgs, preferredProvider);
-                ProviderArgs.EnsureEpLibrariesRegistered(epLibraries);
+                try
+                {
+                    ProviderArgs.EnsureEpLibrariesRegistered(epLibraries);
+                }
+                catch (Exception ex)
+                {
+                    if (requireProvider)
+                    {
+                        Console.Error.WriteLine($"Error: {ex.Message}");
+                        return 3;
+                    }
+                    epLibraries = explicitLibraries;
+                }
                 var epOptions = ProviderArgs.ParseEpOptions(epOptionArgs);
 
                 var modelIdentity = await InputFiles.IdentifyModelAsync(model);
@@ -87,7 +102,8 @@ public static class ServeCommand
                     provider, modelIdentity, preferredProvider, requireProvider, epOptions);
                 if (!selection.Decision.Success)
                 {
-                    Console.Error.WriteLine($"Error: Provider selection failed: {selection.Decision.FailureReason}");
+                    var errorMsg = InferencePipeline.FormatSelectionFailure(selection.Decision.FailureReason, preferredProvider);
+                    Console.Error.WriteLine($"Error: {errorMsg}");
                     return 3;
                 }
 

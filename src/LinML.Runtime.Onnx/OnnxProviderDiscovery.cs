@@ -59,14 +59,25 @@ public sealed class OnnxProviderDiscovery : IProviderDiscovery
 
             foreach (var registeredName in PluginEpRegistry.RegisteredNames)
             {
-                var id = new ProviderId(registeredName);
-                if (!availableProviders.Contains(id))
+                ProviderId? mappedId = null;
+                var pluginSpec = LinML.Catalog.KnownPlugins.All.FirstOrDefault(p =>
+                    string.Equals(p.RegistrationName, registeredName, StringComparison.OrdinalIgnoreCase));
+                if (pluginSpec is not null)
                 {
-                    availableProviders.Add(id);
+                    mappedId = pluginSpec.Id;
+                }
+                else if (registeredName.EndsWith("ExecutionProvider", StringComparison.Ordinal))
+                {
+                    mappedId = new ProviderId(registeredName);
+                }
+
+                if (mappedId is not null && !availableProviders.Contains(mappedId))
+                {
+                    availableProviders.Add(mappedId);
                     diagnostics.Add(new DiagnosticEntry
                     {
                         Phase = "discovery",
-                        Message = $"Found registered plugin EP: {registeredName}",
+                        Message = $"Found registered plugin EP: {mappedId} (registered as '{registeredName}')",
                         Severity = DiagnosticSeverity.Info
                     });
                 }

@@ -9,11 +9,14 @@ using System.Text.Json;
 namespace LinML.Cli;
 
 /// <summary>
-/// Lightweight HTTP/REST daemon for <c>linml serve --port &lt;port&gt;</c>.
-/// Serves model inference requests over HTTP with a long-lived ONNX Runtime session.
+/// Lightweight HTTP/REST inference daemon for <c>linml serve --port &lt;port&gt;</c>.
+/// Hosts JSON REST endpoints for health checks, batch/streaming inference,
+/// and graceful shutdown.
 /// </summary>
 internal sealed class ServeHttpServer : IAsyncDisposable, IDisposable
 {
+    private const long MaxRequestBodySize = 100 * 1024 * 1024; // 100 MB
+
     private readonly ServiceProvider _services;
     private readonly ModelIdentity _modelIdentity;
     private readonly SelectionOutcome _selection;
@@ -25,12 +28,14 @@ internal sealed class ServeHttpServer : IAsyncDisposable, IDisposable
     private readonly HttpListener _listener;
     private readonly SemaphoreSlim _sessionLock = new(1, 1);
     private readonly TaskCompletionSource _shutdownTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource _allRequestsDrained = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly CancellationTokenSource _serverCts = new();
 
     private IInferenceSession? _session;
     private ProviderId _selectedProvider;
     private List<FallbackStep> _fallbackChain;
     private Task? _listenerLoopTask;
+    private int _activeRequests;
     private bool _disposed;
 
     public string Host { get; }
@@ -67,8 +72,22 @@ internal sealed class ServeHttpServer : IAsyncDisposable, IDisposable
         Port = port;
 
         _listener = new HttpListener();
-        string prefixHost = Host is "0.0.0.0" or "*" or "+" ? "*" : Host;
-        Url = $"http://{Host}:{Port}/";
+        string prefixHost;
+        if (Host is "0.0.0.0" or "*" or "+")
+        {
+            prefixHost = "*";
+        }
+        else if (Host.Contains(':') && !Host.StartsWith('['))
+        {
+            prefixHost = $"[{Host}]";
+        }
+        else
+        {
+            prefixHost = Host;
+        }
+
+        string urlHost = prefixHost == "*" ? "127.0.0.1" : prefixHost;
+        Url = $"http://{urlHost}:{Port}/";
         _listener.Prefixes.Add($"http://{prefixHost}:{Port}/");
     }
 
@@ -87,11 +106,11 @@ internal sealed class ServeHttpServer : IAsyncDisposable, IDisposable
     {
         if (_serverCts.IsCancellationRequested)
         {
+            await _shutdownTcs.Task.ConfigureAwait(false);
             return;
         }
 
         _serverCts.Cancel();
-        _shutdownTcs.TrySetResult();
 
         if (_listener.IsListening)
         {
@@ -116,23 +135,60 @@ internal sealed class ServeHttpServer : IAsyncDisposable, IDisposable
                 // loop cancellation is expected
             }
         }
+
+        // Wait up to 5 seconds for in-flight requests to complete
+        if (Volatile.Read(ref _activeRequests) > 0)
+        {
+            using var drainCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            try
+            {
+                await _allRequestsDrained.Task.WaitAsync(drainCts.Token).ConfigureAwait(false);
+            }
+            catch
+            {
+                // Proceed with shutdown if drain timeout expires
+            }
+        }
+
+        _shutdownTcs.TrySetResult();
     }
 
     private async Task AcceptLoopAsync(CancellationToken cancellationToken)
     {
-        while (!cancellationToken.IsCancellationRequested && _listener.IsListening)
+        try
         {
-            HttpListenerContext context;
-            try
+            while (!cancellationToken.IsCancellationRequested && _listener.IsListening)
             {
-                context = await _listener.GetContextAsync().ConfigureAwait(false);
-            }
-            catch (Exception ex) when (ex is HttpListenerException or ObjectDisposedException or OperationCanceledException)
-            {
-                break;
-            }
+                HttpListenerContext context;
+                try
+                {
+                    context = await _listener.GetContextAsync().ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is HttpListenerException or ObjectDisposedException or OperationCanceledException)
+                {
+                    break;
+                }
 
-            _ = Task.Run(() => HandleContextAsync(context, cancellationToken), cancellationToken);
+                Interlocked.Increment(ref _activeRequests);
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await HandleContextAsync(context, cancellationToken);
+                    }
+                    finally
+                    {
+                        if (Interlocked.Decrement(ref _activeRequests) == 0 && _serverCts.IsCancellationRequested)
+                        {
+                            _allRequestsDrained.TrySetResult();
+                        }
+                    }
+                }, cancellationToken);
+            }
+        }
+        catch (Exception ex)
+        {
+            _shutdownTcs.TrySetException(ex);
         }
     }
 
@@ -171,9 +227,11 @@ internal sealed class ServeHttpServer : IAsyncDisposable, IDisposable
                     return;
                 }
 
-                await WriteJsonAsync(context, HttpStatusCode.OK, new
+                bool isHealthy = _session is not null;
+                var statusCode = isHealthy ? HttpStatusCode.OK : HttpStatusCode.ServiceUnavailable;
+                await WriteJsonAsync(context, statusCode, new
                 {
-                    status = "healthy",
+                    status = isHealthy ? "healthy" : "unhealthy",
                     model = _modelIdentity,
                     requestedProvider = _preferredProvider?.ToString() ?? "cpu",
                     selectedProvider = _selectedProvider.ToString(),
@@ -203,10 +261,16 @@ internal sealed class ServeHttpServer : IAsyncDisposable, IDisposable
                     return;
                 }
 
+                if (!context.Request.IsLocal)
+                {
+                    await WriteJsonAsync(context, HttpStatusCode.Forbidden, new { error = "Shutdown is only permitted from loopback" }, cancellationToken);
+                    return;
+                }
+
                 await WriteJsonAsync(context, HttpStatusCode.OK, new { status = "shutting down" }, cancellationToken);
                 _ = Task.Run(async () =>
                 {
-                    await Task.Delay(100, CancellationToken.None);
+                    await Task.Delay(50, CancellationToken.None);
                     await StopAsync();
                 });
                 return;
@@ -229,6 +293,12 @@ internal sealed class ServeHttpServer : IAsyncDisposable, IDisposable
 
     private async Task HandlePredictAsync(HttpListenerContext context, CancellationToken cancellationToken)
     {
+        if (context.Request.ContentLength64 > MaxRequestBodySize)
+        {
+            await WriteJsonAsync(context, HttpStatusCode.RequestEntityTooLarge, new { error = "Request payload exceeds maximum size limit (100MB)" }, cancellationToken);
+            return;
+        }
+
         string body;
         using (var reader = new StreamReader(context.Request.InputStream, context.Request.ContentEncoding ?? Encoding.UTF8))
         {
@@ -252,6 +322,11 @@ internal sealed class ServeHttpServer : IAsyncDisposable, IDisposable
             return;
         }
 
+        InferenceResult? result = null;
+        string? clientError = null;
+        string? serverError = null;
+        HttpStatusCode statusCode = HttpStatusCode.OK;
+
         await _sessionLock.WaitAsync(cancellationToken);
         try
         {
@@ -262,49 +337,71 @@ internal sealed class ServeHttpServer : IAsyncDisposable, IDisposable
                     _services, _modelIdentity, _selection, _requireProvider, _epOptions, _epLibraries);
                 if (!reopened.Success)
                 {
-                    await WriteJsonAsync(context, HttpStatusCode.ServiceUnavailable, new { error = reopened.ErrorMessage }, cancellationToken);
-                    return;
+                    statusCode = HttpStatusCode.ServiceUnavailable;
+                    serverError = reopened.ErrorMessage;
                 }
-                _session = reopened.Session;
-                _selectedProvider = reopened.SelectedProvider;
-                _fallbackChain = reopened.FallbackChain;
+                else
+                {
+                    _session = reopened.Session;
+                    _selectedProvider = reopened.SelectedProvider;
+                    _fallbackChain = reopened.FallbackChain;
+                }
             }
 
-            try
+            if (serverError is null && _session is not null)
             {
-                var stopwatch = Stopwatch.StartNew();
-                var outputs = _session!.Run(tensorInputs);
-                stopwatch.Stop();
-
-                var result = new InferenceResult
+                try
                 {
-                    RequestedProvider = _preferredProvider ?? ProviderId.Cpu,
-                    SelectedProvider = _selectedProvider,
-                    FallbackChain = _fallbackChain,
-                    Outputs = outputs,
-                    Duration = stopwatch.Elapsed,
-                    Model = _modelIdentity,
-                    RuntimeVersion = OnnxRuntimeDiagnostics.GetRuntimeVersion(),
-                    Diagnostics = []
-                };
+                    var stopwatch = Stopwatch.StartNew();
+                    var outputs = _session.Run(tensorInputs);
+                    stopwatch.Stop();
 
-                await WriteJsonAsync(context, HttpStatusCode.OK, result, cancellationToken);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                // Drop poisoned session so next request reopens
-                _session?.Dispose();
-                _session = null;
-
-                await WriteJsonAsync(context, HttpStatusCode.InternalServerError, new
+                    result = new InferenceResult
+                    {
+                        RequestedProvider = _preferredProvider ?? ProviderId.Cpu,
+                        SelectedProvider = _selectedProvider,
+                        FallbackChain = _fallbackChain,
+                        Outputs = outputs,
+                        Duration = stopwatch.Elapsed,
+                        Model = _modelIdentity,
+                        RuntimeVersion = OnnxRuntimeDiagnostics.GetRuntimeVersion(),
+                        Diagnostics = []
+                    };
+                }
+                catch (ArgumentException ex)
                 {
-                    error = $"Inference failed on {_selectedProvider}: {ex.Message}"
-                }, cancellationToken);
+                    // Invalid input shapes/dimensions: client error, do not drop session
+                    statusCode = HttpStatusCode.BadRequest;
+                    clientError = $"Invalid tensor input: {ex.Message}";
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // Unexpected inference failure: drop poisoned session so next request reopens
+                    _session?.Dispose();
+                    _session = null;
+
+                    statusCode = HttpStatusCode.InternalServerError;
+                    serverError = $"Inference failed on {_selectedProvider}: {ex.Message}";
+                }
             }
         }
         finally
         {
             _sessionLock.Release();
+        }
+
+        // Response write occurs OUTSIDE _sessionLock so slow clients don't block inference
+        if (result is not null)
+        {
+            await WriteJsonAsync(context, HttpStatusCode.OK, result, cancellationToken);
+        }
+        else if (clientError is not null)
+        {
+            await WriteJsonAsync(context, statusCode, new { error = clientError }, cancellationToken);
+        }
+        else
+        {
+            await WriteJsonAsync(context, statusCode, new { error = serverError ?? "Internal error" }, cancellationToken);
         }
     }
 
@@ -342,6 +439,7 @@ internal sealed class ServeHttpServer : IAsyncDisposable, IDisposable
         _disposed = true;
         _serverCts.Cancel();
         _shutdownTcs.TrySetResult();
+        _allRequestsDrained.TrySetResult();
         try { _listener.Close(); } catch { }
         _session?.Dispose();
         _sessionLock.Dispose();

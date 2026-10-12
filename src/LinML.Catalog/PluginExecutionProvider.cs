@@ -89,8 +89,9 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
             // The wheel's bundled SONAME dependencies are not visible to the
             // native loader merely because they share the plugin directory.
             // Load them explicitly before ORT loads the plugin.
+            string bundledDir = Path.GetDirectoryName(library) ?? _spec.InstallDirectory(_installRoot);
             _bundledLibraryHandles.AddRange(
-                PluginInstaller.LoadBundledLibraries(_spec.InstallDirectory(_installRoot), _spec.LibraryFileName));
+                PluginInstaller.LoadBundledLibraries(bundledDir, _spec.LibraryFileName));
             _registrar.Register(_spec.RegistrationName, library);
             return true;
         }

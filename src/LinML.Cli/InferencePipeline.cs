@@ -93,12 +93,7 @@ internal static class InferencePipeline
 
         if (!decision.Success)
         {
-            var errorMsg = $"Provider selection failed: {decision.FailureReason}";
-            if (preferredProvider is not null && KnownPlugins.All.Any(p => p.Id == preferredProvider))
-            {
-                var shortId = ProviderArgs.GetShortName(preferredProvider);
-                errorMsg += $" Run 'linml catalog install {shortId}' to vendor missing libraries.";
-            }
+            var errorMsg = FormatSelectionFailure(decision.FailureReason, preferredProvider);
             return new ExecutionOutcome(
                 false, 3, errorMsg,
                 null, preferredProvider ?? ProviderId.Cpu, TimeSpan.Zero, [], []);
@@ -247,5 +242,20 @@ internal static class InferencePipeline
         return new OpenSessionOutcome(
             false, 1, $"All providers failed at session creation: {attempted}",
             null, decision.SelectedProvider!, fallbackChain);
+    }
+
+    internal static string FormatSelectionFailure(string? failureReason, ProviderId? preferredProvider)
+    {
+        var errorMsg = $"Provider selection failed: {failureReason ?? "Unknown reason"}";
+        if (preferredProvider is not null)
+        {
+            var spec = KnownPlugins.All.FirstOrDefault(p => p.Id == preferredProvider);
+            if (spec is not null && spec.FindLibrary() is null)
+            {
+                var shortId = ProviderArgs.GetShortName(preferredProvider);
+                errorMsg += $" Run 'linml catalog install {shortId}' to vendor missing libraries.";
+            }
+        }
+        return errorMsg;
     }
 }

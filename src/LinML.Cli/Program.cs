@@ -16,9 +16,7 @@ public static class Program
 {
     public static async Task<int> Main(string[] args)
     {
-        var services = new ServiceCollection();
-        ConfigureServices(services);
-        await using var provider = services.BuildServiceProvider();
+        await using var provider = BuildServices();
 
         var rootCommand = new RootCommand("LinML: Linux ONNX Runtime inference integration layer");
 
@@ -44,7 +42,14 @@ public static class Program
         return rootCommand.Parse(args).Invoke();
     }
 
-    private static void ConfigureServices(IServiceCollection services)
+    internal static ServiceProvider BuildServices()
+    {
+        var services = new ServiceCollection();
+        ConfigureServices(services);
+        return services.BuildServiceProvider();
+    }
+
+    internal static void ConfigureServices(IServiceCollection services)
     {
         services.AddLogging(builder => builder
             .SetMinimumLevel(LogLevel.Warning)

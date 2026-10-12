@@ -15,13 +15,13 @@ public static class ProviderArgs
     /// <summary>Known providers and their accepted --provider aliases.</summary>
     private static readonly (string[] Aliases, ProviderId Id)[] KnownProviders =
     [
-        (["cpu"], ProviderId.Cpu),
-        (["cuda"], ProviderId.Cuda),
-        (["trt", "tensorrt"], ProviderId.Tensorrt),
-        (["trt-rtx", "tensorrt-rtx", "nvtensort-rtx", "nv-tensorrt-rtx"], ProviderId.TensorrtRtx),
-        (["openvino", "ov"], ProviderId.OpenVino),
-        (["qnn"], ProviderId.Qnn),
-        (["migraphx", "amd"], ProviderId.MigraphX),
+        (["cpu", "cpuexecutionprovider"], ProviderId.Cpu),
+        (["cuda", "cudaexecutionprovider"], ProviderId.Cuda),
+        (["trt", "tensorrt", "tensorrtexecutionprovider"], ProviderId.Tensorrt),
+        (["trt-rtx", "tensorrt-rtx", "nvtensort-rtx", "nv-tensorrt-rtx", "nvtensorrtrtxexecutionprovider", "tensorrtrtxexecutionprovider"], ProviderId.TensorrtRtx),
+        (["openvino", "ov", "openvinoexecutionprovider"], ProviderId.OpenVino),
+        (["qnn", "qnnexecutionprovider"], ProviderId.Qnn),
+        (["migraphx", "amd", "migraphxexecutionprovider"], ProviderId.MigraphX),
     ];
 
     /// <summary>

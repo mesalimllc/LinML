@@ -60,9 +60,28 @@ public static class DoctorCommand
                     return 2;
                 }
 
+                var catalog = string.IsNullOrWhiteSpace(root)
+                    ? ExecutionProviderCatalog.GetDefault()
+                    : ExecutionProviderCatalog.Create(root);
+
                 // Register plugin EP libraries before discovery so they are listed.
                 var epLibraries = ProviderArgs.ParseEpLibraries(epLibraryArgs);
                 ProviderArgs.EnsureEpLibrariesRegistered(epLibraries);
+
+                // Pre-register available catalog plugins before discovery so smoke tests and discovery cover them
+                foreach (var cp in catalog.FindAllProviders().OfType<PluginExecutionProvider>())
+                {
+                    try
+                    {
+                        var libs = ProviderArgs.ResolveEpLibraries(epLibraryArgs, cp.Id, root);
+                        ProviderArgs.EnsureEpLibrariesRegistered(libs);
+                    }
+                    catch
+                    {
+                        // Ignore pre-registration errors; reported below
+                    }
+                }
+
                 var epOptions = ProviderArgs.ParseEpOptions(epOptionArgs);
 
                 var discovery = provider.GetRequiredService<IProviderDiscovery>();
@@ -97,10 +116,6 @@ public static class DoctorCommand
                 }
 
                 // Inspect catalog providers and report status & install hints
-                var catalog = string.IsNullOrWhiteSpace(root)
-                    ? ExecutionProviderCatalog.GetDefault()
-                    : ExecutionProviderCatalog.Create(root);
-
                 var catalogReports = new List<CatalogDoctorReport>();
                 foreach (var p in catalog.FindAllProviders())
                 {
@@ -127,7 +142,17 @@ public static class DoctorCommand
                     }
                     else
                     {
-                        bool isRegistered = p.TryRegister(out string? failureReason);
+                        bool isRegistered;
+                        string? failureReason = null;
+                        if (spec is not null && PluginEpRegistry.RegisteredNames.Contains(spec.RegistrationName))
+                        {
+                            isRegistered = true;
+                        }
+                        else
+                        {
+                            isRegistered = p.TryRegister(out failureReason);
+                        }
+
                         if (!isRegistered)
                         {
                             catalogReports.Add(new CatalogDoctorReport(
