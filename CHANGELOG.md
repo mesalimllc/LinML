@@ -2,13 +2,14 @@
 
 All notable changes to LinML are documented here. This project follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.4.1] — 2026-10-12
 
 ### Added
 - **`linml setup` vendors GPU runtime libraries** — cuDNN 9 and TensorRT 10 (pinned pip wheels, same pins as `scripts/setup-gpu-deps.sh`) are installed into `~/.local/linml-deps` when an NVIDIA GPU is detected, including under WSL2.
 - **Vendored GPU libraries load without `LD_LIBRARY_PATH`** — the CLI, `ExecutionProviderCatalog`, session creation and the readiness probes preload them (SONAME-matched; public `GpuDependencyLoader.PreloadVendored()` for apps that open ORT sessions themselves), so `TensorrtExecutionProvider` no longer fails with `libnvinfer.so.10: cannot open shared object file` unless the env script was sourced. A library the loader already resolves by name is left alone.
 - **`linml setup --trt-rtx-wsl2`** — opt in to the patched TensorRT-RTX EP for WSL2 from the CLI (SHA-256 verified; installs the stock wheel's runtime libraries first). Detected WSL2 + RTX hosts see it under "Opt-in available"; it is never installed without the flag. On WSL2 the patched build is now preferred over the stock wheel by library resolution and `doctor`, without needing `env-gpu-deps.sh`.
 - **`linml doctor`** reports a "GPU runtime libraries" section on NVIDIA hosts.
+- **`linml doctor` hint** when vendored GPU libraries or plugin EPs exist on disk but a provider still fails with a native library-load error: it suggests upgrading `linml` or sourcing `env-gpu-deps.sh`, and exposes a `hints` array in `--json` output.
 - `--root` is honoured for GPU libraries: `ExecutionProviderCatalog.Create(root)` and any CLI command given `--root` preload from that root ahead of `LINML_DEPS` and the default root.
 - cuDNN setup also preloads the cuBLAS 13 / NVRTC libraries its wheel vendors under `nvidia/cu13/lib` (`env-gpu-deps.sh` now adds that directory too).
 - `setup` detects Intel GPUs and NPUs from sysfs, so OpenVINO is recommended next to a non-Intel CPU when an Intel accelerator is present.
