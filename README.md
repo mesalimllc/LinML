@@ -38,21 +38,6 @@ LinML also provides `LinML.Catalog`, the Linux counterpart to WinML's `Execution
 
 ---
 
-## Status
-
-| Gate | Description | Status |
-|:---:|-------------|:------:|
-| **A** | Runtime and packaging strategy | ✅ Accepted (locked restore, ADR 0001) |
-| **B** | Contracts and selection policy | ✅ Done (23 policy tests) |
-| **C** | Real CPU inference | ✅ Done (`[11, 22, 13, 24, 15, 26]` verified) |
-| **D** | CUDA readiness and execution | ✅ Done (RTX 5070, profiling evidence) |
-| **E** | CLI and native publishing | ✅ Done (publish verified, self-contained linux-x64) |
-| **F** | CI, evidence, and release flow | ✅ Done (CI green, GitHub Releases + NuGet.org OIDC) |
-
-**165 tests passing** across Catalog (31), Runtime (22), Policy (23), Integration (20), and CLI (69).
-
----
-
 ## Execution Providers
 
 | Provider | Status | Verified Hardware | Notes |
