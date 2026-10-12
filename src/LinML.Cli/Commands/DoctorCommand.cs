@@ -217,12 +217,21 @@ public static class DoctorCommand
                     }
                 }
 
+                var hints = DoctorHints.Build(
+                    readinessReports,
+                    catalogReports.Where(c => c.Status == "NotReady").Select(c => c.Details),
+                    gpuDependencyReports.Where(g => g.Status == "Present").Select(g => g.Id).ToList(),
+                    pluginInstalled: catalogReports.Any(c => c.LibraryPath is not null),
+                    DoctorHints.LocateEnvScript(),
+                    root);
+
                 var result = new
                 {
                     discovery = report,
                     readiness = readinessReports,
                     catalog = catalogReports,
-                    gpuDependencies = gpuDependencyReports
+                    gpuDependencies = gpuDependencyReports,
+                    hints
                 };
 
                 if (json)
@@ -273,6 +282,16 @@ public static class DoctorCommand
                             {
                                 Console.WriteLine($"  {c.Id}: NOT READY ({c.Details})");
                             }
+                        }
+                    }
+
+                    if (hints.Count > 0)
+                    {
+                        Console.WriteLine();
+                        Console.WriteLine("Hint:");
+                        foreach (var line in hints)
+                        {
+                            Console.WriteLine($"  {line}");
                         }
                     }
                 }
