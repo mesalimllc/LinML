@@ -1,0 +1,99 @@
+name: MIGraphX EP plugin
+
+# Builds AMD's MIGraphX plugin EP (scripts/build-migraphx-ep.sh) and, on a
+# manual run with publish=true, attaches the archive to a GitHub release that
+# LinML.Catalog pins by URL and sha256. A published release is never
+# overwritten: changing the archive means bumping EP_VERSION in the script.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - scripts/build-migraphx-ep.sh
+      - .github/workflows/migraphx-ep.yml
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Create the ep-migraphx-<version> release with the built archive
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  ROCM_IMAGE: rocm/dev-ubuntu-24.04:10.0.0-full
+
+jobs:
+  build:
+    name: Build plugin
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read pinned version
+        id: meta
+        run: |
+          version="$(sed -n 's/^EP_VERSION="\(.*\)"$/\1/p' scripts/build-migraphx-ep.sh)"
+          test -n "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # The ROCm dev image is ~8 GB; the hosted runner needs room for it plus
+      # the EP build tree.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          sudo docker image prune --all --force
+          df -h /
+
+      - name: Build in ROCm container
+        run: |
+          docker run --rm -v "$PWD:/w" -w /w "$ROCM_IMAGE" bash scripts/build-migraphx-ep.sh
+          sudo chown -R "$(id -u):$(id -g)" out
+
+      - name: Upload archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: migraphx-ep-${{ steps.meta.outputs.version }}
+          path: out/migraphx-ep/
+          if-no-files-found: error
+
+  publish:
+    name: Publish release
+    needs: build
+    if: github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download archive
+        uses: actions/download-artifact@v4
+        with:
+          name: migraphx-ep-${{ needs.build.outputs.version }}
+          path: dist
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ep-migraphx-${{ needs.build.outputs.version }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::error::Release $TAG already exists; its archive is pinned by sha256 and must not change. Bump EP_VERSION instead."
+            exit 1
+          fi
+          sha="$(cut -d' ' -f1 dist/*.sha256)"
+          gh release create "$TAG" dist/* \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "MIGraphX EP plugin ${{ needs.build.outputs.version }}" \
+            --notes "AMD MIGraphX plugin execution provider (onnxruntime-ep-amdgpu), built by scripts/build-migraphx-ep.sh at $GITHUB_SHA.
+
+          Requires ROCm with MIGraphX >= 2.17 on the host. sha256: \`$sha\`"
