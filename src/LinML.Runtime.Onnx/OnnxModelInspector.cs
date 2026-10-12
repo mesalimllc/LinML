@@ -96,6 +96,10 @@ public sealed class OnnxModelInspector : IModelInspector
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Could not open InferenceSession to read runtime node metadata; relying on protobuf structure.");
+            inputs.Clear();
+            outputs.Clear();
+            inputs.AddRange(proto.Inputs.Select(CreateModelTensor));
+            outputs.AddRange(proto.Outputs.Select(CreateModelTensor));
         }
 
         // 4. Graph structure
@@ -129,6 +133,25 @@ public sealed class OnnxModelInspector : IModelInspector
             CompatibilityWarnings = warnings
         };
     }
+
+    private static ModelTensorMetadata CreateModelTensor(OnnxProtobufReader.ParsedTensor tensor)
+    {
+        return new ModelTensorMetadata
+        {
+            Name = tensor.Name,
+            DataType = MapTypeName(tensor.ElementType),
+            Shape = tensor.Dimensions,
+            IsDynamic = tensor.Dimensions.Any(dim => dim < 0) || tensor.SymbolicDimensions.Any(s => !string.IsNullOrEmpty(s)),
+            SymbolicDimensions = tensor.SymbolicDimensions
+        };
+    }
+
+    private static string MapTypeName(int elementType) => elementType switch
+    {
+        1 => "float32", 2 => "uint8", 3 => "int8", 5 => "int16", 6 => "int32",
+        7 => "int64", 8 => "string", 9 => "bool", 10 => "float16", 11 => "float64",
+        _ => "unknown"
+    };
 
     private static ModelTensorMetadata CreateModelTensor(string name, NodeMetadata node)
     {
