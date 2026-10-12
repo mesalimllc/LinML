@@ -259,6 +259,48 @@ linml run --model model.onnx --inputs inputs.json [options]
 
 ---
 
+### Benchmarking Suite (`linml bench`)
+
+Benchmark model inference latency, percentiles, throughput, and cold-start overhead across execution providers:
+
+```bash
+# Benchmark policy-selected or specific execution provider
+linml bench --model model.onnx --inputs inputs.json --provider cuda --warmup 5 --iterations 50
+
+# Benchmark all ready providers side-by-side for a performance leaderboard
+linml bench --model model.onnx --inputs inputs.json --all-ready
+
+# Output structured metrics in JSON
+linml bench --model model.onnx --inputs inputs.json --all-ready --json
+```
+
+#### Example Output:
+```text
+LinML Inference Benchmark
+Model: model.onnx
+Inputs: inputs.json
+Iterations: 50 | Warmup: 5
+
+PROVIDER                         THROUGHPUT      MEAN        p50         p90         p99         COLD START 
+----------------------------------------------------------------------------------------------------------
+CUDAExecutionProvider            4821.5 inf/s    0.21 ms     0.19 ms     0.25 ms     0.32 ms     945.12 ms  
+CPUExecutionProvider             15420.1 inf/s   0.06 ms     0.03 ms     0.14 ms     0.22 ms     72.10 ms   
+```
+
+#### Options:
+- `--model <path>`: Path to the ONNX model file (required).
+- `--inputs <path>`: Path to the inputs JSON file (required).
+- `--provider <name>`: Preferred execution provider to benchmark.
+- `--all-ready`: Benchmark all ready providers on the system side-by-side.
+- `--warmup <n>`: Number of warmup iterations before timing (default: `5`).
+- `--iterations <n>`: Number of timed measurement iterations (default: `50`).
+- `--ep-option key=value`: Provider-specific options (repeatable).
+- `--ep-library name=path`: Register a dynamic plugin EP shared library (repeatable).
+- `--root <path>`: Custom catalog install root directory.
+- `--json`: Output machine-readable JSON metrics including cold start, mean, min, max, p50, p90, p95, and p99.
+
+---
+
 ### Persistent Session Serving (`linml serve`)
 
 When performing repeated inference, one-shot process startup adds overhead. `linml serve` keeps a long-lived ONNX session warm in memory and serves inference requests over `stdin`/`stdout` using JSON Lines (streaming protocol):
