@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 
 namespace LinML.Catalog;
@@ -114,6 +115,44 @@ internal sealed class PluginInstaller(HttpMessageHandler? httpHandler = null)
         name.EndsWith(".so", StringComparison.Ordinal)
         || name.Contains(".so.", StringComparison.Ordinal)
         || name.EndsWith(".json", StringComparison.Ordinal);
+
+    /// <summary>
+    /// Loads native libraries shipped beside a plugin before the plugin itself is
+    /// registered. This makes bundled dependencies available without requiring
+    /// the caller to set LD_LIBRARY_PATH before starting the process.
+    /// </summary>
+    internal static IReadOnlyList<IntPtr> LoadBundledLibraries(string directory, string pluginFileName)
+    {
+        if (!OperatingSystem.IsLinux() || !Directory.Exists(directory))
+        {
+            return [];
+        }
+
+        List<IntPtr> handles = [];
+        foreach (string path in Directory.EnumerateFiles(directory, "*.so*"))
+        {
+            if (string.Equals(Path.GetFileName(path), pluginFileName, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            try
+            {
+                handles.Add(NativeLibrary.Load(path));
+            }
+            catch (DllNotFoundException)
+            {
+                // A bundled library may depend on a host driver library. The
+                // plugin registration below reports that failure if necessary.
+            }
+            catch (BadImageFormatException)
+            {
+                // Leave the normal registration path to report an invalid binary.
+            }
+        }
+
+        return handles;
+    }
 
     /// <summary>
     /// Creates SONAME symlinks that plugin libraries (like TensorRT-RTX) require at runtime.
