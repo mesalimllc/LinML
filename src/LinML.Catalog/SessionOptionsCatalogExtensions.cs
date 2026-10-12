@@ -47,7 +47,24 @@ public static class SessionOptionsCatalogExtensions
                 var optDict = providerOptions is null
                     ? new Dictionary<string, string>()
                     : new Dictionary<string, string>(providerOptions);
-                options.AppendExecutionProvider(provider.Id.Value, optDict);
+
+                if (provider.Id == LinML.Contracts.ProviderId.Cuda)
+                {
+                    using var cudaOptions = new OrtCUDAProviderOptions();
+                    cudaOptions.UpdateOptions(optDict);
+                    options.AppendExecutionProvider_CUDA(cudaOptions);
+                }
+                else if (provider.Id == LinML.Contracts.ProviderId.Tensorrt)
+                {
+                    using var tensorrtOptions = new OrtTensorRTProviderOptions();
+                    tensorrtOptions.UpdateOptions(optDict);
+                    options.AppendExecutionProvider_Tensorrt(tensorrtOptions);
+                }
+                else
+                {
+                    options.AppendExecutionProvider(provider.Id.Value, optDict);
+                }
+
                 return new ProviderAppendResult(true, provider.Id);
             }
             catch (OnnxRuntimeException ex)
