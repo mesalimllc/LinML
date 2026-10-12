@@ -25,6 +25,11 @@
   </Target>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="LinML.Cli.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\LinML.Catalog\LinML.Catalog.csproj" />
     <ProjectReference Include="..\LinML.Contracts\LinML.Contracts.csproj" />
     <ProjectReference Include="..\LinML.Policy\LinML.Policy.csproj" />
     <ProjectReference Include="..\LinML.Runtime.Onnx\LinML.Runtime.Onnx.csproj" />
