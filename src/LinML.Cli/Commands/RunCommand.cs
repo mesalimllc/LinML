@@ -60,8 +60,23 @@ public static class RunCommand
                 }
 
                 var preferredProvider = ProviderArgs.ParseProvider(providerName);
+                var explicitLibraries = ProviderArgs.ParseEpLibraries(epLibraryArgs);
+                ProviderArgs.EnsureEpLibrariesRegistered(explicitLibraries);
+
                 var epLibraries = ProviderArgs.ResolveEpLibraries(epLibraryArgs, preferredProvider);
-                ProviderArgs.EnsureEpLibrariesRegistered(epLibraries);
+                try
+                {
+                    ProviderArgs.EnsureEpLibrariesRegistered(epLibraries);
+                }
+                catch (Exception ex)
+                {
+                    if (requireProvider)
+                    {
+                        Console.Error.WriteLine($"Error: {ex.Message}");
+                        return 3;
+                    }
+                    epLibraries = explicitLibraries;
+                }
                 var epOptions = ProviderArgs.ParseEpOptions(epOptionArgs);
 
                 var modelIdentity = await InputFiles.IdentifyModelAsync(model);

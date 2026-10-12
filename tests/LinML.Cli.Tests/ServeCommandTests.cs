@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Text;
 using System.Text.Json;
 using LinML.Contracts;
 using Xunit;
@@ -233,17 +235,30 @@ public class ServeCommandTests
             // 6. POST /v1/models/predict with bad JSON returns 400 Bad Request
             var badResp = await client.PostAsync(
                 $"{baseUrl}/v1/models/predict",
-                new StringContent("{bad-json}", System.Text.Encoding.UTF8, "application/json"));
+                new StringContent("{bad-json}", Encoding.UTF8, "application/json"));
             Assert.Equal(System.Net.HttpStatusCode.BadRequest, badResp.StatusCode);
 
-            // 7. GET /not-found returns 404
+            // 7. POST /v1/models/predict with invalid tensor dimension returns 400 without dropping session
+            var invalidShapeJson = """[{"name":"x","shape":[2,3],"data":[1.0,2.0]}]""";
+            var invalidShapeResp = await client.PostAsync(
+                $"{baseUrl}/v1/models/predict",
+                new StringContent(invalidShapeJson, Encoding.UTF8, "application/json"));
+            Assert.Equal(System.Net.HttpStatusCode.BadRequest, invalidShapeResp.StatusCode);
+
+            // 8. Subsequent valid prediction succeeds (verifying session was not poisoned)
+            var retryValidResp = await client.PostAsync(
+                $"{baseUrl}/v1/models/predict",
+                new StringContent(inputJson, Encoding.UTF8, "application/json"));
+            Assert.True(retryValidResp.IsSuccessStatusCode);
+
+            // 9. GET /not-found returns 404
             var notFoundResp = await client.GetAsync($"{baseUrl}/unknown-route");
             Assert.Equal(System.Net.HttpStatusCode.NotFound, notFoundResp.StatusCode);
 
-            // 8. POST /v1/shutdown shuts down cleanly
+            // 10. POST /v1/shutdown shuts down cleanly
             var shutdownResp = await client.PostAsync(
                 $"{baseUrl}/v1/shutdown",
-                new StringContent("{}", System.Text.Encoding.UTF8, "application/json"));
+                new StringContent("{}", Encoding.UTF8, "application/json"));
             Assert.True(shutdownResp.IsSuccessStatusCode);
 
             await server.WaitForShutdownAsync();
@@ -252,6 +267,85 @@ public class ServeCommandTests
         finally
         {
             await server.StopAsync();
+        }
+    }
+
+    [Fact]
+    public async Task ServeCli_ValidPort_StartsHttpDaemonAndShutsDownCleanly()
+    {
+        if (!HasTinyFixture())
+        {
+            return;
+        }
+
+        int port = GetAvailablePort();
+        string linmlDll = Path.Combine(AppContext.BaseDirectory, "linml.dll");
+        Assert.True(File.Exists(linmlDll), $"linml.dll not found at {linmlDll}");
+
+        string dotnetExe = Environment.ProcessPath ?? "dotnet";
+        var psi = new ProcessStartInfo(dotnetExe)
+        {
+            ArgumentList =
+            {
+                linmlDll,
+                "serve",
+                "--model", CliTestHost.Fixture("model.onnx"),
+                "--port", port.ToString()
+            },
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false
+        };
+
+        using var process = Process.Start(psi);
+        Assert.NotNull(process);
+
+        using var client = new HttpClient();
+        string baseUrl = $"http://127.0.0.1:{port}";
+
+        try
+        {
+            // Poll /health until server is up (up to 10 seconds)
+            bool ready = false;
+            for (int i = 0; i < 100; i++)
+            {
+                try
+                {
+                    var resp = await client.GetAsync($"{baseUrl}/health");
+                    if (resp.IsSuccessStatusCode)
+                    {
+                        ready = true;
+                        break;
+                    }
+                }
+                catch
+                {
+                    await Task.Delay(100);
+                }
+            }
+
+            if (!ready)
+            {
+                string stdErr = await process.StandardError.ReadToEndAsync();
+                string stdOut = await process.StandardOutput.ReadToEndAsync();
+                Assert.Fail($"Daemon failed to start within timeout. StdErr: {stdErr}, StdOut: {stdOut}");
+            }
+
+            // Send shutdown request
+            var shutdownResp = await client.PostAsync($"{baseUrl}/shutdown", new StringContent("{}", Encoding.UTF8, "application/json"));
+            Assert.True(shutdownResp.IsSuccessStatusCode);
+
+            // Verify process exits with code 0 within 5 seconds
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await process.WaitForExitAsync(cts.Token);
+            Assert.Equal(0, process.ExitCode);
+        }
+        finally
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+            }
         }
     }
 

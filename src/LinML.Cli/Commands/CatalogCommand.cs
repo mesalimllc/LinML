@@ -15,6 +15,7 @@ public static class CatalogCommand
     {
         WriteIndented = true,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
 
     public static Command Create(Option<bool> jsonOption)
@@ -221,10 +222,15 @@ public static class CatalogCommand
             return KnownPlugins.All;
         }
 
-        string trimmed = providerName.Trim().ToLowerInvariant();
+        string trimmed = providerName.Trim();
 
-        if (trimmed is "cpu" or "cuda" or "trt" or "tensorrt"
-            or "cpuexecutionprovider" or "cudaexecutionprovider" or "tensorrtexecutionprovider")
+        if (trimmed.Equals("cpu", StringComparison.OrdinalIgnoreCase)
+            || trimmed.Equals("cuda", StringComparison.OrdinalIgnoreCase)
+            || trimmed.Equals("trt", StringComparison.OrdinalIgnoreCase)
+            || trimmed.Equals("tensorrt", StringComparison.OrdinalIgnoreCase)
+            || trimmed.Equals("cpuexecutionprovider", StringComparison.OrdinalIgnoreCase)
+            || trimmed.Equals("cudaexecutionprovider", StringComparison.OrdinalIgnoreCase)
+            || trimmed.Equals("tensorrtexecutionprovider", StringComparison.OrdinalIgnoreCase))
         {
             isBuiltIn = true;
             return [];

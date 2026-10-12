@@ -130,7 +130,7 @@ public static class BenchCommand
                     PrintHumanReadableReport(model, inputs, warmup, iterations, benchmarkResults);
                 }
 
-                return benchmarkResults.Any(r => r.Success) ? 0 : 3;
+                return benchmarkResults.All(r => r.Success) ? 0 : (benchmarkResults.Any(r => r.Success) ? 1 : 3);
             }
             catch (Exception ex)
             {
@@ -158,7 +158,18 @@ public static class BenchCommand
             var discovery = services.GetRequiredService<IProviderDiscovery>();
             var probe = services.GetRequiredService<IProviderReadinessProbe>();
 
-            // Register explicit libraries and candidate catalog plugins
+            // Register explicit libraries passed via --ep-library
+            var explicitLibs = ProviderArgs.ParseEpLibraries(epLibraryArgs);
+            try
+            {
+                ProviderArgs.EnsureEpLibrariesRegistered(explicitLibs);
+            }
+            catch
+            {
+                // Isolate explicit library registration failure
+            }
+
+            // Register candidate catalog plugins
             var catalog = string.IsNullOrWhiteSpace(root)
                 ? ExecutionProviderCatalog.GetDefault()
                 : ExecutionProviderCatalog.Create(root);
@@ -167,8 +178,15 @@ public static class BenchCommand
             {
                 if (p.Source == ProviderSource.Plugin && p.LibraryPath is not null)
                 {
-                    var libs = ProviderArgs.ResolveEpLibraries(epLibraryArgs, p.Id, root);
-                    ProviderArgs.EnsureEpLibrariesRegistered(libs);
+                    try
+                    {
+                        var libs = ProviderArgs.ResolveEpLibraries(epLibraryArgs, p.Id, root);
+                        ProviderArgs.EnsureEpLibrariesRegistered(libs);
+                    }
+                    catch
+                    {
+                        // Isolate individual plugin registration failure so other providers can run
+                    }
                 }
             }
 
@@ -184,10 +202,14 @@ public static class BenchCommand
                 }
             }
 
-            // Ensure CPU is in list if not already present
+            // Ensure CPU is in list if not already present, provided its probe succeeds
             if (!readyList.Contains(ProviderId.Cpu))
             {
-                readyList.Add(ProviderId.Cpu);
+                var cpuReadiness = probe.Probe(ProviderId.Cpu);
+                if (cpuReadiness.IsReady)
+                {
+                    readyList.Add(ProviderId.Cpu);
+                }
             }
 
             return readyList;
@@ -205,7 +227,8 @@ public static class BenchCommand
             return [selection.Decision.SelectedProvider];
         }
 
-        return [ProviderId.Cpu];
+        var defaultProbe = services.GetRequiredService<IProviderReadinessProbe>();
+        return defaultProbe.Probe(ProviderId.Cpu).IsReady ? [ProviderId.Cpu] : [];
     }
 
     private static BenchmarkResultDto RunSingleBenchmark(
@@ -225,17 +248,16 @@ public static class BenchCommand
             ProviderArgs.EnsureEpLibrariesRegistered(epLibraries);
             var scopedOptions = ProviderArgs.OptionsForProvider(epOptions, providerId);
 
+            // Cold start measurement (session creation + first execution)
+            var coldSw = Stopwatch.StartNew();
             using var session = factory.CreateSession(
                 model, providerId, scopedOptions, enableProfiling: false, epLibraries: epLibraries);
-
-            // Cold start measurement (first execution)
-            var coldSw = Stopwatch.StartNew();
             session.Run(inputs);
             coldSw.Stop();
             double coldStartMs = coldSw.Elapsed.TotalMilliseconds;
 
-            // Warmup iterations
-            for (int w = 1; w < warmupCount; w++)
+            // Warmup iterations: exactly warmupCount additional runs
+            for (int w = 0; w < warmupCount; w++)
             {
                 session.Run(inputs);
             }

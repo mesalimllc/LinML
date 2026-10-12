@@ -17,6 +17,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="LinML.Catalog.Tests" />
+    <InternalsVisibleTo Include="LinML.Runtime.Onnx" />
     <InternalsVisibleTo Include="linml" />
     <InternalsVisibleTo Include="LinML.Cli" />
     <InternalsVisibleTo Include="LinML.Cli.Tests" />
