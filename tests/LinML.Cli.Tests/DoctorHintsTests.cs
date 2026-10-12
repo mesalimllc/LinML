@@ -6,6 +6,8 @@ namespace LinML.Cli.Tests;
 
 public class DoctorHintsTests
 {
+    private const string NvinferFailure = "libnvinfer.so.10: cannot open shared object file";
+
     private static ProviderReadinessReport NotReady(string reason) => new()
     {
         Provider = ProviderId.Tensorrt,
@@ -16,36 +18,67 @@ public class DoctorHintsTests
 
     private static ProviderReadinessReport Ready() => new() { Provider = ProviderId.Cpu, IsReady = true };
 
-    [Fact]
-    public void Build_VendoredPresentAndLoaderFailure_ReturnsHintWithEnvScript()
-    {
-        var hints = DoctorHints.Build(
-            [NotReady("libnvinfer.so.10: cannot open shared object file")],
-            vendoredPresent: true,
-            envScriptPath: "/opt/linml/scripts/env-gpu-deps.sh");
+    private static IReadOnlyList<string> Build(
+        IEnumerable<ProviderReadinessReport> readiness,
+        string[]? catalogFailures = null,
+        string[]? gpuDeps = null,
+        bool pluginInstalled = false,
+        string? script = null,
+        string? root = null) =>
+        DoctorHints.Build(readiness, catalogFailures ?? [], gpuDeps ?? [], pluginInstalled, script, root);
 
-        Assert.Contains(hints, h => h.Contains("source /opt/linml/scripts/env-gpu-deps.sh"));
+    [Fact]
+    public void Build_VendoredLibraryFailsToLoad_ReturnsHintWithEnvScript()
+    {
+        var hints = Build([NotReady(NvinferFailure)], gpuDeps: ["tensorrt"], script: "/opt/linml/scripts/env-gpu-deps.sh");
+
+        Assert.Contains("  source /opt/linml/scripts/env-gpu-deps.sh", hints);
     }
 
     [Fact]
-    public void Build_NoEnvScriptLocated_FallsBackToRelativePath()
+    public void Build_NoEnvScriptLocated_FallbackCommandIsCopyPasteable()
     {
-        var hints = DoctorHints.Build(
+        var hints = Build(
             [NotReady("OrtSessionOptionsAppendExecutionProvider_TensorRT: Failed to load shared library")],
-            vendoredPresent: true,
-            envScriptPath: null);
+            gpuDeps: ["tensorrt"]);
 
-        Assert.Contains(hints, h => h.Contains("source scripts/env-gpu-deps.sh"));
+        Assert.Contains("  source scripts/env-gpu-deps.sh", hints);
+        // The explanation must not share a line with the command.
+        Assert.DoesNotContain(hints, h => h.Contains("source ") && h.Contains('('));
     }
 
     [Fact]
-    public void Build_ProviderNotListedByRuntime_ReturnsEmpty()
+    public void Build_ScriptPathWithSpaces_IsShellQuoted()
     {
-        // e.g. OpenVINO on a non-Intel CPU: registered but exposes no devices.
-        var hints = DoctorHints.Build(
-            [NotReady("Provider 'OpenVINOExecutionProvider' is not listed by the ORT runtime.")],
-            vendoredPresent: true,
-            envScriptPath: null);
+        var hints = Build([NotReady(NvinferFailure)], gpuDeps: ["tensorrt"], script: "/opt/My LinML/it's/env-gpu-deps.sh");
+
+        Assert.Contains("  source '/opt/My LinML/it'\\''s/env-gpu-deps.sh'", hints);
+    }
+
+    [Fact]
+    public void Build_CustomRoot_IsPassedAsDeps()
+    {
+        var hints = Build([NotReady(NvinferFailure)], gpuDeps: ["tensorrt"], script: "/s/env.sh", root: "/data/my deps");
+
+        Assert.Contains("  DEPS='/data/my deps' source /s/env.sh", hints);
+    }
+
+    [Fact]
+    public void Build_PluginRegistrationFailureInCatalog_ReturnsHint()
+    {
+        var hints = Build(
+            [Ready()],
+            catalogFailures: ["libnvonnxruntime_trt_rtx.so: cannot open shared object file"],
+            pluginInstalled: true);
+
+        Assert.NotEmpty(hints);
+    }
+
+    [Fact]
+    public void Build_FailingLibraryNotVendored_ReturnsEmpty()
+    {
+        // cuDNN is vendored but the failure is about TensorRT's libnvinfer, which is not.
+        var hints = Build([NotReady(NvinferFailure)], gpuDeps: ["cudnn"]);
 
         Assert.Empty(hints);
     }
@@ -53,10 +86,17 @@ public class DoctorHintsTests
     [Fact]
     public void Build_NothingVendored_ReturnsEmpty()
     {
-        var hints = DoctorHints.Build(
-            [NotReady("libnvinfer.so.10: cannot open shared object file")],
-            vendoredPresent: false,
-            envScriptPath: null);
+        Assert.Empty(Build([NotReady("some.so: cannot open shared object file")]));
+    }
+
+    [Fact]
+    public void Build_ProviderNotListedByRuntime_ReturnsEmpty()
+    {
+        // e.g. OpenVINO on a non-Intel CPU: registered but exposes no devices.
+        var hints = Build(
+            [NotReady("Provider 'OpenVINOExecutionProvider' is not listed by the ORT runtime.")],
+            gpuDeps: ["tensorrt"],
+            pluginInstalled: true);
 
         Assert.Empty(hints);
     }
@@ -64,10 +104,7 @@ public class DoctorHintsTests
     [Fact]
     public void Build_FailureUnrelatedToLoading_ReturnsEmpty()
     {
-        var hints = DoctorHints.Build(
-            [NotReady("Smoke inference produced wrong output"), Ready()],
-            vendoredPresent: true,
-            envScriptPath: null);
+        var hints = Build([NotReady("Smoke inference produced wrong output"), Ready()], gpuDeps: ["tensorrt"]);
 
         Assert.Empty(hints);
     }
@@ -75,6 +112,6 @@ public class DoctorHintsTests
     [Fact]
     public void Build_AllReady_ReturnsEmpty()
     {
-        Assert.Empty(DoctorHints.Build([Ready()], vendoredPresent: true, envScriptPath: null));
+        Assert.Empty(Build([Ready()], gpuDeps: ["tensorrt"], pluginInstalled: true));
     }
 }
