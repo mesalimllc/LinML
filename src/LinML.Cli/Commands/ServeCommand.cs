@@ -34,6 +34,8 @@ public static class ServeCommand
         var warmupInputsOption = new Option<string?>("--warmup-inputs") { Description = "Path to inputs JSON for a warmup run at startup (fail fast on error)" };
         var epOptionOption = new Option<string[]>("--ep-option") { Description = "Provider option: key=value (all providers) or provider:key=value (scoped, repeatable)" };
         var epLibraryOption = new Option<string[]>("--ep-library") { Description = "Plugin EP library as name=path (repeatable)" };
+        var portOption = new Option<int?>("--port") { Description = "Port to listen on for HTTP REST daemon (e.g. 8080). If omitted, serves over stdin/stdout." };
+        var hostOption = new Option<string?>("--host") { Description = "Host address to bind HTTP daemon to (default: 127.0.0.1)" };
 
         serveCommand.Options.Add(modelOption);
         serveCommand.Options.Add(providerOption);
@@ -41,6 +43,8 @@ public static class ServeCommand
         serveCommand.Options.Add(warmupInputsOption);
         serveCommand.Options.Add(epOptionOption);
         serveCommand.Options.Add(epLibraryOption);
+        serveCommand.Options.Add(portOption);
+        serveCommand.Options.Add(hostOption);
 
         serveCommand.SetAction(async parseResult =>
         {
@@ -50,9 +54,17 @@ public static class ServeCommand
             var warmupInputs = parseResult.GetValue(warmupInputsOption);
             var epOptionArgs = parseResult.GetValue(epOptionOption) ?? [];
             var epLibraryArgs = parseResult.GetValue(epLibraryOption) ?? [];
+            var port = parseResult.GetValue(portOption);
+            var host = parseResult.GetValue(hostOption) ?? "127.0.0.1";
 
             try
             {
+                if (port.HasValue && (port.Value <= 0 || port.Value > 65535))
+                {
+                    Console.Error.WriteLine($"Error: Invalid port number: {port.Value}. Port must be between 1 and 65535.");
+                    return 2;
+                }
+
                 if (!File.Exists(model))
                 {
                     Console.Error.WriteLine($"Error: Model file not found: {model}");
@@ -110,10 +122,52 @@ public static class ServeCommand
                         stopwatch.Stop();
                         Console.Error.WriteLine($"Warmup: {selectedProvider} ready in {stopwatch.Elapsed}");
                     }
-                    else
+
+                    if (port.HasValue)
                     {
-                        Console.Error.WriteLine($"Serving: {selectedProvider} (requested: {preferredProvider?.ToString() ?? "cpu"}). Awaiting requests on stdin.");
+                        await using var server = new ServeHttpServer(
+                            provider,
+                            modelIdentity,
+                            selection,
+                            preferredProvider,
+                            requireProvider,
+                            epOptions,
+                            epLibraries,
+                            session,
+                            selectedProvider,
+                            fallbackChain,
+                            host,
+                            port.Value);
+
+                        // Ownership of initial session transferred to server
+                        session = null;
+
+                        using var cts = new CancellationTokenSource();
+                        ConsoleCancelEventHandler onCancel = (_, e) =>
+                        {
+                            e.Cancel = true;
+                            cts.Cancel();
+                            _ = server.StopAsync();
+                        };
+                        Console.CancelKeyPress += onCancel;
+
+                        try
+                        {
+                            server.Start();
+                            Console.Error.WriteLine($"Serving HTTP: {selectedProvider} listening on {server.Url}");
+                            Console.Error.WriteLine("Endpoints: GET /health, POST /v1/models/predict, POST /shutdown");
+
+                            await server.WaitForShutdownAsync();
+                            return 0;
+                        }
+                        finally
+                        {
+                            Console.CancelKeyPress -= onCancel;
+                            await server.StopAsync();
+                        }
                     }
+
+                    Console.Error.WriteLine($"Serving: {selectedProvider} (requested: {preferredProvider?.ToString() ?? "cpu"}). Awaiting requests on stdin.");
 
                     string? line;
                     while ((line = await Console.In.ReadLineAsync()) is not null)
