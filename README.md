@@ -49,7 +49,7 @@ LinML also provides `LinML.Catalog`, the Linux counterpart to WinML's `Execution
 | **E** | CLI and native publishing | ✅ Done (publish verified, self-contained linux-x64) |
 | **F** | CI, evidence, and release flow | ✅ Done (CI green, GitHub Releases + NuGet.org OIDC) |
 
-**159 tests passing** across Catalog (31), Runtime (22), Policy (23), Integration (20), and CLI (63).
+**165 tests passing** across Catalog (31), Runtime (22), Policy (23), Integration (20), and CLI (69).
 
 ---
 
@@ -214,10 +214,10 @@ Output includes runtime version, registered providers (including dynamic plugins
 
 ### Diagnostic Readiness Probe (`linml doctor`)
 
-Diagnose execution provider readiness before running production models. Detects missing shared libraries, driver mismatches, or missing cuDNN dependencies:
+Diagnose execution provider readiness before running production models. Detects missing shared libraries, driver mismatches, or missing cuDNN dependencies. Inspects both runtime providers and catalog plugin providers, reporting readiness and providing clear install hints (e.g. `Run 'linml catalog install openvino' to vendor missing libraries`) for uninstalled plugins:
 
 ```bash
-# Basic provider readiness probe (checks Load/Append without execution)
+# Basic provider readiness probe (checks Load/Append without execution, inspects catalog plugins)
 linml doctor
 
 # Comprehensive model smoke test (loads model and runs real inference per provider)
@@ -228,15 +228,15 @@ linml doctor --model model.onnx --inputs inputs.json --json
 
 ### Model Inference (`linml run`)
 
-Execute one-shot inference on an ONNX model:
+Execute one-shot inference on an ONNX model. If `--provider` requests a catalog plugin (such as `trt-rtx`, `openvino`, or `migraphx`), LinML automatically resolves and registers vendored libraries from the catalog cache (`~/.cache/linml/ep-plugins` or `~/.local/linml-deps`) when `--ep-library` is omitted:
 
 ```bash
 linml run --model model.onnx --inputs inputs.json [options]
 ```
 
 #### Options:
-- `--provider <name>`: Preferred execution provider. Accepts aliases (`cpu`, `cuda`, `trt`, `trt-rtx`, `openvino`/`ov`, `migraphx`, `qnn`) or full EP names (`CUDAExecutionProvider`).
-- `--require-provider`: Strict mode — exits with code `3` if the preferred provider cannot be used (disables fallback to CPU).
+- `--provider <name>`: Preferred execution provider. Accepts aliases (`cpu`, `cuda`, `trt`, `trt-rtx`, `openvino`/`ov`, `migraphx`, `qnn`) or full EP names (`CUDAExecutionProvider`). Automatically resolves vendored catalog plugins when `--ep-library` is omitted.
+- `--require-provider`: Strict mode — exits with code `3` if the preferred provider cannot be used (disables fallback to CPU). If a requested plugin is missing, suggests `linml catalog install <provider>`.
 - `--profile`: Enables ONNX Runtime profiling and reports per-node operator placement.
 - `--ep-option key=value` or `--ep-option provider:key=value`: Provider-specific options (repeatable, e.g. `--ep-option trt:trt_engine_cache_enable=1`).
 - `--ep-library name=path`: Register a dynamic plugin EP shared library (repeatable, e.g. `--ep-library NvTensorRTRTXExecutionProvider=/path/to/lib.so`).

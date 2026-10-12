@@ -36,7 +36,9 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
 
     public string? PinnedVersion => _spec.Version;
 
-    public string? LibraryPath => File.Exists(_spec.LibraryPath(_installRoot)) ? _spec.LibraryPath(_installRoot) : null;
+    public string? LibraryPath => File.Exists(_spec.LibraryPath(_installRoot))
+        ? _spec.LibraryPath(_installRoot)
+        : (_installRoot == ExecutionProviderCatalog.DefaultInstallRoot ? _spec.FindLibrary() : null);
 
     public ProviderReadyState ReadyState
     {
@@ -192,7 +194,7 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
     private static bool IsLinuxX64() =>
         OperatingSystem.IsLinux() && RuntimeInformation.ProcessArchitecture == Architecture.X64;
 
-    private static bool IsWsl()
+    internal static bool IsWsl()
     {
         try
         {

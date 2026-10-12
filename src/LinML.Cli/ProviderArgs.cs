@@ -1,3 +1,4 @@
+using LinML.Catalog;
 using LinML.Contracts;
 using LinML.Runtime.Onnx;
 
@@ -54,11 +55,40 @@ public static class ProviderArgs
             "(or a raw ORT EP name like CUDAExecutionProvider).");
     }
 
+    private static readonly List<IntPtr> BundledLibraryHandles = [];
+
+    /// <summary>
+    /// Gets the canonical short alias for a known provider ID.
+    /// </summary>
+    public static string GetShortName(ProviderId id)
+    {
+        if (id == ProviderId.Cpu) return "cpu";
+        if (id == ProviderId.Cuda) return "cuda";
+        if (id == ProviderId.Tensorrt) return "tensorrt";
+        if (id == ProviderId.TensorrtRtx) return "trt-rtx";
+        if (id == ProviderId.OpenVino) return "openvino";
+        if (id == ProviderId.MigraphX) return "migraphx";
+        if (id == ProviderId.Qnn) return "qnn";
+        return id.Value;
+    }
+
     /// <summary>
     /// Parse repeated --ep-library name=path arguments plus the
     /// LINML_EP_LIBRARIES environment variable (';'-separated name=path).
     /// </summary>
-    public static IReadOnlyDictionary<string, string> ParseEpLibraries(IEnumerable<string> args)
+    public static IReadOnlyDictionary<string, string> ParseEpLibraries(IEnumerable<string> args) =>
+        ResolveEpLibraries(args, requestedProvider: null);
+
+    /// <summary>
+    /// Parse repeated --ep-library name=path arguments and LINML_EP_LIBRARIES,
+    /// and automatically resolve and register vendored libraries from the catalog
+    /// cache (~/.cache/linml/ep-plugins, ~/.local/linml-deps, etc.) if --ep-library
+    /// was omitted for the requested provider.
+    /// </summary>
+    public static IReadOnlyDictionary<string, string> ResolveEpLibraries(
+        IEnumerable<string> args,
+        ProviderId? requestedProvider = null,
+        string? customRoot = null)
     {
         var result = new Dictionary<string, string>(StringComparer.Ordinal);
 
@@ -74,6 +104,35 @@ public static class ProviderArgs
         foreach (var arg in args)
         {
             AddPair(result, arg, "--ep-library");
+        }
+
+        if (requestedProvider is not null)
+        {
+            var spec = KnownPlugins.All.FirstOrDefault(p => p.Id == requestedProvider);
+            if (spec is not null)
+            {
+                var shortName = GetShortName(spec.Id);
+                bool alreadySpecified = result.Keys.Any(k =>
+                    string.Equals(k, spec.RegistrationName, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(k, spec.Id.Value, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(k, shortName, StringComparison.OrdinalIgnoreCase));
+
+                if (!alreadySpecified)
+                {
+                    var libraryPath = spec.FindLibrary(customRoot);
+                    if (libraryPath is not null)
+                    {
+                        var pluginDir = Path.GetDirectoryName(libraryPath);
+                        if (!string.IsNullOrEmpty(pluginDir))
+                        {
+                            BundledLibraryHandles.AddRange(
+                                PluginInstaller.LoadBundledLibraries(pluginDir, spec.LibraryFileName));
+                        }
+
+                        result[spec.RegistrationName] = libraryPath;
+                    }
+                }
+            }
         }
 
         return result;

@@ -123,8 +123,8 @@
 | Runtime.Onnx | 22 | ✅ green |
 | Catalog | 31 | ✅ green (incl. script/catalog pin agreement) |
 | Integration | 20 | ✅ green (CPU/CUDA/TRT/TRT-RTX/OpenVINO/MIGraphX where hardware allows; honest skips elsewhere) |
-| CLI | 63 | ✅ green (incl. 6 catalog and 6 serve tests) |
-| **Total** | **159** | ✅ green with GPU env and with `CUDA_VISIBLE_DEVICES=''` |
+| CLI | 69 | ✅ green (incl. 6 catalog and 6 serve tests) |
+| **Total** | **165** | ✅ green with GPU env and with `CUDA_VISIBLE_DEVICES=''` |
 
 | Integration area | CPU | CUDA | Status |
 |------------------|-----|------|--------|

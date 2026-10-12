@@ -59,14 +59,13 @@ public static class RunCommand
                     return 2;
                 }
 
-                // Register plugin EP libraries before discovery so they are listed.
-                var epLibraries = ProviderArgs.ParseEpLibraries(epLibraryArgs);
+                var preferredProvider = ProviderArgs.ParseProvider(providerName);
+                var epLibraries = ProviderArgs.ResolveEpLibraries(epLibraryArgs, preferredProvider);
                 ProviderArgs.EnsureEpLibrariesRegistered(epLibraries);
                 var epOptions = ProviderArgs.ParseEpOptions(epOptionArgs);
 
                 var modelIdentity = await InputFiles.IdentifyModelAsync(model);
                 var tensorInputs = await InputFiles.ReadInputsAsync(inputs);
-                var preferredProvider = ProviderArgs.ParseProvider(providerName);
 
                 var outcome = InferencePipeline.Execute(
                     provider, modelIdentity, tensorInputs, preferredProvider,

@@ -268,17 +268,7 @@ public static class CatalogCommand
         return [];
     }
 
-    internal static string GetShortName(ProviderId id)
-    {
-        if (id == ProviderId.Cpu) return "cpu";
-        if (id == ProviderId.Cuda) return "cuda";
-        if (id == ProviderId.Tensorrt) return "tensorrt";
-        if (id == ProviderId.TensorrtRtx) return "trt-rtx";
-        if (id == ProviderId.OpenVino) return "openvino";
-        if (id == ProviderId.MigraphX) return "migraphx";
-        if (id == ProviderId.Qnn) return "qnn";
-        return id.Value;
-    }
+    internal static string GetShortName(ProviderId id) => ProviderArgs.GetShortName(id);
 
     private sealed record CatalogProviderDto(
         string Id,

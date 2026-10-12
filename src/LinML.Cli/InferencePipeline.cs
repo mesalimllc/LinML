@@ -1,3 +1,4 @@
+using LinML.Catalog;
 using LinML.Contracts;
 using LinML.Policy;
 using LinML.Runtime.Onnx;
@@ -92,8 +93,14 @@ internal static class InferencePipeline
 
         if (!decision.Success)
         {
+            var errorMsg = $"Provider selection failed: {decision.FailureReason}";
+            if (preferredProvider is not null && KnownPlugins.All.Any(p => p.Id == preferredProvider))
+            {
+                var shortId = ProviderArgs.GetShortName(preferredProvider);
+                errorMsg += $" Run 'linml catalog install {shortId}' to vendor missing libraries.";
+            }
             return new ExecutionOutcome(
-                false, 3, $"Provider selection failed: {decision.FailureReason}",
+                false, 3, errorMsg,
                 null, preferredProvider ?? ProviderId.Cpu, TimeSpan.Zero, [], []);
         }
 
