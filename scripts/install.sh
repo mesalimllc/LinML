@@ -92,10 +92,18 @@ if [ "$OS" != "Linux" ]; then
     exit 1
 fi
 
-if [ "$ARCH" != "x86_64" ]; then
-    echo "Error: LinML currently only supports x86_64 architecture (detected: $ARCH)." >&2
-    exit 1
-fi
+case "$ARCH" in
+    x86_64)
+        RUNTIME_ID="linux-x64"
+        ;;
+    aarch64|arm64)
+        RUNTIME_ID="linux-arm64"
+        ;;
+    *)
+        echo "Error: LinML currently only supports x86_64 and aarch64/arm64 architectures (detected: $ARCH)." >&2
+        exit 1
+        ;;
+esac
 
 has_cmd() {
     command -v "$1" >/dev/null 2>&1
@@ -160,8 +168,8 @@ else
 
     echo "Target version: $TAG ($VER_NUM)"
     BASE_URL="https://github.com/${REPO}/releases/download/${TAG}"
-    ARCHIVE_NAME="linml-${VER_NUM}-linux-x64.tar.gz"
-    GENERIC_ARCHIVE="linml-linux-x64.tar.gz"
+    ARCHIVE_NAME="linml-${VER_NUM}-${RUNTIME_ID}.tar.gz"
+    GENERIC_ARCHIVE="linml-${RUNTIME_ID}.tar.gz"
 
     echo "Downloading ${ARCHIVE_NAME}..."
     if ! download_file "${BASE_URL}/${ARCHIVE_NAME}" "${TMP_DIR}/${ARCHIVE_NAME}" 2>/dev/null; then
@@ -177,7 +185,7 @@ else
     CHECKSUM_URL="${BASE_URL}/SHA256SUMS.txt"
     if download_file "$CHECKSUM_URL" "${TMP_DIR}/SHA256SUMS.txt" 2>/dev/null; then
         echo "Verifying SHA256 checksum..."
-        EXPECTED_HASH="$(grep -E "(linml-${VER_NUM}-linux-x64\.tar\.gz|linml-linux-x64\.tar\.gz)" "${TMP_DIR}/SHA256SUMS.txt" | head -1 | awk '{print $1}' || true)"
+        EXPECTED_HASH="$(grep -E "(linml-${VER_NUM}-${RUNTIME_ID}\.tar\.gz|linml-${RUNTIME_ID}\.tar\.gz)" "${TMP_DIR}/SHA256SUMS.txt" | head -1 | awk '{print $1}' || true)"
         if [ -n "$EXPECTED_HASH" ]; then
             ACTUAL_HASH="$(sha256sum "$ARCHIVE_PATH" | awk '{print $1}')"
             if [ "$EXPECTED_HASH" != "$ACTUAL_HASH" ]; then

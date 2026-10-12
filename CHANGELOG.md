@@ -10,6 +10,8 @@ All notable changes to LinML are documented here. This project follows [Semantic
 - **`OnnxModelInspector`** — combines streaming protobuf parsing with `InferenceSession` metadata.
 - **`EpCompatibilityAnalyzer`** — static analysis of operators, opsets, and tensor dimensions for EP-specific warnings (CUDA, TensorRT, OpenVINO, MIGraphX).
 - **`OnnxProtobufReader`** — zero-dependency streaming Protocol Buffers reader for ONNX ModelProto; safely skips large tensor initializers.
+- **ARM64 (aarch64) support** — self-contained `linux-arm64` CLI binary published to releases; CI builds and tests on `ubuntu-24.04-arm` runners.
+- **Expanded distro support** — verified on Fedora 40+, RHEL 9 / Rocky / Alma 9, openSUSE Tumbleweed / Leap 15.6+, Arch Linux (all glibc-based x86_64).
 
 ### Fixed
 - **Memory**: `InspectAsync` streams via `FileStream` instead of `ReadAllBytesAsync` — no OOM on large models.
@@ -19,6 +21,7 @@ All notable changes to LinML are documented here. This project follows [Semantic
 - **Output**: Human-readable report now shows symbolic dimensions for **outputs** (previously only inputs).
 - **Fixtures**: Test fixture regenerated with `x`/`y` tensor names; `inputs.json`, `fixture-manifest.json`, and all 6 integration test files updated consistently.
 - **CI**: GitHub Actions upgraded to latest versions (checkout v7, setup-dotnet v6, upload-artifact v7, download-artifact v8) — no Node.js 20 deprecation warnings.
+- **Installer**: `scripts/install.sh` auto-detects x86_64 vs aarch64 and downloads appropriate binary.
 
 ## [0.2.0] — 2026-10-12
 

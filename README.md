@@ -46,7 +46,7 @@ LinML also provides `LinML.Catalog`, the Linux counterpart to WinML's `Execution
 
 | Component | Version | NuGet | Notes |
 |-----------|---------|-------|-------|
-| **CLI** (`linml`) | `0.3.0` | — | Self-contained `linux-x64` binary |
+| **CLI** (`linml`) | `0.3.0` | — | Self-contained `linux-x64`, `linux-arm64` binaries |
 | **LinML.Catalog** | `0.3.0` | [![NuGet Catalog](https://img.shields.io/nuget/v/LinML.Catalog.svg?label=LinML.Catalog&color=blue)](https://www.nuget.org/packages/LinML.Catalog) | Plugin EP vendoring & registration |
 | **LinML.Contracts** | `0.3.0` | [![NuGet Contracts](https://img.shields.io/nuget/v/LinML.Contracts.svg?label=LinML.Contracts&color=blue)](https://www.nuget.org/packages/LinML.Contracts) | Pure contracts & data models |
 | **Runtime** | — | — | ONNX Runtime 1.31.x |
@@ -59,13 +59,13 @@ See [CHANGELOG.md](CHANGELOG.md) for full release history.
 
 | Provider | Status | Verified Hardware | Notes |
 |----------|:------:|-------------------|-------|
-| `CPUExecutionProvider` | ✅ Verified | Any x86_64 CPU | Always available, built into standard ORT |
-| `CUDAExecutionProvider` | ✅ Verified | NVIDIA GeForce RTX 5070 | Blackwell (sm_120); requires cuDNN 9.x for Conv ops |
-| `TensorrtExecutionProvider` | ✅ Verified | NVIDIA GeForce RTX 5070 | TensorRT 10.16; enable engine cache for repeated runs |
-| `NvTensorRTRTXExecutionProvider` | ✅ Verified (Native Linux) | NVIDIA GeForce RTX 4090 | Verified in Daytona cloud runtime; [WSL2 blocked](docs/compatibility.md) due to virtual PCI constraint |
-| `OpenVINOExecutionProvider` | ✅ Verified | Intel Xeon CPU | Plugin EP 1.6.1; dynamically registered at runtime |
-| `MIGraphXExecutionProvider` | ✅ Verified | AMD Instinct MI355X (gfx950) | ROCm / MIGraphX verified in Daytona sandbox |
-| `QNNExecutionProvider` | 🔌 Wired / Gated | Qualcomm Snapdragon | Contract and probe wired; blocked on physical hardware / QAIRT SDK access |
+| `CPUExecutionProvider` | ✅ Verified | Any x86_64 / aarch64 CPU | Always available, built into standard ORT |
+| `CUDAExecutionProvider` | ✅ Verified | NVIDIA GeForce RTX 5070 (x86_64), Jetson Orin (aarch64) | Blackwell (sm_120); requires cuDNN 9.x for Conv ops |
+| `TensorrtExecutionProvider` | ✅ Verified | NVIDIA GeForce RTX 5070 (x86_64), Jetson Orin (aarch64) | TensorRT 10.16; enable engine cache for repeated runs |
+| `NvTensorRTRTXExecutionProvider` | ✅ Verified (Native Linux) | NVIDIA GeForce RTX 4090 | Verified in Daytona cloud runtime; [WSL2 blocked](docs/compatibility.md) due to virtual PCI constraint; **x86_64 only** |
+| `OpenVINOExecutionProvider` | ✅ Verified | Intel Xeon CPU | Plugin EP 1.6.1; dynamically registered at runtime; **x86_64 only** |
+| `MIGraphXExecutionProvider` | ✅ Verified | AMD Instinct MI355X (gfx950) | ROCm / MIGraphX verified in Daytona sandbox; **x86_64 only** |
+| `QNNExecutionProvider` | 🔌 Wired / Gated | Qualcomm Snapdragon (aarch64) | Contract and probe wired; blocked on physical hardware / QAIRT SDK access; **aarch64 primary target** |
 
 See the [Compatibility Report](docs/compatibility.md) for detailed hardware matrices, driver requirements, and known constraints.
 
@@ -75,17 +75,20 @@ See the [Compatibility Report](docs/compatibility.md) for detailed hardware matr
 
 ### 1. Install Pre-built CLI (Recommended)
 
-LinML CLI is distributed as a standalone, self-contained binary for Linux x86_64 with all native ONNX Runtime dependencies bundled. **No .NET installation is required.**
+LinML CLI is distributed as a standalone, self-contained binary for **Linux x86_64 and aarch64 (ARM64)** with all native ONNX Runtime dependencies bundled. **No .NET installation is required.**
 
 ```bash
-# Install to ~/.local/share/linml and symlink to ~/.local/bin/linml
+# Install to ~/.local/share/linml and symlink to ~/.local/bin/linml (auto-detects architecture)
 curl -fsSL https://raw.githubusercontent.com/trackdubllc/LinML/main/scripts/install.sh | bash
 
 # Or install and automatically set up GPU dependencies (cuDNN, TensorRT, plugins):
 curl -fsSL https://raw.githubusercontent.com/trackdubllc/LinML/main/scripts/install.sh | bash -s -- --gpu
+
+# Explicit version and architecture:
+bash scripts/install.sh --version v0.3.0 --target ~/.local/share/linml --bin-dir ~/.local/bin
 ```
 
-Pre-built archives (`linml-<version>-linux-x64.tar.gz`) and SHA-256 checksums are also downloadable directly from [GitHub Releases](https://github.com/trackdubllc/LinML/releases).
+Pre-built archives (`linml-<version>-linux-x64.tar.gz`, `linml-<version>-linux-arm64.tar.gz`) and SHA-256 checksums are also downloadable directly from [GitHub Releases](https://github.com/trackdubllc/LinML/releases).
 
 Verify the installation:
 ```bash
@@ -132,9 +135,11 @@ with linml.InferenceSession("model.onnx", provider="cuda") as session:
 ### 4. Build from Source
 
 #### Prerequisites
-- **Ubuntu 24.04+ or Debian 12+** (tested on Ubuntu 24.04 and 26.04)
+- **Linux x86_64 / aarch64** with glibc 2.28+ (tested on: Ubuntu 24.04+, Debian 12+, Fedora 40+, RHEL 9 / Rocky / Alma 9, openSUSE Tumbleweed / Leap 15.6+, Arch Linux)
 - **.NET 10 SDK** (install via `scripts/setup-wsl.sh` or Microsoft's [dotnet-install](https://dot.net/v1/dotnet-install.sh))
 - *(Optional)* NVIDIA GPU with CUDA 12.8+ or 13.0+
+
+> **Note:** Alpine Linux (musl) is **not supported** — ONNX Runtime requires glibc.
 
 ```bash
 # 1. Setup .NET SDK and verify GPU visibility
