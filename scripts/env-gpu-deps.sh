@@ -5,7 +5,9 @@
 #
 # Usage: source scripts/env-gpu-deps.sh
 
-DEPS="${HOME}/.local/linml-deps"
+# Dependency root. Shared with scripts/build-trt-rtx-ep.sh so a build installed
+# under a custom DEPS is still discovered here; default is the standard layout.
+DEPS="${DEPS:-${HOME}/.local/linml-deps}"
 
 # Ensure the .NET SDK (installed by scripts/setup-wsl.sh) is on PATH.
 if [ -d "${HOME}/.dotnet" ]; then
@@ -63,10 +65,25 @@ TRT_RTX_EP="${TRT_RTX_EP:-$TRT_RTX_DEFAULT_EP}"
 # bundle the TensorRT-RTX runtime libraries next to the plugin).
 add_path "$(dirname "$TRT_RTX_EP")"
 if [ -f "$TRT_RTX_EP" ]; then
-    case ";${LINML_EP_LIBRARIES:-};" in
-        *"NvTensorRTRTXExecutionProvider="*|*"nvtensorrtrtx="*) ;;
-        *) LINML_EP_LIBRARIES="NvTensorRTRTXExecutionProvider=$TRT_RTX_EP${LINML_EP_LIBRARIES:+;$LINML_EP_LIBRARIES}" ;;
-    esac
+    # Replace any TensorRT-RTX mapping from a previous source. Re-sourcing after
+    # installing the WSL2 build (stock -> patched) must switch to the new path,
+    # while mappings for other providers are preserved. TRT_RTX_CUSTOM_EP above
+    # remains the explicit override.
+    if [ -n "${LINML_EP_LIBRARIES:-}" ]; then
+        _linml_rest=""
+        _linml_old_ifs="$IFS"
+        IFS=';'
+        for _linml_pair in $LINML_EP_LIBRARIES; do
+            case "$_linml_pair" in
+                NvTensorRTRTXExecutionProvider=*|nvtensorrtrtx=*) ;;  # stale, drop
+                *) _linml_rest="${_linml_rest:+$_linml_rest;}$_linml_pair" ;;
+            esac
+        done
+        IFS="$_linml_old_ifs"
+        LINML_EP_LIBRARIES="$_linml_rest"
+        unset _linml_pair _linml_rest _linml_old_ifs
+    fi
+    LINML_EP_LIBRARIES="NvTensorRTRTXExecutionProvider=$TRT_RTX_EP${LINML_EP_LIBRARIES:+;$LINML_EP_LIBRARIES}"
     export LINML_EP_LIBRARIES
 fi
 
