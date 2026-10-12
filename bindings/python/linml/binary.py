@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -29,14 +30,11 @@ def find_linml_binary() -> Optional[List[str]]:
     """
     # 1. Explicit environment override
     env_bin = os.environ.get("LINML_BIN")
-    if env_bin:
-        bin_path = Path(env_bin).resolve()
-        if not bin_path.is_file():
-            raise ValueError(f"LINML_BIN points to non-existent file: {env_bin}")
+    if env_bin and os.path.exists(env_bin):
         if env_bin.endswith(".dll"):
             dotnet = shutil.which("dotnet") or str(Path.home() / ".dotnet" / "dotnet")
-            return [dotnet, str(bin_path)]
-        return [str(bin_path)]
+            return [dotnet, str(Path(env_bin).resolve())]
+        return [str(Path(env_bin).resolve())]
 
     # 2. Packaged binary within python wheel directory
     pkg_dir = Path(__file__).resolve().parent
@@ -44,10 +42,26 @@ def find_linml_binary() -> Optional[List[str]]:
     if bundled_bin.is_file() and os.access(bundled_bin, os.X_OK):
         return [str(bundled_bin)]
 
-    # 3. System PATH lookup
+    # 3. System PATH lookup. The installed Python console script is also
+    # called ``linml``; never select it as the native CLI.
     path_bin = shutil.which("linml")
     if path_bin:
-        return [path_bin]
+        path_path = Path(path_bin)
+        wrapper_paths = set()
+        if sys.argv and sys.argv[0]:
+            wrapper_paths.add(Path(sys.argv[0]).resolve())
+        wrapper_paths.add((Path(sys.executable).parent / "linml").resolve())
+
+        is_python_wrapper = path_path.resolve() in wrapper_paths
+        if not is_python_wrapper:
+            try:
+                with path_path.open("rb") as stream:
+                    shebang = stream.readline(256).lower()
+                is_python_wrapper = shebang.startswith(b"#!") and b"python" in shebang
+            except (OSError, UnicodeError):
+                pass
+        if not is_python_wrapper:
+            return [path_bin]
 
     # 4. Standard Linux user install directories
     user_candidates = [

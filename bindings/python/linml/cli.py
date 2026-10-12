@@ -7,7 +7,7 @@ import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
-from .binary import get_dotnet_env, get_linml_binary, run_linml_cli
+from .binary import get_linml_binary, run_linml_cli
 from .models import InferenceResult, ModelInspectionReport, TensorSpec
 
 
@@ -152,6 +152,11 @@ def bench(
 def main():
     """Forward CLI invocations to the underlying linml binary."""
     import subprocess
+
+    if os.environ.get("LINML_PY_WRAPPER") == "1":
+        sys.stderr.write("Error: the Python linml wrapper cannot launch itself.\n")
+        sys.exit(1)
+
     try:
         base_cmd = get_linml_binary()
     except Exception as e:
@@ -159,8 +164,9 @@ def main():
         sys.exit(1)
 
     full_cmd = base_cmd + sys.argv[1:]
+    os.environ["LINML_PY_WRAPPER"] = "1"
     try:
-        res = subprocess.run(full_cmd, env=get_dotnet_env())
+        res = subprocess.run(full_cmd)
         sys.exit(res.returncode)
     except KeyboardInterrupt:
         sys.exit(130)
