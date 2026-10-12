@@ -2,6 +2,20 @@
 
 All notable changes to LinML are documented here. This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] — 2026-10-12
+
+### Added
+- **Python package** — `linml` with `InferenceClient` and `InferenceSession`, plus a CLI wheel that bundles the `linml` binary. Results expose per-run `LatencyMs` and node placement diagnostics.
+- **Patched TensorRT-RTX plugin EP for WSL2 (opt-in)** — fixes the stock plugin registering but exposing zero devices under WSL2 (virtual PCI vendor `0x1414` rejected by `cudaDeviceGetByPCIBusId`). Install with `bash scripts/fetch-ep-plugins.sh trt-rtx-wsl2`; the default `trt-rtx` pin is unchanged. Library resolution is `TRT_RTX_CUSTOM_EP` → vendored WSL2 build → stock wheel, and the CLI now honours `TRT_RTX_CUSTOM_EP`.
+- **`scripts/build-trt-rtx-ep.sh`** — reproducible build of the patched plugin.
+
+### Fixed
+- **Python**: scalar (rank-0) tensors handled correctly; unsupported boolean tensors raise a clear `ValueError`; `linml.doctor()` validates inputs; the CLI wrapper can no longer recurse when locating the binary.
+- **Python**: session manager verifies the server is serving the requested model before reusing it, supports IPv6 hosts, and uses separate startup and request timeouts.
+- **ARM64**: `linml setup` dry-run correctly detects already-installed plugins.
+- **Release**: self-contained `linux-arm64` publish now restores its runtime identifier explicitly, and publish verification no longer executes the arm64 binary on the x64 runner (arm64 is verified natively in CI).
+- **CI (ARM64)**: ONNX Runtime native libs and `LD_LIBRARY_PATH` configured; integration tests excluded from the ARM64 job.
+
 ## [0.3.0] — 2026-10-12
 
 ### Added
