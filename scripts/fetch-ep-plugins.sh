@@ -16,13 +16,19 @@
 #             plugin EP built by LinML and published to GitHub Releases.
 #             Requires ROCm with MIGraphX >= 2.17 on the host.
 #
+#   trt-rtx-wsl2
+#             NvTensorRTRTXExecutionProvider, patched for WSL2. Fetches the
+#             stock wheel above first (for the TensorRT-RTX runtime libraries),
+#             then vendors LinML's patched EP .so. Opt-in: only pulled when
+#             named explicitly. See docs/compatibility.md.
+#
 # The wheels and archives are vendored native binaries; the deployed product
 # has no Python dependency.
 #
 # Pinned for reproducibility (sha256 verified).
 #
-# Usage: bash scripts/fetch-ep-plugins.sh [trt-rtx] [openvino] [migraphx]
-#        (no arguments fetches all)
+# Usage: bash scripts/fetch-ep-plugins.sh [trt-rtx] [openvino] [migraphx] [trt-rtx-wsl2]
+#        (no arguments fetches the default set)
 
 set -euo pipefail
 
@@ -209,6 +215,66 @@ PYEOF
     echo "  linml run --provider migraphx --model ... --inputs ..."
 }
 
+fetch_trt_rtx_wsl2() {
+    local OUT="$DEPS/ep-plugins/trt-rtx-wsl2/linml_trt_rtx_ep"
+    local WHEEL_URL="https://github.com/trackdubllc/LinML/releases/download/ep-trt-rtx-wsl2-0.4.0-wsl2p1/linml-trt-rtx-ep-0.4.0-wsl2p1-linux-x64.zip"
+    local WHEEL_SHA256="e87adedba3dfc86ea96cd7c6f5b9a965de584aeda971ee7792ae6d1e0074d2df"
+    local WHEEL_NAME="linml-trt-rtx-ep-0.4.0-wsl2p1-linux-x64.zip"
+    local TMP="$TMP_ROOT/trt-rtx-wsl2"
+
+    echo "=== LinML EP plugin fetch (TensorRT-RTX, WSL2 patch) ==="
+
+    # The patched EP dynamically links the TensorRT-RTX 1.6.1 runtime libraries,
+    # which only the stock wheel bundles; vendor the wheel first.
+    fetch_trt_rtx
+
+    if [ -f "$OUT/libonnxruntime_providers_nv_tensorrt_rtx.so" ]; then
+        echo "Already vendored: $OUT"
+        return 0
+    fi
+
+    # Stage and rename like the other fetches: an interrupted extract never
+    # leaves a truncated plugin .so that the check above treats as vendored.
+    local STAGE="$OUT.partial"
+    rm -rf "$STAGE"
+    mkdir -p "$STAGE" "$TMP"
+
+    echo "Downloading $WHEEL_NAME ..."
+    curl -fsSL -o "$TMP/$WHEEL_NAME" "$WHEEL_URL"
+
+    echo "Verifying sha256..."
+    echo "$WHEEL_SHA256  $TMP/$WHEEL_NAME" | sha256sum -c
+
+    echo "Extracting patched EP..."
+    python3 - "$TMP/$WHEEL_NAME" "$STAGE" << 'PYEOF'
+import os, sys, zipfile
+wheel, out = sys.argv[1], sys.argv[2]
+z = zipfile.ZipFile(wheel)
+prefix = "linml_trt_rtx_ep/"
+keep = [n for n in z.namelist() if n.startswith(prefix) and not n.endswith("/")]
+for n in keep:
+    dest = os.path.join(out, n[len(prefix):])
+    # The archive nests licenses/ under the top-level dir, so create parents.
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    with z.open(n) as src, open(dest, "wb") as dst:
+        dst.write(src.read())
+print(f"extracted {len(keep)} files to {out}")
+PYEOF
+
+    rm -rf "$OUT"
+    mv "$STAGE" "$OUT"
+
+    echo ""
+    echo "=== Vendored ==="
+    ls -la "$OUT"
+    echo ""
+    echo "Next: source scripts/env-gpu-deps.sh"
+    echo "  linml providers list            # the RTX GPU is enumerated"
+    echo "  linml run --provider trt-rtx --model ... --inputs ..."
+    echo ""
+    echo "This is opt-in: the default 'trt-rtx' pin still points at NVIDIA's wheel."
+}
+
 PLUGINS=("$@")
 if [ ${#PLUGINS[@]} -eq 0 ]; then
     PLUGINS=(trt-rtx openvino migraphx)
@@ -216,10 +282,11 @@ fi
 for plugin in "${PLUGINS[@]}"; do
     case "$plugin" in
         trt-rtx) fetch_trt_rtx ;;
+        trt-rtx-wsl2) fetch_trt_rtx_wsl2 ;;
         openvino) fetch_openvino ;;
         migraphx) fetch_migraphx ;;
         *)
-            echo "Unknown plugin '$plugin' (expected: trt-rtx, openvino, migraphx)" >&2
+            echo "Unknown plugin '$plugin' (expected: trt-rtx, trt-rtx-wsl2, openvino, migraphx)" >&2
             exit 2
             ;;
     esac
