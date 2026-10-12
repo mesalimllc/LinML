@@ -39,10 +39,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
 
@@ -98,7 +98,7 @@ jobs:
           echo "Packages signed with author signature."
 
       - name: Upload NuGet packages artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: nuget-packages
           path: artifacts/packages/*.nupkg
@@ -137,7 +137,7 @@ jobs:
           cd ../..
 
       - name: Upload CLI release assets artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: cli-release-assets
           path: artifacts/release/*
@@ -154,15 +154,15 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
 
       - name: Download NuGet packages
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: nuget-packages
           path: artifacts/packages
@@ -187,15 +187,15 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
 
       - name: Download NuGet packages
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: nuget-packages
           path: artifacts/packages
@@ -224,10 +224,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Download CLI release assets
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: cli-release-assets
           path: artifacts/release
