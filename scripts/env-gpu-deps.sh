@@ -5,7 +5,9 @@
 #
 # Usage: source scripts/env-gpu-deps.sh
 
-DEPS="${HOME}/.local/linml-deps"
+# Dependency root. Shared with scripts/build-trt-rtx-ep.sh so a build installed
+# under a custom DEPS is still discovered here; default is the standard layout.
+DEPS="${DEPS:-${HOME}/.local/linml-deps}"
 
 # Ensure the .NET SDK (installed by scripts/setup-wsl.sh) is on PATH.
 if [ -d "${HOME}/.dotnet" ]; then
@@ -45,14 +47,43 @@ add_path "${ROCM_PATH:-/opt/rocm}/lib"
 
 export LD_LIBRARY_PATH
 
-# Convenience: default plugin EP library registration for TRT-RTX.
+# Convenience: default plugin EP library registration for TRT-RTX. The library
+# is chosen in this order:
+#   1. TRT_RTX_CUSTOM_EP — an explicit locally built plugin (e.g. a WSL2 build
+#      from scripts/build-trt-rtx-ep.sh or scripts/build-trt-rtx-custom.sh).
+#   2. the LinML-hosted WSL2 fallback build, if vendored
+#      (scripts/fetch-ep-plugins.sh trt-rtx-wsl2).
+#   3. the stock NVIDIA wheel (scripts/fetch-ep-plugins.sh trt-rtx).
 TRT_RTX_DEFAULT_EP="$DEPS/ep-plugins/trt-rtx/onnxruntime_ep_nv_tensorrt_rtx/libonnxruntime_providers_nv_tensorrt_rtx.so"
-TRT_RTX_EP="${TRT_RTX_CUSTOM_EP:-$TRT_RTX_DEFAULT_EP}"
+TRT_RTX_WSL2_EP="$DEPS/ep-plugins/trt-rtx-wsl2/linml_trt_rtx_ep/libonnxruntime_providers_nv_tensorrt_rtx.so"
+TRT_RTX_EP="${TRT_RTX_CUSTOM_EP:-}"
+if [ -z "$TRT_RTX_EP" ] && [ -f "$TRT_RTX_WSL2_EP" ]; then
+    TRT_RTX_EP="$TRT_RTX_WSL2_EP"
+fi
+TRT_RTX_EP="${TRT_RTX_EP:-$TRT_RTX_DEFAULT_EP}"
+# Ensure the directory holding the selected EP is on the loader path (it may
+# bundle the TensorRT-RTX runtime libraries next to the plugin).
+add_path "$(dirname "$TRT_RTX_EP")"
 if [ -f "$TRT_RTX_EP" ]; then
-    case ";${LINML_EP_LIBRARIES:-};" in
-        *"NvTensorRTRTXExecutionProvider="*|*"nvtensorrtrtx="*) ;;
-        *) LINML_EP_LIBRARIES="NvTensorRTRTXExecutionProvider=$TRT_RTX_EP${LINML_EP_LIBRARIES:+;$LINML_EP_LIBRARIES}" ;;
-    esac
+    # Replace any TensorRT-RTX mapping from a previous source. Re-sourcing after
+    # installing the WSL2 build (stock -> patched) must switch to the new path,
+    # while mappings for other providers are preserved. TRT_RTX_CUSTOM_EP above
+    # remains the explicit override.
+    if [ -n "${LINML_EP_LIBRARIES:-}" ]; then
+        _linml_rest=""
+        _linml_old_ifs="$IFS"
+        IFS=';'
+        for _linml_pair in $LINML_EP_LIBRARIES; do
+            case "$_linml_pair" in
+                NvTensorRTRTXExecutionProvider=*|nvtensorrtrtx=*) ;;  # stale, drop
+                *) _linml_rest="${_linml_rest:+$_linml_rest;}$_linml_pair" ;;
+            esac
+        done
+        IFS="$_linml_old_ifs"
+        LINML_EP_LIBRARIES="$_linml_rest"
+        unset _linml_pair _linml_rest _linml_old_ifs
+    fi
+    LINML_EP_LIBRARIES="NvTensorRTRTXExecutionProvider=$TRT_RTX_EP${LINML_EP_LIBRARIES:+;$LINML_EP_LIBRARIES}"
     export LINML_EP_LIBRARIES
 fi
 

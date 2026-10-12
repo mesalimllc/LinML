@@ -23,7 +23,7 @@
 | CPUExecutionProvider | ✅ Verified (Gate C) | `evidence/cpu-run.json`, `CpuInference_ReturnsExpectedOutput` |
 | CUDAExecutionProvider | ✅ Verified (Gate D, RTX 5070) | `evidence/cuda-run.json`, ORT profile shows `MatMul_0/MatMulAddFusion` on `CUDAExecutionProvider` |
 | TensorrtExecutionProvider | ✅ Verified (RTX 5070) | `evidence/trt-run.json`, `evidence/trt-mnist-run.json` — exact logits, TRTKernel placement; TF32 default, use `trt:trt_engine_cache_*` for repeated runs |
-| NvTensorRTRTXExecutionProvider | ✅ Verified (native Linux, RTX 4090 Daytona) | TrtRtxInferenceTests 3/3; **WSL2-blocked** — virtual PCI vendor 0x1414 + bus-id mismatch, root-caused in `evidence/trt-rtx-wsl2-block.md`, upstream issue [#13](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI/issues/13), fix proposed in PR [#12](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI/pull/12). **Workaround:** `scripts/build-trt-rtx-custom.sh` builds the EP with the WSL2 fallback patch; set `TRT_RTX_CUSTOM_EP` to use it. Two tiers — `local` (upstream `main` + enumeration patch) and `upstream` (PR head, includes per-GPU registration `6777daf`) |
+| NvTensorRTRTXExecutionProvider | ✅ Verified (native Linux, RTX 4090 Daytona) | TrtRtxInferenceTests 3/3; **WSL2 needs an opt-in patched build** — the stock wheel registers but exposes zero devices (virtual PCI vendor 0x1414 + bus-id mismatch, root-caused in `evidence/trt-rtx-wsl2-block.md`; upstream issue [#13](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI/issues/13), fix in PR [#12](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI/pull/12)). `bash scripts/fetch-ep-plugins.sh trt-rtx-wsl2` installs the LinML-hosted patched EP (release `ep-trt-rtx-wsl2-0.4.0-wsl2p1`, built by `scripts/build-trt-rtx-ep.sh`; `scripts/build-trt-rtx-custom.sh` builds one locally, two tiers — `local` upstream `main` + enumeration patch, `upstream` PR head incl. per-GPU registration `6777daf`); `env-gpu-deps.sh` then prefers it, and `TRT_RTX_CUSTOM_EP` overrides everything. The default `trt-rtx` pin is unchanged |
 | OpenVINOExecutionProvider | ✅ Verified (plugin EP 1.6.1, Intel Xeon) | MNIST argmax=8, no fallback; `onnxruntime-ep-openvino` wheel |
 | MIGraphXExecutionProvider | ✅ Verified (Daytona MI355X gfx950) | `evidence/migraphx-run.json`, MGXKernel on MIGraphXExecutionProvider, exact logits |
 | QNNExecutionProvider | 🔌 Wired, blocked | No Snapdragon NPU; QAIRT SDK needs Qualcomm account |
@@ -106,6 +106,35 @@
   - The EP is built against the ORT 1.31.0 headers and negotiates the plugin
     API down to v24.
   - Not yet verified on AMD hardware in this repo.
+- **TensorRT-RTX WSL2 fallback build (NVIDIA):** Under WSL2 the stock PyPI
+  wheel registers but exposes **zero devices**: ORT reports the GPU with the
+  virtual PCI vendor `0x1414` and bus id `176e:00:00.0`, which
+  `cudaDeviceGetByPCIBusId` rejects (`rc=101`), while CUDA sees the real device
+  as `0000:0B:00.0`. Root cause and measurements:
+  `evidence/trt-rtx-wsl2-block.md`; upstream issue
+  [#13](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI/issues/13), fix proposed
+  in [PR #12](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI/pull/12). LinML
+  publishes an **opt-in** patched build (release
+  `ep-trt-rtx-wsl2-0.4.0-wsl2p1`):
+  ```
+  bash scripts/fetch-ep-plugins.sh trt-rtx-wsl2   # patched EP
+  source scripts/env-gpu-deps.sh
+  linml providers list                            # RTX GPU enumerated
+  ```
+  `env-gpu-deps.sh` prefers the patched build for `trt-rtx`; `TRT_RTX_CUSTOM_EP`
+  overrides it. Notes:
+  - The archive contains only the Apache-2.0 EP plugin `.so` (~5 MB, RUNPATH
+    `$ORIGIN`); it dynamically links the TensorRT-RTX 1.6.1 runtime
+    (`libtensorrt_rtx.so.1`, `libtensorrt_onnxparser_rtx.so.1`) and CUDA 13,
+    which the stock `trt-rtx` wheel provides.
+  - Built by `scripts/build-trt-rtx-ep.sh`, which pins the PR head commit and
+    produces a byte-stable archive. It is **not** built in CI: the TensorRT-RTX
+    SDK (headers + import libs) is under NVIDIA's license and cannot be
+    downloaded automatically — unlike AMD's public ROCm image for MIGraphX.
+  - Verified in WSL2: the patched EP is *selected* (no fallback) and MNIST
+    returns the exact output `[11, 22, 13, 24, 15, 26]`.
+  - Superseded once PR #12 merges and NVIDIA ships a fixed wheel; the default
+    `trt-rtx` pin is then enough.
 
 ## Up next
 
@@ -120,11 +149,11 @@
 | Suite | Tests | Status |
 |-------|-------|--------|
 | Policy | 23 | ✅ green |
-| Runtime.Onnx | 22 | ✅ green |
-| Catalog | 31 | ✅ green (incl. script/catalog pin agreement) |
+| Runtime.Onnx | 26 | ✅ green |
+| Catalog | 33 | ✅ green (incl. script/catalog pin agreement) |
 | Integration | 20 | ✅ green (CPU/CUDA/TRT/TRT-RTX/OpenVINO/MIGraphX where hardware allows; honest skips elsewhere) |
-| CLI | 69 | ✅ green (incl. 6 catalog and 6 serve tests) |
-| **Total** | **165** | ✅ green with GPU env and with `CUDA_VISIBLE_DEVICES=''` |
+| CLI | 111 | ✅ green (incl. Python-bindings, catalog, and serve tests; +4 `TRT_RTX_CUSTOM_EP` resolution tests) |
+| **Total** | **213** | ✅ green with GPU env and with `CUDA_VISIBLE_DEVICES=''` |
 
 | Integration area | CPU | CUDA | Status |
 |------------------|-----|------|--------|

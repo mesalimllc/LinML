@@ -242,4 +242,150 @@ public class ProviderArgsTests
             }
         }
     }
+
+    [Fact]
+    public void ResolveEpLibraries_TrtRtxCustomEp_OverridesVendoredWheel()
+    {
+        // TRT_RTX_CUSTOM_EP wins over the catalog cache so a locally built WSL2
+        // fallback EP can be selected without uninstalling the wheel.
+        var tempDir = Path.Combine(Path.GetTempPath(), "linml-test-" + Guid.NewGuid().ToString("N"));
+        var envVar = ProviderArgs.TrtRtxCustomEpEnvVar;
+        var original = Environment.GetEnvironmentVariable(envVar);
+        try
+        {
+            var vendoredDir = Path.Combine(tempDir, "ep-plugins", "trt-rtx", "onnxruntime_ep_nv_tensorrt_rtx");
+            Directory.CreateDirectory(vendoredDir);
+            File.WriteAllText(Path.Combine(vendoredDir, "libonnxruntime_providers_nv_tensorrt_rtx.so"), "wheel");
+
+            var customSo = Path.Combine(tempDir, "custom", "libonnxruntime_providers_nv_tensorrt_rtx.so");
+            Directory.CreateDirectory(Path.GetDirectoryName(customSo)!);
+            File.WriteAllText(customSo, "custom");
+            Environment.SetEnvironmentVariable(envVar, customSo);
+
+            var result = ProviderArgs.ResolveEpLibraries([], ProviderId.TensorrtRtx, customRoot: tempDir);
+
+            Assert.Equal(customSo, result["NvTensorRTRTXExecutionProvider"]);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(envVar, original);
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void ResolveEpLibraries_TrtRtxCustomEp_NonexistentPath_FallsBackToWheel()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "linml-test-" + Guid.NewGuid().ToString("N"));
+        var envVar = ProviderArgs.TrtRtxCustomEpEnvVar;
+        var original = Environment.GetEnvironmentVariable(envVar);
+        try
+        {
+            var vendoredDir = Path.Combine(tempDir, "ep-plugins", "trt-rtx", "onnxruntime_ep_nv_tensorrt_rtx");
+            Directory.CreateDirectory(vendoredDir);
+            var vendoredSo = Path.Combine(vendoredDir, "libonnxruntime_providers_nv_tensorrt_rtx.so");
+            File.WriteAllText(vendoredSo, "wheel");
+
+            Environment.SetEnvironmentVariable(envVar, Path.Combine(tempDir, "missing.so"));
+
+            var result = ProviderArgs.ResolveEpLibraries([], ProviderId.TensorrtRtx, customRoot: tempDir);
+
+            Assert.Equal(vendoredSo, result["NvTensorRTRTXExecutionProvider"]);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(envVar, original);
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void ResolveEpLibraries_TrtRtxCustomEp_DoesNotAffectOtherProviders()
+    {
+        var envVar = ProviderArgs.TrtRtxCustomEpEnvVar;
+        var original = Environment.GetEnvironmentVariable(envVar);
+        try
+        {
+            Environment.SetEnvironmentVariable(envVar, "/does/not/matter.so");
+
+            Assert.Empty(ProviderArgs.ResolveEpLibraries([], ProviderId.Cuda));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(envVar, original);
+        }
+    }
+
+    [Fact]
+    public void ResolveEpLibraries_TrtRtxCustomEp_OverridesEnvMapping()
+    {
+        // env-gpu-deps.sh exports a TRT-RTX mapping; setting TRT_RTX_CUSTOM_EP
+        // afterwards must still select the locally built plugin.
+        var tempDir = Path.Combine(Path.GetTempPath(), "linml-test-" + Guid.NewGuid().ToString("N"));
+        var libVar = ProviderArgs.EpLibrariesEnvVar;
+        var customVar = ProviderArgs.TrtRtxCustomEpEnvVar;
+        var originalLib = Environment.GetEnvironmentVariable(libVar);
+        var originalCustom = Environment.GetEnvironmentVariable(customVar);
+        try
+        {
+            Directory.CreateDirectory(tempDir);
+            var customSo = Path.Combine(tempDir, "libonnxruntime_providers_nv_tensorrt_rtx.so");
+            File.WriteAllText(customSo, "custom");
+
+            Environment.SetEnvironmentVariable(customVar, customSo);
+            Environment.SetEnvironmentVariable(
+                libVar,
+                "NvTensorRTRTXExecutionProvider=/env/stock/libonnxruntime_providers_nv_tensorrt_rtx.so");
+
+            var result = ProviderArgs.ResolveEpLibraries([], ProviderId.TensorrtRtx);
+
+            Assert.Equal(customSo, result["NvTensorRTRTXExecutionProvider"]);
+            Assert.Single(result);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(libVar, originalLib);
+            Environment.SetEnvironmentVariable(customVar, originalCustom);
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void ResolveEpLibraries_TrtRtxCustomEp_ExplicitArgStillWins()
+    {
+        // An explicit --ep-library must not be displaced by TRT_RTX_CUSTOM_EP.
+        var tempDir = Path.Combine(Path.GetTempPath(), "linml-test-" + Guid.NewGuid().ToString("N"));
+        var customVar = ProviderArgs.TrtRtxCustomEpEnvVar;
+        var originalCustom = Environment.GetEnvironmentVariable(customVar);
+        try
+        {
+            Directory.CreateDirectory(tempDir);
+            var customSo = Path.Combine(tempDir, "libonnxruntime_providers_nv_tensorrt_rtx.so");
+            File.WriteAllText(customSo, "custom");
+            Environment.SetEnvironmentVariable(customVar, customSo);
+
+            var result = ProviderArgs.ResolveEpLibraries(
+                ["NvTensorRTRTXExecutionProvider=/cli/explicit.so"],
+                ProviderId.TensorrtRtx);
+
+            Assert.Equal("/cli/explicit.so", result["NvTensorRTRTXExecutionProvider"]);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(customVar, originalCustom);
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, recursive: true);
+            }
+        }
+    }
 }
