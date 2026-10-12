@@ -46,6 +46,11 @@ internal sealed class GpuDependencyInstaller(
             List<string> args = ["install", "--target", stage, "--no-input", "--disable-pip-version-check"];
             if (spec.IndexUrl is not null)
             {
+                if (!Uri.TryCreate(spec.IndexUrl, UriKind.Absolute, out Uri? uri) 
+                    || uri.Scheme != "https")
+                {
+                    throw new ArgumentException($"IndexUrl must be a valid HTTPS URL, got: {spec.IndexUrl}", nameof(spec));
+                }
                 args.AddRange(["--index-url", spec.IndexUrl]);
             }
 
