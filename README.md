@@ -46,9 +46,9 @@ LinML also provides `LinML.Catalog`, the Linux counterpart to WinML's `Execution
 
 | Component | Version | NuGet | Notes |
 |-----------|---------|-------|-------|
-| **CLI** (`linml`) | `0.3.0` | — | Self-contained `linux-x64`, `linux-arm64` binaries |
-| **LinML.Catalog** | `0.3.0` | [![NuGet Catalog](https://img.shields.io/nuget/v/LinML.Catalog.svg?label=LinML.Catalog&color=blue)](https://www.nuget.org/packages/LinML.Catalog) | Plugin EP vendoring & registration |
-| **LinML.Contracts** | `0.3.0` | [![NuGet Contracts](https://img.shields.io/nuget/v/LinML.Contracts.svg?label=LinML.Contracts&color=blue)](https://www.nuget.org/packages/LinML.Contracts) | Pure contracts & data models |
+| **CLI** (`linml`) | `0.4.0` | — | Self-contained `linux-x64`, `linux-arm64` binaries |
+| **LinML.Catalog** | `0.4.0` | [![NuGet Catalog](https://img.shields.io/nuget/v/LinML.Catalog.svg?label=LinML.Catalog&color=blue)](https://www.nuget.org/packages/LinML.Catalog) | Plugin EP vendoring & registration |
+| **LinML.Contracts** | `0.4.0` | [![NuGet Contracts](https://img.shields.io/nuget/v/LinML.Contracts.svg?label=LinML.Contracts&color=blue)](https://www.nuget.org/packages/LinML.Contracts) | Pure contracts & data models |
 | **Runtime** | — | — | ONNX Runtime 1.31.x |
 
 See [CHANGELOG.md](CHANGELOG.md) for full release history.
@@ -62,7 +62,7 @@ See [CHANGELOG.md](CHANGELOG.md) for full release history.
 | `CPUExecutionProvider` | ✅ Verified | Any x86_64 / aarch64 CPU | Always available, built into standard ORT |
 | `CUDAExecutionProvider` | ✅ Verified | NVIDIA GeForce RTX 5070 (x86_64), Jetson Orin (aarch64) | Blackwell (sm_120); requires cuDNN 9.x for Conv ops |
 | `TensorrtExecutionProvider` | ✅ Verified | NVIDIA GeForce RTX 5070 (x86_64), Jetson Orin (aarch64) | TensorRT 10.16; enable engine cache for repeated runs |
-| `NvTensorRTRTXExecutionProvider` | ✅ Verified (Native Linux) | NVIDIA GeForce RTX 4090 | Verified in Daytona cloud runtime; [WSL2 blocked](docs/compatibility.md) due to virtual PCI constraint; **x86_64 only** |
+| `NvTensorRTRTXExecutionProvider` | ✅ Verified (Native Linux) | NVIDIA GeForce RTX 4090 | Verified in Daytona cloud runtime; on WSL2 the stock plugin exposes no devices (virtual PCI constraint), so use the [opt-in patched build](docs/compatibility.md) (`bash scripts/fetch-ep-plugins.sh trt-rtx-wsl2`); **x86_64 only** |
 | `OpenVINOExecutionProvider` | ✅ Verified | Intel Xeon CPU | Plugin EP 1.6.1; dynamically registered at runtime; **x86_64 only** |
 | `MIGraphXExecutionProvider` | ✅ Verified | AMD Instinct MI355X (gfx950) | ROCm / MIGraphX verified in Daytona sandbox; **x86_64 only** |
 | `QNNExecutionProvider` | 🔌 Wired / Gated | Qualcomm Snapdragon (aarch64) | Contract and probe wired; blocked on physical hardware / QAIRT SDK access; **aarch64 primary target** |
@@ -85,7 +85,7 @@ curl -fsSL https://raw.githubusercontent.com/trackdubllc/LinML/main/scripts/inst
 curl -fsSL https://raw.githubusercontent.com/trackdubllc/LinML/main/scripts/install.sh | bash -s -- --gpu
 
 # Explicit version and architecture:
-bash scripts/install.sh --version v0.3.0 --target ~/.local/share/linml --bin-dir ~/.local/bin
+bash scripts/install.sh --version v0.4.0 --target ~/.local/share/linml --bin-dir ~/.local/bin
 ```
 
 Pre-built archives (`linml-<version>-linux-x64.tar.gz`, `linml-<version>-linux-arm64.tar.gz`) and SHA-256 checksums are also downloadable directly from [GitHub Releases](https://github.com/trackdubllc/LinML/releases).
@@ -148,6 +148,7 @@ bash scripts/setup-wsl.sh
 # 2. (Optional) Fetch GPU runtime dependencies (no root required)
 bash scripts/setup-gpu-deps.sh     # cuDNN 9.x + TensorRT 10.x into ~/.local/linml-deps
 bash scripts/fetch-ep-plugins.sh   # Fetch SHA-256 verified vendor plugins (OpenVINO, TRT-RTX)
+bash scripts/fetch-ep-plugins.sh trt-rtx-wsl2   # (WSL2 only) opt-in patched TRT-RTX EP; TRT_RTX_CUSTOM_EP overrides it
 source scripts/env-gpu-deps.sh     # Export LD_LIBRARY_PATH and LINML_EP_LIBRARIES
 
 # 3. Restore, Build, and Test
