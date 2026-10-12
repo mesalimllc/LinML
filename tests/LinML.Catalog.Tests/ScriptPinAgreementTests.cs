@@ -62,6 +62,7 @@ public partial class ScriptPinAgreementTests
 
         Assert.Contains(pins, p => p.Function == "fetch_openvino");
         Assert.Contains(pins, p => p.Function == "fetch_trt_rtx");
+        Assert.Contains(pins, p => p.Function == "fetch_migraphx");
     }
 
     [Fact]

@@ -49,7 +49,7 @@ LinML also provides `LinML.Catalog`, the Linux counterpart to WinML's `Execution
 | **E** | CLI and native publishing | ✅ Done (publish verified, self-contained linux-x64) |
 | **F** | CI, evidence, and release flow | ✅ Done (CI green, GitHub Releases + NuGet.org OIDC) |
 
-**147 tests passing** across Catalog (25), Runtime (22), Policy (23), Integration (20), and CLI (57).
+**149 tests passing** across Catalog (27), Runtime (22), Policy (23), Integration (20), and CLI (57).
 
 ---
 
@@ -253,11 +253,11 @@ linml serve --model model.onnx --provider cuda --warmup-inputs warmup.json
 
 ## LinML.Catalog Library
 
-`LinML.Catalog` is the Linux counterpart to the Windows ML `ExecutionProviderCatalog`. It vendors pinned plugin EPs (with SHA-256 integrity verification), extracts them into a clean staging area, registers them with ONNX Runtime, and binds devices to sessions.
+`LinML.Catalog` is the Linux counterpart to the Windows ML `ExecutionProviderCatalog`. It unifies execution provider discovery, readiness probing, vendoring of pinned plugin EPs (with SHA-256 integrity verification), registration, and session attachment.
 
-It natively covers:
-- **OpenVINO Plugin EP** (`onnxruntime-ep-openvino` 1.6.1)
-- **TensorRT-RTX Plugin EP** (`onnxruntime-ep-nv-tensorrt-rtx` 0.4.0)
+It covers:
+- **Built-in EPs**: `CPUExecutionProvider`, `CUDAExecutionProvider`, and `TensorrtExecutionProvider`
+- **Plugin EPs**: `OpenVINOExecutionProvider` (1.6.1), `NvTensorRTRTXExecutionProvider` (0.4.0), and `MIGraphXExecutionProvider` (2611.1)
 
 ```csharp
 using LinML.Catalog;

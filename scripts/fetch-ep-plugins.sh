@@ -12,13 +12,17 @@
 #             1.7.0 requires an experimental OrtEpApi function the ORT 1.31
 #             build LinML uses does not expose, and fails to create the EP.
 #
-# The wheels are Python artifacts, but only their native binaries are used;
-# the deployed product has no Python dependency.
+#   migraphx  MIGraphXExecutionProvider (AMD onnxruntime-ep-amdgpu). Standalone
+#             plugin EP built by LinML and published to GitHub Releases.
+#             Requires ROCm with MIGraphX >= 2.17 on the host.
+#
+# The wheels and archives are vendored native binaries; the deployed product
+# has no Python dependency.
 #
 # Pinned for reproducibility (sha256 verified).
 #
-# Usage: bash scripts/fetch-ep-plugins.sh [trt-rtx] [openvino]
-#        (no arguments fetches both)
+# Usage: bash scripts/fetch-ep-plugins.sh [trt-rtx] [openvino] [migraphx]
+#        (no arguments fetches all)
 
 set -euo pipefail
 
@@ -155,16 +159,67 @@ PYEOF
     echo "  linml run --provider openvino --model ... --inputs ..."
 }
 
+fetch_migraphx() {
+    local OUT="$DEPS/ep-plugins/migraphx/linml_migraphx_ep"
+    local WHEEL_URL="https://github.com/trackdubllc/LinML/releases/download/ep-migraphx-2611.1/linml-migraphx-ep-2611.1-linux-x64.zip"
+    local WHEEL_SHA256="968bdb1aa294c1ab4af04cfec0d4318fb2ffa4c69f0b34bc3b98532a199acd86"
+    local WHEEL_NAME="linml-migraphx-ep-2611.1-linux-x64.zip"
+    local TMP="$TMP_ROOT/migraphx"
+
+    echo "=== LinML EP plugin fetch (MIGraphX) ==="
+
+    if [ -f "$OUT/libmigraphx-ep.so" ]; then
+        echo "Already vendored: $OUT"
+        return 0
+    fi
+
+    local STAGE="$OUT.partial"
+    rm -rf "$STAGE"
+    mkdir -p "$STAGE" "$TMP"
+
+    echo "Downloading $WHEEL_NAME ..."
+    curl -fsSL -o "$TMP/$WHEEL_NAME" "$WHEEL_URL"
+
+    echo "Verifying sha256..."
+    echo "$WHEEL_SHA256  $TMP/$WHEEL_NAME" | sha256sum -c
+
+    echo "Extracting native libraries..."
+    python3 - "$TMP/$WHEEL_NAME" "$STAGE" << 'PYEOF'
+import os, sys, zipfile
+wheel, out = sys.argv[1], sys.argv[2]
+z = zipfile.ZipFile(wheel)
+prefix = "linml_migraphx_ep/"
+keep = [n for n in z.namelist()
+        if n.startswith(prefix) and not n.endswith("/")]
+for n in keep:
+    with z.open(n) as src, open(os.path.join(out, n[len(prefix):]), "wb") as dst:
+        dst.write(src.read())
+print(f"extracted {len(keep)} files to {out}")
+PYEOF
+
+    rm -rf "$OUT"
+    mv "$STAGE" "$OUT"
+
+    echo ""
+    echo "=== Vendored ==="
+    ls -la "$OUT"
+    echo ""
+    echo "Next: source scripts/env-gpu-deps.sh"
+    echo "  linml providers list"
+    echo "  linml run --provider migraphx --model ... --inputs ..."
+}
+
 PLUGINS=("$@")
 if [ ${#PLUGINS[@]} -eq 0 ]; then
-    PLUGINS=(trt-rtx openvino)
+    PLUGINS=(trt-rtx openvino migraphx)
 fi
 for plugin in "${PLUGINS[@]}"; do
     case "$plugin" in
         trt-rtx) fetch_trt_rtx ;;
         openvino) fetch_openvino ;;
+        migraphx) fetch_migraphx ;;
         *)
-            echo "Unknown plugin '$plugin' (expected: trt-rtx, openvino)" >&2
+            echo "Unknown plugin '$plugin' (expected: trt-rtx, openvino, migraphx)" >&2
             exit 2
             ;;
     esac

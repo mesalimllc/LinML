@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 
 namespace LinML.Catalog;
@@ -21,6 +22,7 @@ internal sealed class PluginInstaller(HttpMessageHandler? httpHandler = null)
         string finalDir = spec.InstallDirectory(installRoot);
         if (File.Exists(spec.LibraryPath(installRoot)))
         {
+            CreateRequiredSymlinks(finalDir);
             return false;
         }
 
@@ -37,6 +39,7 @@ internal sealed class PluginInstaller(HttpMessageHandler? httpHandler = null)
 
             Directory.CreateDirectory(stage);
             ExtractFlat(wheel, spec.PackagePrefix, stage);
+            CreateRequiredSymlinks(stage);
             if (!File.Exists(Path.Combine(stage, spec.LibraryFileName)))
             {
                 throw new InvalidDataException(
@@ -113,6 +116,75 @@ internal sealed class PluginInstaller(HttpMessageHandler? httpHandler = null)
         name.EndsWith(".so", StringComparison.Ordinal)
         || name.Contains(".so.", StringComparison.Ordinal)
         || name.EndsWith(".json", StringComparison.Ordinal);
+
+    /// <summary>
+    /// Loads native libraries shipped beside a plugin before the plugin itself is
+    /// registered. This makes bundled dependencies available without requiring
+    /// the caller to set LD_LIBRARY_PATH before starting the process.
+    /// </summary>
+    internal static IReadOnlyList<IntPtr> LoadBundledLibraries(string directory, string pluginFileName)
+    {
+        if (!OperatingSystem.IsLinux() || !Directory.Exists(directory))
+        {
+            return [];
+        }
+
+        List<IntPtr> handles = [];
+        foreach (string path in Directory.EnumerateFiles(directory, "*.so*"))
+        {
+            if (string.Equals(Path.GetFileName(path), pluginFileName, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            try
+            {
+                handles.Add(NativeLibrary.Load(path));
+            }
+            catch (DllNotFoundException)
+            {
+                // A bundled library may depend on a host driver library. The
+                // plugin registration reports that failure if necessary.
+            }
+            catch (BadImageFormatException)
+            {
+                // Leave the normal registration path to report an invalid binary.
+            }
+        }
+
+        return handles;
+    }
+
+    /// <summary>
+    /// Creates SONAME symlinks that plugin libraries (like TensorRT-RTX) require at runtime.
+    /// </summary>
+    internal static void CreateRequiredSymlinks(string directory)
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return;
+        }
+
+        string[] sonamePairs =
+        [
+            "libtensorrt_rtx.so.1.6.1", "libtensorrt_rtx.so.1",
+            "libtensorrt_onnxparser_rtx.so.1.6.1", "libtensorrt_onnxparser_rtx.so.1",
+            "libcudart.so.13.4.36", "libcudart.so.13"
+        ];
+
+        for (int i = 0; i < sonamePairs.Length; i += 2)
+        {
+            string targetName = sonamePairs[i];
+            string linkName = sonamePairs[i + 1];
+            string targetPath = Path.Combine(directory, targetName);
+            string linkPath = Path.Combine(directory, linkName);
+
+            if (File.Exists(targetPath) && !File.Exists(linkPath))
+            {
+                File.CreateSymbolicLink(linkPath, targetName);
+            }
+        }
+    }
 
     /// <summary>
     /// Moves <paramref name="stage"/> to <paramref name="finalDir"/>. The rename

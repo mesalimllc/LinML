@@ -13,6 +13,8 @@ internal interface IOrtRegistrar
     void Register(string registrationName, string libraryPath);
 
     IReadOnlyList<OrtEpDevice> GetDevices(string epName);
+
+    IReadOnlyCollection<string> AvailableProviders { get; }
 }
 
 /// <summary>The real <see cref="IOrtRegistrar"/>: the process-wide <see cref="PluginLibraryRegistry"/>.</summary>
@@ -32,4 +34,6 @@ internal sealed class OrtRegistrar : IOrtRegistrar
         PluginLibraryRegistry.Register(registrationName, libraryPath);
 
     public IReadOnlyList<OrtEpDevice> GetDevices(string epName) => PluginLibraryRegistry.GetDevices(epName);
+
+    public IReadOnlyCollection<string> AvailableProviders => OrtEnv.Instance().GetAvailableProviders();
 }

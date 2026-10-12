@@ -41,10 +41,17 @@ public sealed class ExecutionProviderCatalog : IExecutionProviderCatalog
         IOrtRegistrar registrar,
         Func<bool>? isSupportedPlatform)
     {
-        IExecutionProvider[] providers = KnownPlugins.All
-            .Select(spec => (IExecutionProvider)new PluginExecutionProvider(spec, installRoot, installer, registrar, isSupportedPlatform))
-            .ToArray();
-        return new ExecutionProviderCatalog(providers);
+        var builtIns = new IExecutionProvider[]
+        {
+            new BuiltInExecutionProvider(ProviderId.Cpu, registrar, isSupportedPlatform),
+            new BuiltInExecutionProvider(ProviderId.Cuda, registrar, isSupportedPlatform),
+            new BuiltInExecutionProvider(ProviderId.Tensorrt, registrar, isSupportedPlatform),
+        };
+
+        var plugins = KnownPlugins.All
+            .Select(spec => (IExecutionProvider)new PluginExecutionProvider(spec, installRoot, installer, registrar, isSupportedPlatform));
+
+        return new ExecutionProviderCatalog(builtIns.Concat(plugins).ToArray());
     }
 
     /// <inheritdoc />

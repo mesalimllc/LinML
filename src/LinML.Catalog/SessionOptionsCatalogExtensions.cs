@@ -27,6 +27,69 @@ public static class SessionOptionsCatalogExtensions
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(provider);
 
+        if (provider.Source == ProviderSource.BuiltIn)
+        {
+            if (provider.Id == LinML.Contracts.ProviderId.Cpu)
+            {
+                if (preferredDeviceTypes is not null && preferredDeviceTypes.Count > 0 && !preferredDeviceTypes.Contains(OrtHardwareDeviceType.CPU))
+                {
+                    return new ProviderAppendResult(false, provider.Id, $"{provider.Id} exposes no device of the preferred types.");
+                }
+
+                // CPU is default in ONNX Runtime sessions.
+                return new ProviderAppendResult(true, provider.Id);
+            }
+
+            try
+            {
+                IReadOnlyList<OrtEpDevice> allDevices = provider.GetDevices();
+                if (allDevices.Count > 0)
+                {
+                    IReadOnlyList<OrtEpDevice> matched = SelectDevices(allDevices, preferredDeviceTypes);
+                    if (matched.Count == 0)
+                    {
+                        return new ProviderAppendResult(false, provider.Id, $"{provider.Id} exposes no device of the preferred types.");
+                    }
+
+                    options.AppendEpDevices(matched, providerOptions);
+                    return new ProviderAppendResult(true, provider.Id);
+                }
+
+                // Built-in GPU provider exposing no V2 EP devices: verify device preference allows GPU.
+                if (preferredDeviceTypes is not null && preferredDeviceTypes.Count > 0 && !preferredDeviceTypes.Contains(OrtHardwareDeviceType.GPU))
+                {
+                    return new ProviderAppendResult(false, provider.Id, $"{provider.Id} exposes no device of the preferred types.");
+                }
+
+                var optDict = providerOptions is null
+                    ? new Dictionary<string, string>()
+                    : new Dictionary<string, string>(providerOptions);
+
+                if (provider.Id == LinML.Contracts.ProviderId.Cuda)
+                {
+                    using var cudaOptions = new OrtCUDAProviderOptions();
+                    cudaOptions.UpdateOptions(optDict);
+                    options.AppendExecutionProvider_CUDA(cudaOptions);
+                }
+                else if (provider.Id == LinML.Contracts.ProviderId.Tensorrt)
+                {
+                    using var tensorrtOptions = new OrtTensorRTProviderOptions();
+                    tensorrtOptions.UpdateOptions(optDict);
+                    options.AppendExecutionProvider_Tensorrt(tensorrtOptions);
+                }
+                else
+                {
+                    options.AppendExecutionProvider(provider.Id.Value, optDict);
+                }
+
+                return new ProviderAppendResult(true, provider.Id);
+            }
+            catch (OnnxRuntimeException ex)
+            {
+                return new ProviderAppendResult(false, provider.Id, $"Appending {provider.Id} failed: {ex.Message}");
+            }
+        }
+
         IReadOnlyList<OrtEpDevice> devices = SelectDevices(provider.GetDevices(), preferredDeviceTypes);
         if (devices.Count == 0)
         {

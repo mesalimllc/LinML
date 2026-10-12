@@ -114,4 +114,6 @@ internal sealed class FakeRegistrar : IOrtRegistrar
 
     // OrtEpDevice has no public constructor, so the fake always reports zero devices.
     public IReadOnlyList<OrtEpDevice> GetDevices(string epName) => [];
+
+    public IReadOnlyCollection<string> AvailableProviders { get; init; } = ["CPUExecutionProvider"];
 }

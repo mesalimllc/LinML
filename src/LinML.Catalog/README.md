@@ -7,9 +7,19 @@ Execution provider catalog for ONNX Runtime on Linux.
 
 `LinML.Catalog` is the Linux counterpart to the Windows ML (WinML) `ExecutionProviderCatalog`. It automates vendoring, SHA-256 integrity verification, dynamic registration, and session attachment for external plugin execution providers on Linux.
 
-It currently supports:
-- **OpenVINO Plugin EP** (`onnxruntime-ep-openvino` 1.6.1)
-- **TensorRT-RTX Plugin EP** (`onnxruntime-ep-nv-tensorrt-rtx` 0.4.0)
+### Supported Execution Providers
+
+`LinML.Catalog` provides unified discovery, readiness probing, and session attachment across both built-in and external plugin execution providers:
+
+#### Built-In Providers (`ProviderSource.BuiltIn`)
+- **CPU** (`CPUExecutionProvider`): Baseline execution provider, always ready.
+- **CUDA** (`CUDAExecutionProvider`): Probed via host runtime (e.g. `Microsoft.ML.OnnxRuntime.Gpu`) and verified before session append.
+- **Classic TensorRT** (`TensorrtExecutionProvider`): Probed via host runtime and verified before session append.
+
+#### Plugin Providers (`ProviderSource.Plugin`)
+- **OpenVINO Plugin EP** (`onnxruntime-ep-openvino` 1.6.1): Pinned PyPI wheel automated vendoring, SHA-256 verification, and registration.
+- **TensorRT-RTX Plugin EP** (`onnxruntime-ep-nv-tensorrt-rtx` 0.4.0): Pinned PyPI wheel automated vendoring, SHA-256 verification, SONAME symlink management, and registration (WSL2 virtual PCI block reported with diagnosable guidance).
+- **MIGraphX Plugin EP** (`onnxruntime-ep-amdgpu` 2611.1): Pinned standalone plugin release archive vendoring, SHA-256 verification, and registration.
 
 ---
 
@@ -18,6 +28,8 @@ It currently supports:
 ```bash
 dotnet add package LinML.Catalog
 ```
+
+> **Prerequisite:** `LinML.Catalog` references `Microsoft.ML.OnnxRuntime.Managed` to avoid native library conflicts. The consuming host application must supply a native ONNX Runtime package (such as `Microsoft.ML.OnnxRuntime.Gpu` or `Microsoft.ML.OnnxRuntime`).
 
 ---
 

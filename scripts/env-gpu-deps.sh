@@ -40,6 +40,9 @@ add_path "$DEPS/ep-plugins/trt-rtx/onnxruntime_ep_nv_tensorrt_rtx"
 # OpenVINO runtime (pip wheel), if installed
 add_path "$DEPS/openvino/lib"
 
+# ROCm / MIGraphX runtime libraries, if installed
+add_path "${ROCM_PATH:-/opt/rocm}/lib"
+
 export LD_LIBRARY_PATH
 
 # Convenience: default plugin EP library registration for TRT-RTX.
@@ -63,3 +66,15 @@ if [ -f "$OPENVINO_EP" ]; then
     esac
     export LINML_EP_LIBRARIES
 fi
+
+# Convenience: default plugin EP library registration for MIGraphX
+# (vendored by scripts/fetch-ep-plugins.sh or LinML.Catalog).
+MIGRAPHX_EP="$DEPS/ep-plugins/migraphx/linml_migraphx_ep/libmigraphx-ep.so"
+if [ -f "$MIGRAPHX_EP" ]; then
+    case ";${LINML_EP_LIBRARIES:-};" in
+        *";MIGraphXExecutionProvider="*|*";migraphx="*) ;;
+        *) LINML_EP_LIBRARIES="MIGraphXExecutionProvider=$MIGRAPHX_EP${LINML_EP_LIBRARIES:+;$LINML_EP_LIBRARIES}" ;;
+    esac
+    export LINML_EP_LIBRARIES
+fi
+
