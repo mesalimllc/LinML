@@ -77,7 +77,7 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
         return !string.IsNullOrWhiteSpace(custom) && File.Exists(custom) ? custom : null;
     }
 
-    private static bool Wsl2OptedOut() =>
+    internal static bool Wsl2OptedOut() =>
         EnvReader(Wsl2OptOutEnvVar)?.Trim().ToLowerInvariant() is "0" or "false" or "off" or "no";
 
     private string? StockLibraryPath() =>
@@ -174,6 +174,14 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
             string bundledDir = Path.GetDirectoryName(library) ?? _spec.InstallDirectory(_installRoot);
             if (SelectVariant() == Variant.Custom)
             {
+                // A locally built plugin links the same runtime as the stock wheel; preload it
+                // when vendored so registration does not depend on the loader path.
+                if (StockRuntimeDirectory() is { } stockDir)
+                {
+                    _bundledLibraryHandles.AddRange(PluginInstaller.LoadBundledLibraries(stockDir, _spec.LibraryFileName));
+                }
+
+                _bundledLibraryHandles.AddRange(PluginInstaller.LoadBundledLibraries(bundledDir, _spec.LibraryFileName));
                 _registrar.Register(_spec.RegistrationName, library);
                 return true;
             }
@@ -224,6 +232,17 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
             IReadOnlyList<OrtEpDevice> existing = GetDevices();
             if (existing.Count > 0)
             {
+                // ORT keeps one registration per EP name for the process, so a custom override set
+                // after another build registered cannot take effect until restart.
+                if (CustomLibraryPath() is { } custom
+                    && _registrar.RegisteredPath(_spec.RegistrationName) is { } active
+                    && !string.Equals(active, custom, StringComparison.Ordinal))
+                {
+                    return Result(
+                        ProviderEnsureStatus.Failed,
+                        $"{Id} is already registered from {active}; {TrtRtxCustomEpEnvVar} ({custom}) cannot replace it in this process. Restart with the override set before the first registration.");
+                }
+
                 return new ProviderEnsureResult(
                     Id, ProviderEnsureStatus.Ready, $"{Id} already registered with {existing.Count} EP device(s).", existing);
             }
@@ -294,7 +313,7 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
                     Variant.Wsl2 => $"{Id} (patched WSL2 build {_wsl2Spec.Version}) is registered but exposes no EP devices. Check that 'nvidia-smi' works in this distro and that /dev/dxg exists (WSL2 GPU passthrough).",
                     Variant.Custom => $"{Id} (custom build from {TrtRtxCustomEpEnvVar}) is registered but exposes no EP devices on this host.",
                     _ when Id == ProviderId.TensorrtRtx && IsWsl() =>
-                        $"{Id} is registered, but in WSL2 virtual PCI mapping blocks device enumeration with the stock wheel (see docs/compatibility.md). Use the patched WSL2 build (unset {Wsl2OptOutEnvVar}=0 on a WSL2 GPU host), or bare-metal Linux.",
+                        $"{Id} is registered, but in WSL2 virtual PCI mapping blocks device enumeration with the stock wheel (see docs/compatibility.md). Use the patched WSL2 build (remove {Wsl2OptOutEnvVar}=0 from the environment on a WSL2 GPU host), or bare-metal Linux.",
                     _ => $"{Id} is registered but exposes no EP devices on this host.",
                 };
                 return Result(ProviderEnsureStatus.NoDevices, detail);

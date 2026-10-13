@@ -53,12 +53,13 @@ export LD_LIBRARY_PATH
 #   1. TRT_RTX_CUSTOM_EP — an explicit locally built plugin (e.g. a WSL2 build
 #      from scripts/build-trt-rtx-ep.sh or scripts/build-trt-rtx-custom.sh).
 #   2. the LinML-hosted WSL2 fallback build, if vendored
-#      (scripts/fetch-ep-plugins.sh trt-rtx-wsl2).
+#      (scripts/fetch-ep-plugins.sh trt-rtx-wsl2), unless LINML_TRT_RTX_WSL2=0.
 #   3. the stock NVIDIA wheel (scripts/fetch-ep-plugins.sh trt-rtx).
 TRT_RTX_DEFAULT_EP="$DEPS/ep-plugins/trt-rtx/onnxruntime_ep_nv_tensorrt_rtx/libonnxruntime_providers_nv_tensorrt_rtx.so"
 TRT_RTX_WSL2_EP="$DEPS/ep-plugins/trt-rtx-wsl2/linml_trt_rtx_ep/libonnxruntime_providers_nv_tensorrt_rtx.so"
 TRT_RTX_EP="${TRT_RTX_CUSTOM_EP:-}"
-if [ -z "$TRT_RTX_EP" ] && [ -f "$TRT_RTX_WSL2_EP" ]; then
+case "${LINML_TRT_RTX_WSL2:-}" in 0|false|off|no) TRT_RTX_WSL2_OPT_OUT=1 ;; *) TRT_RTX_WSL2_OPT_OUT= ;; esac
+if [ -z "$TRT_RTX_EP" ] && [ -z "$TRT_RTX_WSL2_OPT_OUT" ] && [ -f "$TRT_RTX_WSL2_EP" ]; then
     TRT_RTX_EP="$TRT_RTX_WSL2_EP"
 fi
 TRT_RTX_EP="${TRT_RTX_EP:-$TRT_RTX_DEFAULT_EP}"

@@ -157,7 +157,7 @@ internal static class KnownPlugins
     /// </summary>
     internal static string? WslVariantLibrary(ProviderId id, string? root = null)
     {
-        if (id != ProviderId.TensorrtRtx || !PluginExecutionProvider.IsWsl())
+        if (id != ProviderId.TensorrtRtx || !PluginExecutionProvider.IsWsl() || PluginExecutionProvider.Wsl2OptedOut())
         {
             return null;
         }

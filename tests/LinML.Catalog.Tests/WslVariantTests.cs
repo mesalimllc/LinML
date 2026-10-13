@@ -72,6 +72,19 @@ public class WslVariantTests : IDisposable
     }
 
     [Fact]
+    public void WslVariantLibrary_OptOut_ReturnsNull()
+    {
+        using var root = new TempDir();
+        Vendor(root.Path, KnownPlugins.TensorrtRtx);
+        Vendor(root.Path, KnownPlugins.TensorrtRtxWsl2);
+        Assert.NotNull(KnownPlugins.WslVariantLibrary(LinML.Contracts.ProviderId.TensorrtRtx, root.Path));
+
+        PluginExecutionProvider.EnvReader = name => name == "LINML_TRT_RTX_WSL2" ? "0" : null;
+
+        Assert.Null(KnownPlugins.WslVariantLibrary(LinML.Contracts.ProviderId.TensorrtRtx, root.Path));
+    }
+
+    [Fact]
     public void LibraryPath_OffWsl_IgnoresThePatchedBuild()
     {
         PluginExecutionProvider.WslProbe = () => false;
