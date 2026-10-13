@@ -312,8 +312,10 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
                 {
                     Variant.Wsl2 => $"{Id} (patched WSL2 build {_wsl2Spec.Version}) is registered but exposes no EP devices. Check that 'nvidia-smi' works in this distro and that /dev/dxg exists (WSL2 GPU passthrough).",
                     Variant.Custom => $"{Id} (custom build from {TrtRtxCustomEpEnvVar}) is registered but exposes no EP devices on this host.",
+                    _ when Id == ProviderId.TensorrtRtx && IsWsl() && Wsl2OptedOut() =>
+                        $"{Id} is registered, but in WSL2 virtual PCI mapping blocks device enumeration with the stock wheel (see docs/compatibility.md). You opted out of the patched WSL2 build: remove {Wsl2OptOutEnvVar}=0 from the environment to use it, or use bare-metal Linux.",
                     _ when Id == ProviderId.TensorrtRtx && IsWsl() =>
-                        $"{Id} is registered, but in WSL2 virtual PCI mapping blocks device enumeration with the stock wheel (see docs/compatibility.md). Use the patched WSL2 build (remove {Wsl2OptOutEnvVar}=0 from the environment on a WSL2 GPU host), or bare-metal Linux.",
+                        $"{Id} is registered, but no WSL2 GPU passthrough was found (/dev/dxg is missing), so the patched WSL2 build was not used and the stock wheel exposes no devices. Check that this is WSL2 with NVIDIA GPU support and that 'nvidia-smi' works.",
                     _ => $"{Id} is registered but exposes no EP devices on this host.",
                 };
                 return Result(ProviderEnsureStatus.NoDevices, detail);

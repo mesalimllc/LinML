@@ -248,6 +248,25 @@ public class WslEnsureReadyTests : IDisposable
         Assert.Equal(_stock.LibraryPath(root.Path), Assert.Single(registrar.Registrations).Path);
     }
 
+    [Theory]
+    [InlineData(false, "/dev/dxg is missing")]
+    [InlineData(true, "opted out")]
+    public async Task StockOnWsl_NoDevicesHint_NamesTheActualCause(bool optedOut, string expected)
+    {
+        PluginExecutionProvider.DxgProbe = () => optedOut;
+        if (optedOut)
+        {
+            _env["LINML_TRT_RTX_WSL2"] = "0";
+        }
+
+        using var root = new TempDir();
+        var result = await Provider(root.Path, Handler(), new FakeRegistrar())
+            .EnsureReadyAsync(new EnsureOptions(AllowDownloads: true));
+
+        Assert.Equal(ProviderEnsureStatus.NoDevices, result.Status);
+        Assert.Contains(expected, result.Detail);
+    }
+
     [Fact]
     public async Task NotWsl_BehavesAsBefore()
     {
