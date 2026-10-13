@@ -44,7 +44,7 @@ public class WslVariantTests : IDisposable
         Vendor(root.Path, KnownPlugins.TensorrtRtxWsl2);
         var registrar = new FakeRegistrar();
         var provider = new PluginExecutionProvider(
-            KnownPlugins.TensorrtRtx, root.Path, new PluginInstaller(), registrar, () => true);
+            KnownPlugins.TensorrtRtxLinuxX64, root.Path, new PluginInstaller(), registrar, () => true);
 
         bool registered = provider.TryRegister(out string? reason);
 
@@ -57,11 +57,11 @@ public class WslVariantTests : IDisposable
     public void TryRegister_PatchedBuildWithStockRuntime_RegistersThePatchedBuild_NotTheStockWheel()
     {
         using var root = new TempDir();
-        Vendor(root.Path, KnownPlugins.TensorrtRtx);
+        Vendor(root.Path, KnownPlugins.TensorrtRtxLinuxX64);
         Vendor(root.Path, KnownPlugins.TensorrtRtxWsl2);
         var registrar = new FakeRegistrar();
         var provider = new PluginExecutionProvider(
-            KnownPlugins.TensorrtRtx, root.Path, new PluginInstaller(), registrar, () => true);
+            KnownPlugins.TensorrtRtxLinuxX64, root.Path, new PluginInstaller(), registrar, () => true);
 
         Assert.Equal(KnownPlugins.TensorrtRtxWsl2.LibraryPath(root.Path), provider.LibraryPath);
         bool registered = provider.TryRegister(out _);
@@ -72,10 +72,22 @@ public class WslVariantTests : IDisposable
     }
 
     [Fact]
+    public void Arm64StockSpec_UsesStockWheelUnderWsl2()
+    {
+        using var root = new TempDir();
+        Vendor(root.Path, KnownPlugins.TensorrtRtxLinuxArm64);
+        Vendor(root.Path, KnownPlugins.TensorrtRtxWsl2);
+        var provider = new PluginExecutionProvider(
+            KnownPlugins.TensorrtRtxLinuxArm64, root.Path, new PluginInstaller(), new FakeRegistrar(), () => true);
+
+        Assert.Equal(KnownPlugins.TensorrtRtxLinuxArm64.LibraryPath(root.Path), provider.LibraryPath);
+    }
+
+    [Fact]
     public void WslVariantLibrary_OptOut_ReturnsNull()
     {
         using var root = new TempDir();
-        Vendor(root.Path, KnownPlugins.TensorrtRtx);
+        Vendor(root.Path, KnownPlugins.TensorrtRtxLinuxX64);
         Vendor(root.Path, KnownPlugins.TensorrtRtxWsl2);
         Assert.NotNull(KnownPlugins.WslVariantLibrary(LinML.Contracts.ProviderId.TensorrtRtx, root.Path));
 
@@ -89,12 +101,12 @@ public class WslVariantTests : IDisposable
     {
         PluginExecutionProvider.WslProbe = () => false;
         using var root = new TempDir();
-        Vendor(root.Path, KnownPlugins.TensorrtRtx);
+        Vendor(root.Path, KnownPlugins.TensorrtRtxLinuxX64);
         Vendor(root.Path, KnownPlugins.TensorrtRtxWsl2);
         var provider = new PluginExecutionProvider(
-            KnownPlugins.TensorrtRtx, root.Path, new PluginInstaller(), new FakeRegistrar(), () => true);
+            KnownPlugins.TensorrtRtxLinuxX64, root.Path, new PluginInstaller(), new FakeRegistrar(), () => true);
 
-        Assert.Equal(KnownPlugins.TensorrtRtx.LibraryPath(root.Path), provider.LibraryPath);
+        Assert.Equal(KnownPlugins.TensorrtRtxLinuxX64.LibraryPath(root.Path), provider.LibraryPath);
     }
 }
 
