@@ -25,7 +25,7 @@
          to GitHub Packages by .github/workflows/publish-packages.yml. The
          workflow overrides Version from the release tag. -->
     <IsPackable>false</IsPackable>
-    <VersionPrefix>0.4.2</VersionPrefix>
+    <VersionPrefix>0.5.0</VersionPrefix>
     <Authors>LinML Contributors</Authors>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/trackdubllc/LinML</RepositoryUrl>
