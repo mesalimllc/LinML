@@ -147,6 +147,54 @@ public class SetupCommandTests
     }
 
     [Fact]
+    public void DetermineRecommendations_All_AmdCpuWithoutRocm_NotesMigraphxNeedsGpu()
+    {
+        var hw = new SetupCommand.HostHardwareInfo(
+            Cpu: new SetupCommand.CpuInfo("x64", "AMD", "AMD Ryzen 7 5700X3D", 16, true),
+            Devices: [],
+            HasAmdRocm: false,
+            IsWsl2: false);
+
+        var recs = SetupCommand.DetermineRecommendations(hw, all: true);
+
+        var migraphx = Assert.Single(recs, r => r.ShortName == "migraphx");
+        Assert.NotNull(migraphx.Note);
+        Assert.Contains("AMD GPU with ROCm", migraphx.Note);
+    }
+
+    [Fact]
+    public void DetermineRecommendations_All_WithAmdRocm_HasNoMigraphxNote()
+    {
+        var hw = new SetupCommand.HostHardwareInfo(
+            Cpu: new SetupCommand.CpuInfo("x64", "AMD", "Threadripper", 32, true),
+            Devices: [],
+            HasAmdRocm: true,
+            IsWsl2: false);
+
+        var recs = SetupCommand.DetermineRecommendations(hw, all: true);
+
+        Assert.Null(Assert.Single(recs, r => r.ShortName == "migraphx").Note);
+    }
+
+    [Theory]
+    [InlineData(true, null)]
+    [InlineData(false, "needs an AMD GPU with ROCm")]
+    public void MigraphXHardwareNote_OnlyGatesMigraphxOnNonRocmHost(bool amdRocm, string? expectedFragment)
+    {
+        string? note = SetupCommand.MigraphXHardwareNote(ProviderId.MigraphX, amdRocm);
+
+        if (expectedFragment is null)
+        {
+            Assert.Null(note);
+        }
+        else
+        {
+            Assert.Contains(expectedFragment, note);
+        }
+        Assert.Null(SetupCommand.MigraphXHardwareNote(ProviderId.OpenVino, amdRocm: false));
+    }
+
+    [Fact]
     public void DetermineRecommendations_NvidiaGpu_OnWsl2_DoesNotSelectTrtRtx()
     {
         var hw = new SetupCommand.HostHardwareInfo(

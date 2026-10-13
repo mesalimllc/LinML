@@ -92,10 +92,15 @@ public static class ProviderArgs
     /// cache (~/.cache/linml/ep-plugins, ~/.local/linml-deps, etc.) if --ep-library
     /// was omitted for the requested provider.
     /// </summary>
+    /// <param name="args">Repeated --ep-library name=path arguments.</param>
+    /// <param name="requestedProvider">The provider whose plugin library is resolved, if any.</param>
+    /// <param name="customRoot">Catalog install root to search before the defaults.</param>
+    /// <param name="skipMalformed">Ignore entries not of the form name=path instead of throwing.</param>
     public static IReadOnlyDictionary<string, string> ResolveEpLibraries(
         IEnumerable<string> args,
         ProviderId? requestedProvider = null,
-        string? customRoot = null)
+        string? customRoot = null,
+        bool skipMalformed = false)
     {
         var result = new Dictionary<string, string>(StringComparer.Ordinal);
 
@@ -104,7 +109,7 @@ public static class ProviderArgs
         {
             foreach (var pair in env.Split(';', StringSplitOptions.RemoveEmptyEntries))
             {
-                AddPair(result, pair, "environment variable " + EpLibrariesEnvVar);
+                AddPair(result, pair, "environment variable " + EpLibrariesEnvVar, skipMalformed);
             }
         }
 
@@ -113,7 +118,7 @@ public static class ProviderArgs
         var explicitArgKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var arg in args)
         {
-            AddPair(result, arg, "--ep-library");
+            AddPair(result, arg, "--ep-library", skipMalformed);
             var eq = arg.IndexOf('=');
             if (eq > 0)
             {
@@ -284,12 +289,61 @@ public static class ProviderArgs
         }
     }
 
+    /// <summary>
+    /// Registers, in this process, every catalog plugin that resolves on this host, so that
+    /// discovery, readiness and catalog status all see the same EP devices. A plugin that
+    /// does not resolve or fails to register is left for the caller's own checks to report.
+    /// </summary>
+    public static void RegisterCatalogPlugins(IEnumerable<string> epLibraryArgs, string? root)
+    {
+        var args = epLibraryArgs.ToList();
+        foreach (var spec in LinML.Catalog.KnownPlugins.All)
+        {
+            IReadOnlyDictionary<string, string> resolved;
+            try
+            {
+                resolved = ResolveEpLibraries(args, spec.Id, root, skipMalformed: true);
+            }
+            catch
+            {
+                continue; // this plugin's own mapping cannot be resolved; its readiness report says so
+            }
+
+            // Only this plugin's own mapping. An unrelated bad mapping (a missing file for another
+            // plugin) must not stop this one from registering.
+            foreach (var (name, path) in resolved.Where(kv => IsMappingFor(kv.Key, spec)))
+            {
+                try
+                {
+                    EnsureEpLibrariesRegistered(new Dictionary<string, string> { [name] = path });
+                }
+                catch
+                {
+                    // The failure is recorded by PluginLibraryRegistry, so readiness reports can say why.
+                }
+            }
+        }
+    }
+
+    private static bool IsMappingFor(string key, LinML.Catalog.PluginPackageSpec spec)
+    {
+        string shortName = GetShortName(spec.Id);
+        return string.Equals(key, spec.RegistrationName, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(key, spec.Id.Value, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(key, shortName, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static void AddPair(
-        Dictionary<string, string> result, string pair, string source)
+        Dictionary<string, string> result, string pair, string source, bool skipMalformed = false)
     {
         var idx = pair.IndexOf('=');
         if (idx <= 0)
         {
+            if (skipMalformed)
+            {
+                return;
+            }
+
             throw new ArgumentException(
                 $"Invalid EP library '{pair}' from {source}. Expected name=path.");
         }

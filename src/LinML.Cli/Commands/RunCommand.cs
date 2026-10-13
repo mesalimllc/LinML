@@ -32,7 +32,6 @@ public static class RunCommand
         runCommand.Options.Add(profileOption);
         runCommand.Options.Add(epOptionOption);
         runCommand.Options.Add(epLibraryOption);
-        runCommand.Options.Add(jsonOption);
 
         runCommand.SetAction(async parseResult =>
         {
@@ -94,7 +93,7 @@ public static class RunCommand
 
                 var result = new InferenceResult
                 {
-                    RequestedProvider = preferredProvider ?? ProviderId.Cpu,
+                    RequestedProvider = preferredProvider,
                     SelectedProvider = outcome.SelectedProvider,
                     FallbackChain = outcome.FallbackChain,
                     Outputs = outcome.Outputs!,
@@ -111,7 +110,7 @@ public static class RunCommand
                 }
                 else
                 {
-                    Console.WriteLine($"Provider: {result.SelectedProvider} (requested: {result.RequestedProvider})");
+                    Console.WriteLine($"Provider: {result.SelectedProvider} (requested: {result.RequestedProvider?.ToString() ?? "auto"})");
                     foreach (var fallback in result.FallbackChain)
                     {
                         Console.WriteLine($"Fallback: {fallback.Provider} failed: {fallback.Reason}");

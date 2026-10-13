@@ -14,6 +14,10 @@ public static class PluginLibraryRegistry
     private static readonly object Gate = new();
     private static readonly Dictionary<string, string> Registered = new(StringComparer.Ordinal);
 
+    // Why the most recent attempt to load each library file failed, keyed by file name so a
+    // library is recognised whatever registration name it was loaded under.
+    private static readonly Dictionary<string, string> Failures = new(StringComparer.Ordinal);
+
     /// <summary>
     /// Registers <paramref name="libraryPath"/> with ORT under
     /// <paramref name="registrationName"/>, unless it already is.
@@ -49,8 +53,41 @@ public static class PluginLibraryRegistry
                 return;
             }
 
-            OrtEnv.Instance().RegisterExecutionProviderLibrary(registrationName, libraryPath);
+            string fileName = Path.GetFileName(libraryPath);
+            try
+            {
+                OrtEnv.Instance().RegisterExecutionProviderLibrary(registrationName, libraryPath);
+            }
+            catch (Exception ex)
+            {
+                // Kept so readiness reports can say why a plugin is missing, not just that it is.
+                Failures[fileName] = ex.Message;
+                throw;
+            }
+
             Registered[registrationName] = libraryPath;
+            Failures.Remove(fileName);
+        }
+    }
+
+    /// <summary>The message from the last failed attempt to load <paramref name="libraryFileName"/>, or null.</summary>
+    public static string? RegistrationFailure(string libraryFileName)
+    {
+        lock (Gate)
+        {
+            return Failures.GetValueOrDefault(libraryFileName);
+        }
+    }
+
+    /// <summary>File names of the libraries registered in this process, whatever name each was registered under.</summary>
+    public static IReadOnlyCollection<string> RegisteredLibraryFileNames
+    {
+        get
+        {
+            lock (Gate)
+            {
+                return Registered.Values.Select(Path.GetFileName).OfType<string>().ToArray();
+            }
         }
     }
 

@@ -1,3 +1,4 @@
+using System.Formats.Tar;
 using System.IO.Compression;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
@@ -46,7 +47,15 @@ internal sealed class PluginInstaller(HttpMessageHandler? httpHandler = null)
             await DownloadAndVerifyAsync(spec, wheel, cancellationToken).ConfigureAwait(false);
 
             Directory.CreateDirectory(stage);
-            ExtractFlat(wheel, spec.PackagePrefix, stage);
+            if (IsTarGz(spec.WheelUrl))
+            {
+                ExtractFlatTarGz(wheel, spec.PackagePrefix, stage);
+            }
+            else
+            {
+                ExtractFlat(wheel, spec.PackagePrefix, stage);
+            }
+
             CreateRequiredSymlinks(stage);
             if (!File.Exists(Path.Combine(stage, spec.LibraryFileName)))
             {
@@ -130,6 +139,54 @@ internal sealed class PluginInstaller(HttpMessageHandler? httpHandler = null)
             }
 
             entry.ExtractToFile(Path.Combine(destination, name), overwrite: false);
+        }
+    }
+
+    private static bool IsTarGz(Uri url) =>
+        url.AbsolutePath.EndsWith(".tgz", StringComparison.OrdinalIgnoreCase)
+        || url.AbsolutePath.EndsWith(".tar.gz", StringComparison.OrdinalIgnoreCase);
+
+    // Top-level licence and notice files in a tarball that has no licenses/ directory
+    // of its own; they land in licenses/ so redistributed binaries keep their terms.
+    private static readonly HashSet<string> TarLicenseFiles =
+        new(StringComparer.Ordinal) { "LICENSE", "Qualcomm_LICENSE.pdf", "ThirdPartyNotices.txt" };
+
+    /// <summary>
+    /// <see cref="ExtractFlat"/> for a <c>.tgz</c> archive: copies the top-level native
+    /// files (<c>*.so</c>, <c>*.so.*</c>) and the known licence files (into
+    /// <c>licenses/</c>) into <paramref name="destination"/>, stripping
+    /// <paramref name="packagePrefix"/>. Docs, images and nested directories are
+    /// skipped; only regular files are read, so links and devices are never created.
+    /// </summary>
+    internal static void ExtractFlatTarGz(string archivePath, string packagePrefix, string destination)
+    {
+        using var file = new FileStream(archivePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+        using var gzip = new GZipStream(file, CompressionMode.Decompress);
+        using var tar = new TarReader(gzip);
+
+        while (tar.GetNextEntry() is { } entry)
+        {
+            if (entry.EntryType is not (TarEntryType.RegularFile or TarEntryType.V7RegularFile)
+                || !entry.Name.StartsWith(packagePrefix, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            string name = entry.Name[packagePrefix.Length..];
+            if (name.Length == 0 || name.Contains('/', StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (TarLicenseFiles.Contains(name))
+            {
+                Directory.CreateDirectory(Path.Combine(destination, LicenseDirectory));
+                entry.ExtractToFile(Path.Combine(destination, LicenseDirectory, name), overwrite: false);
+            }
+            else if (name.EndsWith(".so", StringComparison.Ordinal) || name.Contains(".so.", StringComparison.Ordinal))
+            {
+                entry.ExtractToFile(Path.Combine(destination, name), overwrite: false);
+            }
         }
     }
 

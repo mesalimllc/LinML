@@ -5,14 +5,14 @@ namespace LinML.Contracts;
 /// </summary>
 public sealed record InferenceResult
 {
-    /// <summary>The provider that was requested.</summary>
-    public required ProviderId RequestedProvider { get; init; }
+    /// <summary>The provider that was requested, or null for auto (best available, no --provider).</summary>
+    public required ProviderId? RequestedProvider { get; init; }
 
     /// <summary>The provider that actually executed.</summary>
     public required ProviderId SelectedProvider { get; init; }
 
-    /// <summary>Whether fallback occurred (requested != selected).</summary>
-    public bool FallbackOccurred => RequestedProvider != SelectedProvider;
+    /// <summary>Whether fallback occurred: an explicit request that did not run. Auto selection never falls back.</summary>
+    public bool FallbackOccurred => RequestedProvider is not null && RequestedProvider != SelectedProvider;
 
     /// <summary>If fallback occurred, the chain of providers tried and why.</summary>
     public IReadOnlyList<FallbackStep> FallbackChain { get; init; } = [];

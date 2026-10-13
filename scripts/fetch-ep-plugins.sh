@@ -23,12 +23,17 @@
 #             then vendors LinML's patched EP .so. Opt-in: only pulled when
 #             named explicitly. See docs/compatibility.md.
 #
+#   qnn       QNNExecutionProvider (Qualcomm onnxruntime-qnn 2.6.0). Standalone
+#             plugin EP plus the bundled QAIRT runtime, from the linux-aarch64
+#             inference tarball. Opt-in and aarch64-only: not in the default set,
+#             and unverified on hardware (needs a Snapdragon NPU).
+#
 # The wheels and archives are vendored native binaries; the deployed product
 # has no Python dependency.
 #
 # Pinned for reproducibility (sha256 verified).
 #
-# Usage: bash scripts/fetch-ep-plugins.sh [trt-rtx] [openvino] [migraphx] [trt-rtx-wsl2]
+# Usage: bash scripts/fetch-ep-plugins.sh [trt-rtx] [openvino] [migraphx] [trt-rtx-wsl2] [qnn]
 #        (no arguments fetches the default set)
 
 set -euo pipefail
@@ -291,6 +296,57 @@ PYEOF
     echo "  linml run --provider migraphx --model ... --inputs ..."
 }
 
+fetch_qnn() {
+    local OUT="$DEPS/ep-plugins/qnn/onnxruntime_qnn"
+    local WHEEL_URL="https://github.com/onnxruntime/onnxruntime-qnn/releases/download/v2.6.0/onnxruntime-qnn-2.6.0-linux-aarch64.tgz"
+    local WHEEL_SHA256="c61507ec7f9fa0eb2c0c1cefe5a0e8bdf48f185504de224917b23a389f362b38"
+    local WHEEL_NAME="onnxruntime-qnn-2.6.0-linux-aarch64.tgz"
+    local TMP="$TMP_ROOT/qnn"
+
+    echo "=== LinML EP plugin fetch (Qualcomm QNN) ==="
+
+    # The linux-x64 tarball is AOT-compilation only (no inference), so only the
+    # aarch64 inference package is pinned.
+    if [ "$(uname -m)" != "aarch64" ]; then
+        echo "QNN inference needs a Linux aarch64 host (this is $(uname -m)); skipping." >&2
+        return 1
+    fi
+
+    if [ -f "$OUT/libonnxruntime_providers_qnn.so" ]; then
+        echo "Already vendored: $OUT"
+        return 0
+    fi
+
+    local STAGE="$OUT.partial"
+    rm -rf "$STAGE"
+    mkdir -p "$STAGE/licenses" "$TMP"
+
+    echo "Downloading $WHEEL_NAME ..."
+    curl -fsSL -o "$TMP/$WHEEL_NAME" "$WHEEL_URL"
+
+    echo "Verifying sha256..."
+    echo "$WHEEL_SHA256  $TMP/$WHEEL_NAME" | sha256sum -c
+
+    # The tarball is flat. Vendor the plugin and the bundled QAIRT runtime
+    # (*.so), and keep the licence and notice files with the binaries.
+    echo "Extracting native libraries..."
+    tar -xzf "$TMP/$WHEEL_NAME" -C "$STAGE" --wildcards '*.so'
+    tar -xzf "$TMP/$WHEEL_NAME" -C "$STAGE/licenses" LICENSE Qualcomm_LICENSE.pdf ThirdPartyNotices.txt
+
+    rm -rf "$OUT"
+    mv "$STAGE" "$OUT"
+
+    echo ""
+    echo "=== Vendored ==="
+    ls -la "$OUT"
+    echo ""
+    echo "Next: source scripts/env-gpu-deps.sh"
+    echo "  linml providers list"
+    echo "  linml run --provider qnn --ep-option qnn:backend_path=$OUT/libQnnHtp.so --model ... --inputs ..."
+    echo ""
+    echo "Unverified on hardware: needs a Snapdragon device with an NPU."
+}
+
 fetch_trt_rtx_wsl2() {
     local OUT="$DEPS/ep-plugins/trt-rtx-wsl2/linml_trt_rtx_ep"
     local WHEEL_URL="https://github.com/trackdubllc/LinML/releases/download/ep-trt-rtx-wsl2-0.4.0-wsl2p1/linml-trt-rtx-ep-0.4.0-wsl2p1-linux-x64.zip"
@@ -363,8 +419,9 @@ for plugin in "${PLUGINS[@]}"; do
         trt-rtx-wsl2) fetch_trt_rtx_wsl2 ;;
         openvino) fetch_openvino ;;
         migraphx) fetch_migraphx ;;
+        qnn) fetch_qnn ;;
         *)
-            echo "Unknown plugin '$plugin' (expected: trt-rtx, trt-rtx-wsl2, openvino, migraphx)" >&2
+            echo "Unknown plugin '$plugin' (expected: trt-rtx, trt-rtx-wsl2, openvino, migraphx, qnn)" >&2
             exit 2
             ;;
     esac

@@ -283,6 +283,42 @@ public class ProviderSelectorTests
         Assert.All(results, r => Assert.Equal(ProviderId.Cuda, r.SelectedProvider));
     }
 
+    [Fact]
+    public void Select_UnavailableCandidateWithKnownReason_UsesThatReason()
+    {
+        var selector = CreateSelector(
+            availableProviders: [ProviderId.Cpu],
+            readinessResults: new() { [ProviderId.Cpu] = true });
+
+        var decision = selector.Select(new SelectionRequest
+        {
+            Candidates = [ProviderId.OpenVino, ProviderId.Cpu],
+            UnavailableReasons = new Dictionary<ProviderId, string>
+            {
+                [ProviderId.OpenVino] = "Provider 'OpenVINOExecutionProvider' is installed but failed to register: boom"
+            }
+        });
+
+        // The specific reason replaces the generic "not available", so the failure stays explainable.
+        Assert.Equal(
+            "Provider 'OpenVINOExecutionProvider' is installed but failed to register: boom",
+            Assert.Single(decision.RejectedCandidates).Reason);
+    }
+
+    [Fact]
+    public void Select_UnavailableCandidateWithoutKnownReason_KeepsGenericReason()
+    {
+        var selector = CreateSelector(
+            availableProviders: [ProviderId.Cpu],
+            readinessResults: new() { [ProviderId.Cpu] = true });
+
+        var decision = selector.Select(new SelectionRequest { Candidates = [ProviderId.Cuda, ProviderId.Cpu] });
+
+        Assert.Equal(
+            $"Provider '{ProviderId.Cuda}' is not available in the runtime.",
+            Assert.Single(decision.RejectedCandidates).Reason);
+    }
+
     // --- Fakes ---
 
     private sealed class FakeDiscovery : IProviderDiscovery

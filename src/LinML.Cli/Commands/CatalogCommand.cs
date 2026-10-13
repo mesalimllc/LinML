@@ -33,7 +33,6 @@ public static class CatalogCommand
         var listCommand = new Command("list", "List all execution providers in the catalog");
         var rootOption = new Option<string?>("--root") { Description = "Custom catalog install root directory" };
         listCommand.Options.Add(rootOption);
-        listCommand.Options.Add(jsonOption);
 
         listCommand.SetAction(parseResult =>
         {
@@ -43,6 +42,10 @@ public static class CatalogCommand
             var catalog = string.IsNullOrWhiteSpace(root)
                 ? ExecutionProviderCatalog.GetDefault()
                 : ExecutionProviderCatalog.Create(root);
+
+            // Status comes from the EP devices a plugin exposes, so register the resolvable
+            // plugins first, as `doctor` does; otherwise a working plugin reads as NotReady.
+            ProviderArgs.RegisterCatalogPlugins([], root);
 
             var providers = catalog.FindAllProviders();
 
@@ -105,7 +108,6 @@ public static class CatalogCommand
         installCommand.Arguments.Add(providerArg);
         installCommand.Options.Add(rootOption);
         installCommand.Options.Add(forceOption);
-        installCommand.Options.Add(jsonOption);
 
         installCommand.SetAction(async parseResult =>
         {
@@ -180,6 +182,12 @@ public static class CatalogCommand
                         else
                         {
                             Console.WriteLine($"  Already installed: {libraryPath}");
+                            // The library a run loads can differ (e.g. the patched WSL2 build for trt-rtx).
+                            string? active = ExecutionProviderCatalog.Create(installRoot).Find(spec.Id)?.LibraryPath;
+                            if (active is not null && !string.Equals(active, libraryPath, StringComparison.Ordinal))
+                            {
+                                Console.WriteLine($"  Active on this host: {active}");
+                            }
                         }
                         Console.WriteLine();
                     }

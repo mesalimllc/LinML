@@ -41,7 +41,6 @@ public static class SetupCommand
         setupCommand.Options.Add(forceOption);
         setupCommand.Options.Add(allOption);
         setupCommand.Options.Add(trtRtxWsl2Option);
-        setupCommand.Options.Add(jsonOption);
 
         setupCommand.SetAction(async parseResult =>
         {
@@ -366,17 +365,26 @@ public static class SetupCommand
         // recommendation also covers an Intel accelerator next to a non-Intel CPU.
         var devices = report.Devices.Concat(ProbeIntelDevices()).ToList();
 
-        bool hasKfd = Directory.Exists("/sys/class/kfd") || File.Exists("/dev/kfd");
-        bool hasRocmUserspace = Directory.Exists("/opt/rocm")
-            || File.Exists("/opt/rocm/lib/libmigraphx_c.so.3")
-            || File.Exists("/opt/rocm/lib/libmigraphx_c.so")
-            || IsCommandOnPath("rocm-smi");
-        bool hasAmdRocm = hasKfd && hasRocmUserspace;
+        bool hasAmdRocm = ProbeAmdRocm();
 
         bool isWsl2 = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("WSL_DISTRO_NAME"))
                       || File.Exists("/proc/sys/fs/binfmt_misc/WSLInterop");
 
         return new HostHardwareInfo(cpu, devices, hasAmdRocm, isWsl2);
+    }
+
+    /// <summary>
+    /// Whether an AMD GPU driver (KFD) and a ROCm user-space runtime are both present.
+    /// MIGraphX needs both; the CPU vendor is irrelevant to it.
+    /// </summary>
+    internal static bool ProbeAmdRocm()
+    {
+        bool hasKfd = Directory.Exists("/sys/class/kfd") || File.Exists("/dev/kfd");
+        bool hasRocmUserspace = Directory.Exists("/opt/rocm")
+            || File.Exists("/opt/rocm/lib/libmigraphx_c.so.3")
+            || File.Exists("/opt/rocm/lib/libmigraphx_c.so")
+            || IsCommandOnPath("rocm-smi");
+        return hasKfd && hasRocmUserspace;
     }
 
     /// <summary>
@@ -500,7 +508,7 @@ public static class SetupCommand
                     Spec: plugin,
                     ShortName: shortName,
                     Reason: "Requested via --all",
-                    Note: null));
+                    Note: MigraphXHardwareNote(plugin.Id, hardware.HasAmdRocm)));
             }
 
             AddTrtRtxWsl2IfOptedIn(list, hardware, trtRtxWsl2);
@@ -565,6 +573,15 @@ public static class SetupCommand
 
         return list;
     }
+
+    /// <summary>
+    /// Why a plugin will not run on this host, or null when no hardware gap is known.
+    /// Only MIGraphX is gated here: it needs an AMD GPU with ROCm, not an AMD CPU.
+    /// </summary>
+    internal static string? MigraphXHardwareNote(ProviderId id, bool amdRocm) =>
+        id == ProviderId.MigraphX && !amdRocm
+            ? "needs an AMD GPU with ROCm (/dev/kfd and /opt/rocm); not detected on this host, so it will not run here"
+            : null;
 
     /// <summary>
     /// Whether the opt-in patched TensorRT-RTX EP applies: WSL2 on linux-x64 with an

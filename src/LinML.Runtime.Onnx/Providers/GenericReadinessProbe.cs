@@ -1,4 +1,5 @@
 using LinML.Contracts;
+using LinML.Runtime.Onnx;
 using Microsoft.Extensions.Logging;
 using Microsoft.ML.OnnxRuntime;
 
@@ -38,15 +39,13 @@ public sealed class GenericReadinessProbe
 
             PluginEpRegistry.EnsureRegistered(epLibraries);
 
-            var listed = OrtEnv.Instance().GetAvailableProviders().Contains(provider.Value)
-                || OrtEnv.Instance().GetEpDevices().Any(d => d.EpName == provider.Value);
+            var listed = ProviderListing.IsListed(provider);
             durations[ReadinessPhase.Load] = DateTime.UtcNow - loadStart;
 
             if (!listed)
             {
                 return Fail(provider, phaseResults, durations, ReadinessPhase.Load,
-                    $"Provider '{provider}' is not listed by the ORT runtime. " +
-                    "Its native EP library may be missing (check LD_LIBRARY_PATH / plugin registration).");
+                    ProviderListing.NotListedReason(provider));
             }
             phaseResults.Add(new ReadinessPhaseResult { Phase = ReadinessPhase.Load, Success = true });
         }
