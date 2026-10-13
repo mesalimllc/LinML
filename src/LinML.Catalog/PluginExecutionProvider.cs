@@ -8,6 +8,7 @@ namespace LinML.Catalog;
 internal sealed class PluginExecutionProvider : IExecutionProvider
 {
     private readonly PluginPackageSpec _spec;
+    private readonly PluginPackageSpec _wsl2Spec;
     private readonly string _installRoot;
     private readonly PluginInstaller _installer;
     private readonly IOrtRegistrar _registrar;
@@ -21,9 +22,11 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
         string installRoot,
         PluginInstaller installer,
         IOrtRegistrar registrar,
-        Func<bool>? isSupportedPlatform = null)
+        Func<bool>? isSupportedPlatform = null,
+        PluginPackageSpec? wsl2Spec = null)
     {
         _spec = spec;
+        _wsl2Spec = wsl2Spec ?? KnownPlugins.TensorrtRtxWsl2;
         _installRoot = installRoot;
         _installer = installer;
         _registrar = registrar;
@@ -36,16 +39,57 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
 
     public string? PinnedVersion => _spec.Version;
 
-    public string? LibraryPath => WslVariantLibraryPath()
-        ?? (File.Exists(_spec.LibraryPath(_installRoot))
+    public string? LibraryPath => SelectVariant() switch
+    {
+        Variant.Custom => CustomLibraryPath(),
+        Variant.Wsl2 => WslVariantLibraryPath(),
+        _ => StockLibraryPath(),
+    };
+
+    private enum Variant { Stock, Wsl2, Custom }
+
+    // Only TensorrtRtx has variants. Highest precedence first: an explicit TRT_RTX_CUSTOM_EP file
+    // (as the CLI honours it), the patched WSL2 build on a WSL2 GPU host unless opted out, then
+    // the stock wheel.
+    private Variant SelectVariant()
+    {
+        if (_spec.Id != ProviderId.TensorrtRtx)
+        {
+            return Variant.Stock;
+        }
+
+        if (CustomLibraryPath() is not null)
+        {
+            return Variant.Custom;
+        }
+
+        return IsWsl2() && !Wsl2OptedOut() ? Variant.Wsl2 : Variant.Stock;
+    }
+
+    private string? CustomLibraryPath()
+    {
+        if (_spec.Id != ProviderId.TensorrtRtx)
+        {
+            return null;
+        }
+
+        string? custom = EnvReader(TrtRtxCustomEpEnvVar);
+        return !string.IsNullOrWhiteSpace(custom) && File.Exists(custom) ? custom : null;
+    }
+
+    internal static bool Wsl2OptedOut() =>
+        EnvReader(Wsl2OptOutEnvVar)?.Trim().ToLowerInvariant() is "0" or "false" or "off" or "no";
+
+    private string? StockLibraryPath() =>
+        File.Exists(_spec.LibraryPath(_installRoot))
             ? _spec.LibraryPath(_installRoot)
-            : (_installRoot == ExecutionProviderCatalog.DefaultInstallRoot ? _spec.FindLibrary() : null));
+            : (_installRoot == ExecutionProviderCatalog.DefaultInstallRoot ? _spec.FindLibrary() : null);
 
     // The stock wheel's runtime libraries, looked up like LibraryPath: strictly under this
     // catalog's root, widening to the default roots only for the default catalog.
     private string? StockRuntimeDirectory()
     {
-        string own = KnownPlugins.TensorrtRtx.LibraryPath(_installRoot);
+        string own = _spec.LibraryPath(_installRoot);
         if (File.Exists(own))
         {
             return Path.GetDirectoryName(own);
@@ -61,25 +105,20 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
         _spec.Id == ProviderId.TensorrtRtx
         && string.Equals(
             Path.GetFileName(Path.GetDirectoryName(library)),
-            Path.GetFileName(KnownPlugins.TensorrtRtxWsl2.InstallSubdirectory),
+            Path.GetFileName(_wsl2Spec.InstallSubdirectory),
             StringComparison.Ordinal);
 
-    // The opted-in WSL2 build wins over the stock wheel on WSL2 hosts.
+    // The vendored WSL2 build, or null when it is not installed.
     private string? WslVariantLibraryPath()
     {
-        if (_spec.Id != ProviderId.TensorrtRtx || !IsWsl())
-        {
-            return null;
-        }
-
-        string own = KnownPlugins.TensorrtRtxWsl2.LibraryPath(_installRoot);
+        string own = _wsl2Spec.LibraryPath(_installRoot);
         if (File.Exists(own))
         {
             return own;
         }
 
         return _installRoot == ExecutionProviderCatalog.DefaultInstallRoot
-            ? KnownPlugins.TensorrtRtxWsl2.FindLibrary()
+            ? _wsl2Spec.FindLibrary()
             : null;
     }
 
@@ -133,6 +172,20 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
             // native loader merely because they share the plugin directory.
             // Load them explicitly before ORT loads the plugin.
             string bundledDir = Path.GetDirectoryName(library) ?? _spec.InstallDirectory(_installRoot);
+            if (SelectVariant() == Variant.Custom)
+            {
+                // A locally built plugin links the same runtime as the stock wheel; preload it
+                // when vendored so registration does not depend on the loader path.
+                if (StockRuntimeDirectory() is { } stockDir)
+                {
+                    _bundledLibraryHandles.AddRange(PluginInstaller.LoadBundledLibraries(stockDir, _spec.LibraryFileName));
+                }
+
+                _bundledLibraryHandles.AddRange(PluginInstaller.LoadBundledLibraries(bundledDir, _spec.LibraryFileName));
+                _registrar.Register(_spec.RegistrationName, library);
+                return true;
+            }
+
             if (IsWslVariant(library))
             {
                 // The WSL2 build links the TensorRT-RTX runtime that only the stock wheel
@@ -179,33 +232,72 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
             IReadOnlyList<OrtEpDevice> existing = GetDevices();
             if (existing.Count > 0)
             {
+                // ORT keeps one registration per EP name for the process, so a custom override set
+                // after another build registered cannot take effect until restart.
+                if (CustomLibraryPath() is { } custom
+                    && _registrar.RegisteredPath(_spec.RegistrationName) is { } active
+                    && !string.Equals(active, custom, StringComparison.Ordinal))
+                {
+                    return Result(
+                        ProviderEnsureStatus.Failed,
+                        $"{Id} is already registered from {active}; {TrtRtxCustomEpEnvVar} ({custom}) cannot replace it in this process. Restart with the override set before the first registration.");
+                }
+
                 return new ProviderEnsureResult(
                     Id, ProviderEnsureStatus.Ready, $"{Id} already registered with {existing.Count} EP device(s).", existing);
             }
 
             bool downloaded = false;
-            if (LibraryPath is null)
+            Variant variant = SelectVariant();
+            if (variant != Variant.Custom)
             {
-                if (!options.AllowDownloads)
+                // On the WSL2 path the patched build needs the stock wheel's runtime directory and
+                // must never be preceded by a stock registration: ORT cannot replace one per process.
+                var needed = new List<PluginPackageSpec>();
+                if (variant == Variant.Wsl2)
                 {
-                    return Result(
-                        ProviderEnsureStatus.DownloadDisallowed,
-                        $"{Id} {_spec.Version} is not vendored at {_spec.InstallDirectory(_installRoot)} and downloads are not allowed.");
+                    if (StockRuntimeDirectory() is null)
+                    {
+                        needed.Add(_spec);
+                    }
+
+                    if (WslVariantLibraryPath() is null)
+                    {
+                        needed.Add(_wsl2Spec);
+                    }
+                }
+                else if (LibraryPath is null)
+                {
+                    needed.Add(_spec);
                 }
 
-                try
+                foreach (PluginPackageSpec spec in needed)
                 {
-                    downloaded = await _installer.InstallAsync(_spec, _installRoot, cancellationToken).ConfigureAwait(false);
+                    if (!options.AllowDownloads)
+                    {
+                        return Result(
+                            ProviderEnsureStatus.DownloadDisallowed,
+                            $"{Id} {spec.Version} is not vendored at {spec.InstallDirectory(_installRoot)} and downloads are not allowed.");
+                    }
+
+                    try
+                    {
+                        downloaded |= await _installer.InstallAsync(spec, _installRoot, cancellationToken).ConfigureAwait(false);
+                    }
+                    catch (Exception ex) when (ex is HttpRequestException or InvalidDataException or IOException or UnauthorizedAccessException)
+                    {
+                        return Result(ProviderEnsureStatus.Failed, $"Vendoring {Id} {spec.Version} failed: {ex.Message}");
+                    }
+                    catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+                    {
+                        // HttpClient.Timeout surfaces as TaskCanceledException; caller cancellation still propagates.
+                        return Result(ProviderEnsureStatus.Failed, $"Vendoring {Id} {spec.Version} timed out: {ex.Message}");
+                    }
                 }
-                catch (Exception ex) when (ex is HttpRequestException or InvalidDataException or IOException or UnauthorizedAccessException)
-                {
-                    return Result(ProviderEnsureStatus.Failed, $"Vendoring {Id} {_spec.Version} failed: {ex.Message}");
-                }
-                catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
-                {
-                    // HttpClient.Timeout surfaces as TaskCanceledException; caller cancellation still propagates.
-                    return Result(ProviderEnsureStatus.Failed, $"Vendoring {Id} {_spec.Version} timed out: {ex.Message}");
-                }
+            }
+            else if (LibraryPath is null)
+            {
+                return Result(ProviderEnsureStatus.Failed, $"{TrtRtxCustomEpEnvVar} no longer points at an existing file.");
             }
 
             if (!TryRegister(out string? failure))
@@ -216,16 +308,28 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
             IReadOnlyList<OrtEpDevice> devices = GetDevices();
             if (devices.Count == 0)
             {
-                string detail = Id == ProviderId.TensorrtRtx && IsWsl()
-                    ? $"{Id} is registered, but in WSL2 virtual PCI mapping blocks device enumeration (see docs/compatibility.md). Opt in to the patched WSL2 build with 'linml setup --trt-rtx-wsl2', or use bare-metal Linux."
-                    : $"{Id} is registered but exposes no EP devices on this host.";
+                string detail = variant switch
+                {
+                    Variant.Wsl2 => $"{Id} (patched WSL2 build {_wsl2Spec.Version}) is registered but exposes no EP devices. Check that 'nvidia-smi' works in this distro and that /dev/dxg exists (WSL2 GPU passthrough).",
+                    Variant.Custom => $"{Id} (custom build from {TrtRtxCustomEpEnvVar}) is registered but exposes no EP devices on this host.",
+                    _ when Id == ProviderId.TensorrtRtx && IsWsl() && Wsl2OptedOut() =>
+                        $"{Id} is registered, but in WSL2 virtual PCI mapping blocks device enumeration with the stock wheel (see docs/compatibility.md). You opted out of the patched WSL2 build: remove {Wsl2OptOutEnvVar}=0 from the environment to use it, or use bare-metal Linux.",
+                    _ when Id == ProviderId.TensorrtRtx && IsWsl() =>
+                        $"{Id} is registered, but no WSL2 GPU passthrough was found (/dev/dxg is missing), so the patched WSL2 build was not used and the stock wheel exposes no devices. Check that this is WSL2 with NVIDIA GPU support and that 'nvidia-smi' works.",
+                    _ => $"{Id} is registered but exposes no EP devices on this host.",
+                };
                 return Result(ProviderEnsureStatus.NoDevices, detail);
             }
 
             return new ProviderEnsureResult(
                 Id,
                 downloaded ? ProviderEnsureStatus.Downloaded : ProviderEnsureStatus.Ready,
-                $"{Id} {_spec.Version} ready with {devices.Count} EP device(s).",
+                variant switch
+                {
+                    Variant.Wsl2 => $"{Id} patched WSL2 build {_wsl2Spec.Version} ready with {devices.Count} EP device(s).",
+                    Variant.Custom => $"{Id} custom build ({TrtRtxCustomEpEnvVar}) ready with {devices.Count} EP device(s).",
+                    _ => $"{Id} {_spec.Version} ready with {devices.Count} EP device(s).",
+                },
                 devices);
         }
         finally
@@ -256,6 +360,18 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
     internal static Func<bool> WslProbe { get; set; } = DetectWsl;
 
     internal static bool IsWsl() => WslProbe();
+
+    /// <summary>Whether /dev/dxg (WSL2 GPU passthrough) exists. Replaceable for tests.</summary>
+    internal static Func<bool> DxgProbe { get; set; } = () => File.Exists("/dev/dxg");
+
+    /// <summary>Environment reader. Replaceable for tests.</summary>
+    internal static Func<string, string?> EnvReader { get; set; } = Environment.GetEnvironmentVariable;
+
+    internal const string TrtRtxCustomEpEnvVar = "TRT_RTX_CUSTOM_EP";
+    internal const string Wsl2OptOutEnvVar = "LINML_TRT_RTX_WSL2";
+
+    // WSL1 reports "microsoft" too but has no GPU, so downloading the patched build needs /dev/dxg.
+    internal static bool IsWsl2() => IsWsl() && DxgProbe();
 
     private static bool DetectWsl()
     {

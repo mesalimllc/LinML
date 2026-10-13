@@ -117,15 +117,17 @@
   `evidence/trt-rtx-wsl2-block.md`; upstream issue
   [#13](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI/issues/13), fix proposed
   in [PR #12](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI/pull/12). LinML
-  publishes an **opt-in** patched build (release
-  `ep-trt-rtx-wsl2-0.4.0-wsl2p1`):
+  publishes a patched build (release
+  `ep-trt-rtx-wsl2-0.4.0-wsl2p1`). Since 0.4.2 the catalog selects it by default
+  on WSL2 with GPU passthrough (`/dev/dxg`) and `EnsureReadyAsync(AllowDownloads: true)`
+  installs it; set `LINML_TRT_RTX_WSL2=0` to opt out. From the CLI:
   ```
   linml setup --trt-rtx-wsl2                      # patched EP (or: bash scripts/fetch-ep-plugins.sh trt-rtx-wsl2)
   linml providers list                            # RTX GPU enumerated
   ```
   `linml setup` offers this automatically (never installs it unasked) when it
   detects WSL2 and an RTX Ampere+ GPU. On WSL2 the CLI prefers the patched build
-  for `trt-rtx` (as does `env-gpu-deps.sh`); `TRT_RTX_CUSTOM_EP` overrides it. Notes:
+  for `trt-rtx` (as does `env-gpu-deps.sh`); `TRT_RTX_CUSTOM_EP` overrides it (also in the catalog since 0.4.2). Notes:
   - The archive contains only the Apache-2.0 EP plugin `.so` (~5 MB, RUNPATH
     `$ORIGIN`); it dynamically links the TensorRT-RTX 1.6.1 runtime
     (`libtensorrt_rtx.so.1`, `libtensorrt_onnxparser_rtx.so.1`) and CUDA 13,

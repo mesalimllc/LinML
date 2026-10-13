@@ -18,7 +18,7 @@ Execution provider catalog for ONNX Runtime on Linux.
 
 #### Plugin Providers (`ProviderSource.Plugin`)
 - **OpenVINO Plugin EP** (`onnxruntime-ep-openvino` 1.6.1): Pinned PyPI wheel automated vendoring, SHA-256 verification, and registration.
-- **TensorRT-RTX Plugin EP** (`onnxruntime-ep-nv-tensorrt-rtx` 0.4.0): Pinned PyPI wheel automated vendoring, SHA-256 verification, SONAME symlink management, and registration (WSL2 virtual PCI block reported with diagnosable guidance).
+- **TensorRT-RTX Plugin EP** (`onnxruntime-ep-nv-tensorrt-rtx` 0.4.0): Pinned PyPI wheel automated vendoring, SHA-256 verification, SONAME symlink management, and registration (on WSL2 with GPU passthrough the catalog installs and registers the LinML-hosted patched build instead, default on; opt out with `LINML_TRT_RTX_WSL2=0`; `TRT_RTX_CUSTOM_EP` overrides both). In containers the install root is `$HOME/.local/linml-deps` unless `Create(root)` is used; mount a volume there to keep installs across runs.
 - **MIGraphX Plugin EP** (`onnxruntime-ep-amdgpu` 2611.1): Pinned standalone plugin release archive vendoring, SHA-256 verification, and registration.
 
 ---

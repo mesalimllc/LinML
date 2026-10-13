@@ -63,6 +63,15 @@ public static class PluginLibraryRegistry
         }
     }
 
+    /// <summary>The library path <paramref name="registrationName"/> was registered with through this registry, or null.</summary>
+    public static string? RegisteredPath(string registrationName)
+    {
+        lock (Gate)
+        {
+            return Registered.GetValueOrDefault(registrationName);
+        }
+    }
+
     /// <summary>Names registered through this registry in this process.</summary>
     public static IReadOnlyCollection<string> RegisteredNames
     {

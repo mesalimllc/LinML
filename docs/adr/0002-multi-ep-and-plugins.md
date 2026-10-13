@@ -80,7 +80,7 @@ fallback chain down to CPU.)
 `scripts/fetch-ep-plugins.sh` and asserts every `KnownPlugins` spec pins
 the same wheel URL and sha256. A pin bump on either side fails CI.
 
-### 7. WSL2 TRT-RTX fallback is an out-of-tree opt-in build
+### 7. WSL2 TRT-RTX fallback is an out-of-tree build (default on since 0.4.2, opt-out)
 The unmodified TRT-RTX EP enumerates zero devices under WSL2 (virtual PCI
 vendor `0x1414`, bus-id rejected by `cudaDeviceGetByPCIBusId` rc=101; CUDA
 sees the real device as `0000:0B:00.0`). Root cause in
@@ -88,7 +88,7 @@ sees the real device as `0000:0B:00.0`). Root cause in
 [#13](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI/issues/13), fix proposed
 in [PR #12](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI/pull/12).
 
-We ship a patched build as an **opt-in GitHub release**
+We ship a patched build as a **GitHub release**
 (`ep-trt-rtx-wsl2-0.4.0-wsl2p1`), mirroring the MIGraphX EP (`ep-migraphx-*`):
 
 - `scripts/build-trt-rtx-ep.sh` pins the PR head commit, builds, and packages a
@@ -99,7 +99,10 @@ We ship a patched build as an **opt-in GitHub release**
   TensorRT-RTX runtime libraries.
 - `env-gpu-deps.sh` resolves the TRT-RTX library as
   `TRT_RTX_CUSTOM_EP` → vendored WSL2 build → stock wheel; installing the
-  release is the opt-in.
+  release selects it. Since 0.4.2 the catalog also selects and installs it by default
+  on WSL2 with `/dev/dxg` (opt out with `LINML_TRT_RTX_WSL2=0`), as a variant of
+  `TensorrtRtx` (same EP name) so the stock plugin is never registered there; the
+  removal path is to bump the stock pin once NVIDIA ships the fix and delete the variant.
 - `ProviderArgs.ResolveEpLibraries` honours `TRT_RTX_CUSTOM_EP` so the CLI
   picks the patched `.so` for `--provider trt-rtx`.
 
