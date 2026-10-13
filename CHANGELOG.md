@@ -2,6 +2,15 @@
 
 All notable changes to LinML are documented here. This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.4.2] — 2026-10-12
+
+### Changed
+- **`EnsureReadyAsync` now installs and registers the patched TensorRT-RTX build on WSL2.** On WSL2 with GPU passthrough (`/dev/dxg` present), `ExecutionProviderCatalog` vendors the stock wheel (for its runtime libraries) and then the patched build when `AllowDownloads` is true, and registers only the patched build. The stock plugin is never registered on that path, so ORT's one-registration-per-EP-name rule no longer leaves a zero-device registration behind. A clean WSL2 host reaches `Downloaded` with the GPU exposed, with no `linml setup --trt-rtx-wsl2`, `LD_LIBRARY_PATH`, `LINML_EP_LIBRARIES` or restart. With downloads disallowed and a build missing it returns `DownloadDisallowed`; a zero-device result reports a WSL2-specific `NoDevices` and does not fall back to stock.
+- **Default on, opt-out.** Set `LINML_TRT_RTX_WSL2=0` to keep the stock wheel on WSL2. Existing script/CLI installs are reused unchanged. WSL1 (no `/dev/dxg`) and non-WSL hosts behave as before.
+
+### Added
+- `TRT_RTX_CUSTOM_EP` is honoured by the catalog (previously CLI only) and outranks the WSL2 build.
+
 ## [0.4.1] — 2026-10-12
 
 ### Added

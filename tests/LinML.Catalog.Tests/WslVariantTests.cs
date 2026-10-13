@@ -14,10 +14,22 @@ public sealed class WslProbeCollection;
 public class WslVariantTests : IDisposable
 {
     private readonly Func<bool> _probeBefore = PluginExecutionProvider.WslProbe;
+    private readonly Func<bool> _dxgBefore = PluginExecutionProvider.DxgProbe;
+    private readonly Func<string, string?> _envBefore = PluginExecutionProvider.EnvReader;
 
-    public WslVariantTests() => PluginExecutionProvider.WslProbe = () => true;
+    public WslVariantTests()
+    {
+        PluginExecutionProvider.WslProbe = () => true;
+        PluginExecutionProvider.DxgProbe = () => true;
+        PluginExecutionProvider.EnvReader = _ => null;
+    }
 
-    public void Dispose() => PluginExecutionProvider.WslProbe = _probeBefore;
+    public void Dispose()
+    {
+        PluginExecutionProvider.WslProbe = _probeBefore;
+        PluginExecutionProvider.DxgProbe = _dxgBefore;
+        PluginExecutionProvider.EnvReader = _envBefore;
+    }
 
     private static void Vendor(string root, PluginPackageSpec spec)
     {
@@ -70,6 +82,215 @@ public class WslVariantTests : IDisposable
             KnownPlugins.TensorrtRtx, root.Path, new PluginInstaller(), new FakeRegistrar(), () => true);
 
         Assert.Equal(KnownPlugins.TensorrtRtx.LibraryPath(root.Path), provider.LibraryPath);
+    }
+}
+
+/// <summary>Serves a different body per URL so the stock wheel and the WSL2 zip can both be faked.</summary>
+internal sealed class RoutingHandler(Dictionary<Uri, byte[]> bodies) : HttpMessageHandler
+{
+    public List<Uri> Requested { get; } = [];
+
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        Requested.Add(request.RequestUri!);
+        return Task.FromResult(bodies.TryGetValue(request.RequestUri!, out byte[]? body)
+            ? new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new ByteArrayContent(body) }
+            : new HttpResponseMessage(System.Net.HttpStatusCode.NotFound));
+    }
+}
+
+[Collection("WslProbe")]
+public class WslEnsureReadyTests : IDisposable
+{
+    private readonly Func<bool> _probeBefore = PluginExecutionProvider.WslProbe;
+    private readonly Func<bool> _dxgBefore = PluginExecutionProvider.DxgProbe;
+    private readonly Func<string, string?> _envBefore = PluginExecutionProvider.EnvReader;
+    private readonly Dictionary<string, string?> _env = [];
+
+    private readonly byte[] _stockWheel = FakeWheel.Build();
+    private readonly PluginPackageSpec _stock;
+    private readonly PluginPackageSpec _wsl;
+
+    public WslEnsureReadyTests()
+    {
+        PluginExecutionProvider.WslProbe = () => true;
+        PluginExecutionProvider.DxgProbe = () => true;
+        PluginExecutionProvider.EnvReader = name => _env.GetValueOrDefault(name);
+
+        _stock = FakeWheel.Spec(_stockWheel) with
+        {
+            Id = LinML.Contracts.ProviderId.TensorrtRtx,
+            WheelUrl = new Uri("https://example.invalid/stock.whl"),
+            InstallSubdirectory = Path.Combine("ep-plugins", "trt-rtx", "fake_ep"),
+        };
+        _wsl = FakeWheel.Spec(_stockWheel) with
+        {
+            Id = LinML.Contracts.ProviderId.TensorrtRtx,
+            WheelUrl = new Uri("https://example.invalid/wsl2.zip"),
+            WheelSha256 = FakeWheel.Sha256(_stockWheel),
+            InstallSubdirectory = Path.Combine("ep-plugins", "trt-rtx-wsl2", "fake_ep"),
+        };
+    }
+
+    public void Dispose()
+    {
+        PluginExecutionProvider.WslProbe = _probeBefore;
+        PluginExecutionProvider.DxgProbe = _dxgBefore;
+        PluginExecutionProvider.EnvReader = _envBefore;
+    }
+
+    private RoutingHandler Handler() => new(new()
+    {
+        [_stock.WheelUrl] = _stockWheel,
+        [_wsl.WheelUrl] = _stockWheel,
+    });
+
+    private PluginExecutionProvider Provider(string root, RoutingHandler handler, FakeRegistrar registrar) =>
+        new(_stock, root, new PluginInstaller(handler), registrar, () => true, _wsl);
+
+    private static void Vendor(string root, PluginPackageSpec spec)
+    {
+        Directory.CreateDirectory(spec.InstallDirectory(root));
+        File.WriteAllText(spec.LibraryPath(root), "x");
+    }
+
+    [Fact]
+    public async Task NothingVendored_DownloadsStockThenWsl2_AndRegistersOnlyTheWsl2Build()
+    {
+        using var root = new TempDir();
+        var handler = Handler();
+        var registrar = new FakeRegistrar();
+
+        var result = await Provider(root.Path, handler, registrar).EnsureReadyAsync(new EnsureOptions(AllowDownloads: true));
+
+        Assert.Equal([_stock.WheelUrl, _wsl.WheelUrl], handler.Requested);
+        var reg = Assert.Single(registrar.Registrations);
+        Assert.Equal(_wsl.LibraryPath(root.Path), reg.Path);
+        // FakeRegistrar can never report devices, so the WSL2-specific zero-device result is the outcome.
+        Assert.Equal(ProviderEnsureStatus.NoDevices, result.Status);
+        Assert.Contains("/dev/dxg", result.Detail);
+    }
+
+    [Fact]
+    public async Task StockVendoredOnly_DownloadsOnlyTheWsl2Build_NeverRegistersStock()
+    {
+        using var root = new TempDir();
+        Vendor(root.Path, _stock);
+        var handler = Handler();
+        var registrar = new FakeRegistrar();
+
+        await Provider(root.Path, handler, registrar).EnsureReadyAsync(new EnsureOptions(AllowDownloads: true));
+
+        Assert.Equal([_wsl.WheelUrl], handler.Requested);
+        Assert.Equal(_wsl.LibraryPath(root.Path), Assert.Single(registrar.Registrations).Path);
+    }
+
+    [Fact]
+    public async Task BothVendored_NoHttp_RegistersTheWsl2Build()
+    {
+        using var root = new TempDir();
+        Vendor(root.Path, _stock);
+        Vendor(root.Path, _wsl);
+        var handler = Handler();
+        var registrar = new FakeRegistrar();
+
+        await Provider(root.Path, handler, registrar).EnsureReadyAsync(new EnsureOptions(AllowDownloads: false));
+
+        Assert.Empty(handler.Requested);
+        Assert.Equal(_wsl.LibraryPath(root.Path), Assert.Single(registrar.Registrations).Path);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DownloadsDisallowed_Wsl2BuildMissing_ReportsDownloadDisallowed_WithoutRegistering(bool stockVendored)
+    {
+        using var root = new TempDir();
+        if (stockVendored)
+        {
+            Vendor(root.Path, _stock);
+        }
+
+        var handler = Handler();
+        var registrar = new FakeRegistrar();
+
+        var result = await Provider(root.Path, handler, registrar).EnsureReadyAsync(new EnsureOptions(AllowDownloads: false));
+
+        Assert.Equal(ProviderEnsureStatus.DownloadDisallowed, result.Status);
+        Assert.Empty(handler.Requested);
+        Assert.Empty(registrar.Registrations);
+    }
+
+    [Fact]
+    public async Task Wsl1_NoDxg_UsesStockAndNeverDownloadsTheWsl2Build()
+    {
+        PluginExecutionProvider.DxgProbe = () => false;
+        using var root = new TempDir();
+        var handler = Handler();
+        var registrar = new FakeRegistrar();
+
+        await Provider(root.Path, handler, registrar).EnsureReadyAsync(new EnsureOptions(AllowDownloads: true));
+
+        Assert.Equal([_stock.WheelUrl], handler.Requested);
+        Assert.Equal(_stock.LibraryPath(root.Path), Assert.Single(registrar.Registrations).Path);
+    }
+
+    [Fact]
+    public async Task NotWsl_BehavesAsBefore()
+    {
+        PluginExecutionProvider.WslProbe = () => false;
+        using var root = new TempDir();
+        var handler = Handler();
+        var registrar = new FakeRegistrar();
+
+        await Provider(root.Path, handler, registrar).EnsureReadyAsync(new EnsureOptions(AllowDownloads: true));
+
+        Assert.Equal([_stock.WheelUrl], handler.Requested);
+        Assert.Equal(_stock.LibraryPath(root.Path), Assert.Single(registrar.Registrations).Path);
+    }
+
+    [Fact]
+    public async Task OptOut_SelectsStock()
+    {
+        _env["LINML_TRT_RTX_WSL2"] = "0";
+        using var root = new TempDir();
+        var handler = Handler();
+        var registrar = new FakeRegistrar();
+
+        await Provider(root.Path, handler, registrar).EnsureReadyAsync(new EnsureOptions(AllowDownloads: true));
+
+        Assert.Equal([_stock.WheelUrl], handler.Requested);
+        Assert.Equal(_stock.LibraryPath(root.Path), Assert.Single(registrar.Registrations).Path);
+    }
+
+    [Fact]
+    public async Task CustomEp_BeatsTheWsl2Build_AndNeedsNoDownload()
+    {
+        using var root = new TempDir();
+        string custom = Path.Combine(root.Path, "custom.so");
+        File.WriteAllText(custom, "x");
+        _env["TRT_RTX_CUSTOM_EP"] = custom;
+        var handler = Handler();
+        var registrar = new FakeRegistrar();
+
+        await Provider(root.Path, handler, registrar).EnsureReadyAsync(new EnsureOptions(AllowDownloads: true));
+
+        Assert.Empty(handler.Requested);
+        Assert.Equal(custom, Assert.Single(registrar.Registrations).Path);
+    }
+
+    [Fact]
+    public async Task Wsl2Sha256Mismatch_IsReportedAsFailed()
+    {
+        using var root = new TempDir();
+        Vendor(root.Path, _stock);
+        var handler = new RoutingHandler(new() { [_wsl.WheelUrl] = [1, 2, 3] });
+        var registrar = new FakeRegistrar();
+
+        var result = await Provider(root.Path, handler, registrar).EnsureReadyAsync(new EnsureOptions(AllowDownloads: true));
+
+        Assert.Equal(ProviderEnsureStatus.Failed, result.Status);
+        Assert.Empty(registrar.Registrations);
     }
 }
 

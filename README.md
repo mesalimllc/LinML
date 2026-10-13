@@ -148,7 +148,7 @@ bash scripts/setup-wsl.sh
 # 2. (Optional) Fetch GPU runtime dependencies (no root required)
 bash scripts/setup-gpu-deps.sh     # cuDNN 9.x + TensorRT 10.x into ~/.local/linml-deps
 bash scripts/fetch-ep-plugins.sh   # Fetch SHA-256 verified vendor plugins (OpenVINO, TRT-RTX)
-bash scripts/fetch-ep-plugins.sh trt-rtx-wsl2   # (WSL2 only) opt-in patched TRT-RTX EP; TRT_RTX_CUSTOM_EP overrides it
+bash scripts/fetch-ep-plugins.sh trt-rtx-wsl2   # (WSL2 only) patched TRT-RTX EP (the catalog installs it by default since 0.4.2); TRT_RTX_CUSTOM_EP overrides it
 source scripts/env-gpu-deps.sh     # Export LD_LIBRARY_PATH and LINML_EP_LIBRARIES
 
 # 3. Restore, Build, and Test
