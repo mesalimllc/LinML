@@ -247,7 +247,10 @@ public class CliRegressionTests
             Assert.Equal(0, exitCode);
             using var doc = JsonDocument.Parse(stdout);
             var trt = doc.RootElement.EnumerateArray().Single(e => e.GetProperty("id").GetString() == "trt-rtx");
-            Assert.Equal("NotPresent", trt.GetProperty("status").GetString());
+            // The plugin is linux-x64 only, so an ARM64 host reports Unsupported before the root is checked.
+            // Either way it must not read as ready under this root.
+            string status = trt.GetProperty("status").GetString()!;
+            Assert.True(status is "NotPresent" or "Unsupported", $"trt-rtx under an empty root reported {status}");
         }
         finally
         {
