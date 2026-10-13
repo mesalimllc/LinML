@@ -251,7 +251,10 @@ public class SetupCommandTests
         Assert.Contains(SetupCommand.DetermineRecommendations(intel, all: false), r => r.ShortName == "openvino");
         Assert.Empty(SetupCommand.DescribeSkippedRecommendations(intel, all: false));
         Assert.Contains(SetupCommand.DetermineRecommendations(amd, all: true), r => r.ShortName == "openvino");
-        Assert.Empty(SetupCommand.DescribeSkippedRecommendations(amd, all: true));
+        // On an x86_64 host the only plugin skipped under --all is the arm64-only QNN plugin.
+        var skipped = SetupCommand.DescribeSkippedRecommendations(amd, all: true);
+        Assert.Single(skipped);
+        Assert.StartsWith("qnn:", skipped[0], StringComparison.Ordinal);
     }
 
     [Theory]
@@ -548,5 +551,28 @@ public class SetupCommandTests
     {
         bool actual = SetupCommand.IsRtxAmpereOrNewer(gpuName);
         Assert.Equal(expected, actual);
+    }
+
+    [Fact]
+    public void ArchitectureNote_OnlyMatchingArchitectureIsRunnable()
+    {
+        Assert.Null(SetupCommand.ArchitectureNote(KnownPlugins.Qnn, "arm64"));
+        Assert.Null(SetupCommand.ArchitectureNote(KnownPlugins.OpenVino, "x64"));
+
+        Assert.Contains("linux-arm64 only", SetupCommand.ArchitectureNote(KnownPlugins.Qnn, "x64"), StringComparison.Ordinal);
+        Assert.Contains("linux-x64 only", SetupCommand.ArchitectureNote(KnownPlugins.OpenVino, "arm64"), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DetermineRecommendations_AllOnArm64_IncludesQnn_AndNotTheX64OnlyPlugins()
+    {
+        var arm = new SetupCommand.HostHardwareInfo(
+            Cpu: new SetupCommand.CpuInfo("arm64", "ARM", "Neoverse", 16, true), Devices: [], HasAmdRocm: false, IsWsl2: false);
+
+        var recs = SetupCommand.DetermineRecommendations(arm, all: true);
+
+        Assert.Contains(recs, r => r.ShortName == "qnn");
+        Assert.DoesNotContain(recs, r => r.ShortName == "openvino");
+        Assert.DoesNotContain(recs, r => r.ShortName == "migraphx");
     }
 }

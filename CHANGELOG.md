@@ -2,6 +2,11 @@
 
 All notable changes to LinML are documented here. This project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **QNN in the catalog.** `linml catalog install qnn` installs the Qualcomm QNN plugin (`onnxruntime-qnn` 2.6.0, aarch64) on Snapdragon aarch64 hosts. On other architectures the catalog reports it as not applicable, `catalog install` refuses without downloading it, and `setup --all` and `doctor` skip it with the reason. Not verified on hardware.
+
 ## [0.5.0] — 2026-10-12
 
 ### Added

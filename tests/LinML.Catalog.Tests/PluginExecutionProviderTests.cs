@@ -185,7 +185,12 @@ public class PluginExecutionProviderTests
         Assert.Equal(ProviderSource.Plugin, migraphx.Source);
         Assert.Equal("2611.1", migraphx.PinnedVersion);
 
-        Assert.Equal(6, catalog.FindAllProviders().Count);
+        IExecutionProvider? qnn = catalog.Find(Contracts.ProviderId.Qnn);
+        Assert.NotNull(qnn);
+        Assert.Equal(ProviderSource.Plugin, qnn.Source);
+        Assert.Equal("2.6.0", qnn.PinnedVersion);
+
+        Assert.Equal(7, catalog.FindAllProviders().Count);
     }
 
     [Fact]

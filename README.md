@@ -26,7 +26,7 @@ LinML also provides `LinML.Catalog`, the Linux counterpart to WinML's `Execution
   - [2. Install C# NuGet Packages](#2-install-c-nuget-packages)
   - [3. Install Python Package (`linml`)](#3-install-python-package-linml)
   - [4. Build from Source](#4-build-from-source)
-- [Plugin Execution Providers: OpenVINO, TensorRT-RTX and MIGraphX](#plugin-execution-providers-openvino-tensorrt-rtx-and-migraphx)
+- [Plugin Execution Providers](#plugin-execution-providers)
 - [CLI Reference](#cli-reference)
   - [Global Options & Exit Codes](#global-options--exit-codes)
   - [Provider Discovery (`linml providers list`)](#provider-discovery-linml-providers-list)
@@ -63,10 +63,10 @@ See [CHANGELOG.md](CHANGELOG.md) for full release history.
 | `CPUExecutionProvider` | ✅ Verified | Any x86_64 / aarch64 CPU | Always available, built into standard ORT |
 | `CUDAExecutionProvider` | ✅ Verified | NVIDIA GeForce RTX 5070 (x86_64), Jetson Orin (aarch64) | Blackwell (sm_120); requires cuDNN 9.x for Conv ops |
 | `TensorrtExecutionProvider` | ✅ Verified | NVIDIA GeForce RTX 5070 (x86_64), Jetson Orin (aarch64) | TensorRT 10.16; enable engine cache for repeated runs |
-| `NvTensorRTRTXExecutionProvider` | ✅ Verified (Native Linux) | NVIDIA GeForce RTX 4090 | Verified in Daytona cloud runtime; on WSL2 the stock plugin exposes no devices (virtual PCI constraint), so use the [patched build](#plugin-execution-providers-openvino-tensorrt-rtx-and-migraphx); **x86_64 and Linux aarch64 (SBSA)**; aarch64 not yet verified on hardware; [install](#plugin-execution-providers-openvino-tensorrt-rtx-and-migraphx) |
-| `OpenVINOExecutionProvider` | ✅ Verified | Intel Xeon CPU | Plugin EP 1.6.1; dynamically registered at runtime; **x86_64 only**; [install and requirements](#plugin-execution-providers-openvino-tensorrt-rtx-and-migraphx) |
-| `MIGraphXExecutionProvider` | ✅ Verified | AMD Instinct MI355X (gfx950) | ROCm / MIGraphX verified in Daytona sandbox; **x86_64 only**; [install and requirements](#plugin-execution-providers-openvino-tensorrt-rtx-and-migraphx) |
-| `QNNExecutionProvider` | 🔌 Wired / Gated | Qualcomm Snapdragon (aarch64) | Contract and probe wired; blocked on physical hardware / QAIRT SDK access; **aarch64 primary target** |
+| `NvTensorRTRTXExecutionProvider` | ✅ Verified (Native Linux) | NVIDIA GeForce RTX 4090 | Verified in Daytona cloud runtime; on WSL2 the stock plugin exposes no devices (virtual PCI constraint), so use the [patched build](#plugin-execution-providers); **x86_64 and Linux aarch64 (SBSA)**; aarch64 not yet verified on hardware; [install](#plugin-execution-providers) |
+| `OpenVINOExecutionProvider` | ✅ Verified | Intel Xeon CPU | Plugin EP 1.6.1; dynamically registered at runtime; **x86_64 only**; [install and requirements](#plugin-execution-providers) |
+| `MIGraphXExecutionProvider` | ✅ Verified | AMD Instinct MI355X (gfx950) | ROCm / MIGraphX verified in Daytona sandbox; **x86_64 only**; [install and requirements](#plugin-execution-providers) |
+| `QNNExecutionProvider` | 🔌 Catalog plugin, unverified | Qualcomm Snapdragon (aarch64) | `linml catalog install qnn`; not verified on hardware (no Snapdragon NPU available); **aarch64 only**; [install](#plugin-execution-providers) |
 
 See the [Compatibility Report](docs/compatibility.md) for detailed hardware matrices, driver requirements, and known constraints.
 
@@ -164,9 +164,9 @@ bash scripts/verify-linux-publish.sh artifacts/publish/linux-x64
 
 ---
 
-## Plugin Execution Providers: OpenVINO, TensorRT-RTX and MIGraphX
+## Plugin Execution Providers
 
-OpenVINO, TensorRT-RTX and MIGraphX are plugin execution providers. LinML does not link them into the CLI. It vendors a pinned build of each into `~/.local/linml-deps`, checks its SHA-256, and registers it with ONNX Runtime at run time. Install them with `linml catalog install`, or with the standalone commands below, which need neither the LinML CLI nor a clone of this repository.
+OpenVINO, TensorRT-RTX, MIGraphX and QNN are plugin execution providers. LinML does not link them into the CLI. It vendors a pinned build of each into `~/.local/linml-deps`, checks its SHA-256, and registers it with ONNX Runtime at run time. Install them with `linml catalog install`, or with the standalone commands below, which need neither the LinML CLI nor a clone of this repository.
 
 | Plugin | Provider name | Platforms | Pinned artifact | Installed to (under `~/.local/linml-deps`) |
 |--------|---------------|-----------|-----------------|--------------------------------------------|
@@ -174,6 +174,7 @@ OpenVINO, TensorRT-RTX and MIGraphX are plugin execution providers. LinML does n
 | TensorRT-RTX | `NvTensorRTRTXExecutionProvider` | Linux x86_64; Linux aarch64 (SBSA) | NVIDIA `onnxruntime-ep-nv-tensorrt-rtx-cu13` 0.4.0 wheel from PyPI, with TensorRT-RTX 1.6.1 bundled | `ep-plugins/trt-rtx/onnxruntime_ep_nv_tensorrt_rtx/` (x86_64); `ep-plugins/trt-rtx-arm64/onnxruntime_ep_nv_tensorrt_rtx/` (aarch64) |
 | TensorRT-RTX on WSL2 | same | WSL2 with GPU passthrough (`/dev/dxg`) | LinML patched build `0.4.0-wsl2p1` (GitHub release), used alongside the wheel above | `ep-plugins/trt-rtx-wsl2/linml_trt_rtx_ep/` |
 | MIGraphX | `MIGraphXExecutionProvider` | Linux x86_64 with an AMD GPU and ROCm | LinML build `2611.1` (GitHub release), built from AMD's `onnxruntime-ep-amdgpu` | `ep-plugins/migraphx/linml_migraphx_ep/` |
+| QNN | `QNNExecutionProvider` | Linux aarch64 with a Qualcomm Snapdragon NPU | Qualcomm `onnxruntime-qnn` 2.6.0 tarball (GitHub release), with the QAIRT 2.50.40 runtime bundled | `ep-plugins/qnn/onnxruntime_qnn/` |
 
 The CLI finds these in `~/.local/linml-deps` automatically. Pass `--root <dir>` to `linml catalog` or `linml providers list` to use another location.
 
@@ -191,6 +192,11 @@ The CLI finds these in `~/.local/linml-deps` automatically. Pass `--root <dir>` 
 - **aarch64:** the wheel is built for `manylinux_2_35` (glibc 2.35 or newer). The aarch64 build is not yet verified on aarch64 hardware.
 - The wheel ships NVIDIA's license terms and acknowledgements, and TensorRT-RTX is subject to them.
 
+**QNN**
+- Linux aarch64 with a Qualcomm Snapdragon NPU (Hexagon HTP). On x86_64 hosts the catalog reports QNN as not applicable.
+- ONNX Runtime 1.24.1 or newer.
+- Not verified on hardware: no Snapdragon NPU was available for testing.
+
 **MIGraphX**
 - An AMD GPU, with ROCm installed at `/opt/rocm` and MIGraphX 2.17 or newer. The plugin loads `libmigraphx_c.so.3`. Check it with `ls /opt/rocm/lib/libmigraphx_c.so.3`.
 - ONNX Runtime 1.24 or newer.
@@ -203,6 +209,7 @@ linml catalog install openvino    # OpenVINO plugin (Intel hardware)
 linml catalog install trt-rtx     # TensorRT-RTX wheel for this machine's architecture
 linml setup --trt-rtx-wsl2        # WSL2 only: the patched TensorRT-RTX build (also installs the wheel)
 linml catalog install migraphx    # MIGraphX (AMD ROCm hosts)
+linml catalog install qnn         # QNN (Snapdragon aarch64 hosts)
 linml catalog list                # status of each plugin
 ```
 
@@ -319,6 +326,7 @@ bash fetch-ep-plugins.sh openvino       # Intel hardware (x86_64)
 bash fetch-ep-plugins.sh trt-rtx-wsl2   # WSL2: the wheel, then the patched build
 bash fetch-ep-plugins.sh trt-rtx        # native Linux: the wheel
 bash fetch-ep-plugins.sh migraphx       # AMD ROCm hosts
+bash fetch-ep-plugins.sh qnn             # Snapdragon aarch64 hosts
 ```
 
 The script needs `curl`, `sha256sum` and `python3`. Its pins are the ones in the commands above.
@@ -342,7 +350,7 @@ linml run --provider migraphx --require-provider --model model.onnx --inputs inp
 - **OpenVINO is listed but runs fail with exit code `3`.** The plugin loaded, but this host has no Intel CPU, GPU or NPU. Run it on Intel hardware.
 - **`linml doctor` reports MIGraphX as NOT APPLICABLE, or a run fails with `libmigraphx_c.so.3: cannot open shared object file`.** The plugin needs an AMD GPU with ROCm and MIGraphX 2.17 or newer. The host does not have them. With `--require-provider` the run exits with code `3`.
 - **`available for linux-x64 only`.** That plugin has no build for this architecture. MIGraphX and OpenVINO are x86_64 only.
-- **Remove the plugins:** `rm -rf ~/.local/linml-deps/ep-plugins/{openvino,trt-rtx,trt-rtx-wsl2,migraphx}`.
+- **Remove the plugins:** `rm -rf ~/.local/linml-deps/ep-plugins/{openvino,trt-rtx,trt-rtx-wsl2,migraphx,qnn}`.
 
 ---
 
@@ -366,10 +374,10 @@ All subcommands accept:
 
 ### Execution Provider Catalog (`linml catalog`)
 
-Inspect the multi-provider catalog and download/install pinned plugin execution providers (OpenVINO, TensorRT-RTX, MIGraphX) directly through the CLI without external shell or Python dependencies: For OpenVINO, TensorRT-RTX and MIGraphX requirements and standalone downloads that need no CLI, see [Plugin Execution Providers](#plugin-execution-providers-openvino-tensorrt-rtx-and-migraphx).
+Inspect the multi-provider catalog and download/install pinned plugin execution providers (OpenVINO, TensorRT-RTX, MIGraphX, QNN) directly through the CLI without external shell or Python dependencies: For OpenVINO, TensorRT-RTX, MIGraphX and QNN requirements and standalone downloads that need no CLI, see [Plugin Execution Providers](#plugin-execution-providers).
 
 ```bash
-# List all 6 execution providers with type, version, readiness status, and location
+# List all 7 catalog entries (3 built-in, 4 plugins) with type, version, readiness status, and location
 linml catalog list
 
 # JSON format
