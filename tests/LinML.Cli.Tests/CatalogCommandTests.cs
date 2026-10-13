@@ -70,6 +70,12 @@ public class CatalogCommandTests
     [Fact]
     public void CatalogInstall_AlreadyInstalled_ExitsZero()
     {
+        // OpenVINO is linux-x64 only. Elsewhere the install is refused before the already-installed check.
+        if (!CliTestHost.IsLinuxX64Host)
+        {
+            return;
+        }
+
         string tempDir = Path.Combine(Path.GetTempPath(), "linml-test-catalog-" + Guid.NewGuid().ToString("N"));
         try
         {

@@ -51,7 +51,7 @@ public class SetupCommandTests
     }
 
     [Fact]
-    public async Task Setup_All_DryRun_RecommendsAllThreePlugins()
+    public async Task Setup_All_DryRun_RecommendsEveryPluginBuiltForThisHost()
     {
         var (exitCode, stdout, _) = await Task.Run(() => CliTestHost.Run("setup", "--all", "--dry-run", "--json"));
 
@@ -59,15 +59,21 @@ public class SetupCommandTests
 
         using var doc = JsonDocument.Parse(stdout);
         var recs = doc.RootElement.GetProperty("recommendations");
-        Assert.Equal(3, recs.GetArrayLength());
+
+        // x64 hosts get OpenVINO, TensorRT-RTX and MIGraphX; arm64 hosts get TensorRT-RTX and QNN.
+        string[] expected = RuntimeInformation.ProcessArchitecture == Architecture.Arm64
+            ? ["trt-rtx", "qnn"]
+            : ["openvino", "trt-rtx", "migraphx"];
+        Assert.Equal(expected.Length, recs.GetArrayLength());
 
         var providers = recs.EnumerateArray()
             .Select(r => r.GetProperty("provider").GetString())
             .ToList();
 
-        Assert.Contains("openvino", providers);
-        Assert.Contains("trt-rtx", providers);
-        Assert.Contains("migraphx", providers);
+        foreach (string provider in expected)
+        {
+            Assert.Contains(provider, providers);
+        }
     }
 
     [Fact]
@@ -251,10 +257,13 @@ public class SetupCommandTests
         Assert.Contains(SetupCommand.DetermineRecommendations(intel, all: false), r => r.ShortName == "openvino");
         Assert.Empty(SetupCommand.DescribeSkippedRecommendations(intel, all: false));
         Assert.Contains(SetupCommand.DetermineRecommendations(amd, all: true), r => r.ShortName == "openvino");
-        // On an x86_64 host the only plugin skipped under --all is the arm64-only QNN plugin.
+        // Under --all, plugins built for another architecture are reported as skipped. The simulated
+        // hardware is x64, so OpenVINO and MIGraphX always apply and QNN (arm64-only) is always skipped.
+        // TensorRT-RTX is skipped too when this test host is arm64, because KnownPlugins resolves it per host.
         var skipped = SetupCommand.DescribeSkippedRecommendations(amd, all: true);
-        Assert.Single(skipped);
-        Assert.StartsWith("qnn:", skipped[0], StringComparison.Ordinal);
+        Assert.Contains(skipped, s => s.StartsWith("qnn:", StringComparison.Ordinal));
+        Assert.DoesNotContain(skipped, s => s.StartsWith("openvino:", StringComparison.Ordinal));
+        Assert.DoesNotContain(skipped, s => s.StartsWith("migraphx:", StringComparison.Ordinal));
     }
 
     [Theory]
