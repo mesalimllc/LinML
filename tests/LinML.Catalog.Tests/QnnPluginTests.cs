@@ -62,8 +62,9 @@ public class QnnPluginTests
         Assert.Equal("QNNExecutionProvider", spec.RegistrationName);
         Assert.EndsWith("onnxruntime-qnn-2.6.0-linux-aarch64.tgz", spec.WheelUrl.AbsolutePath, StringComparison.Ordinal);
         Assert.Equal(Library, spec.LibraryFileName);
-        // aarch64-only until PluginExecutionProvider can gate by architecture.
-        Assert.DoesNotContain(spec, KnownPlugins.All);
+        // Catalog plugin for aarch64 only: on other hosts the catalog reports it as not applicable.
+        Assert.Equal("arm64", spec.Architecture);
+        Assert.Contains(spec, KnownPlugins.All);
     }
 
     private static PluginPackageSpec TarSpec(byte[] tgz) => KnownPlugins.Qnn with

@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+
 namespace LinML.Cli.Tests;
 
 /// <summary>
@@ -7,6 +9,13 @@ namespace LinML.Cli.Tests;
 internal static class CliTestHost
 {
     private static readonly object Gate = new();
+
+    /// <summary>
+    /// True on a linux-x64 host, where the x64-only plugins (OpenVINO, MIGraphX) apply.
+    /// Tests whose expectations depend on the host architecture check this rather than assume x64.
+    /// </summary>
+    public static bool IsLinuxX64Host =>
+        OperatingSystem.IsLinux() && RuntimeInformation.ProcessArchitecture == Architecture.X64;
 
     /// <summary>
     /// TensorRT EP options (<c>trt:</c>-scoped) that keep tests that must exercise the

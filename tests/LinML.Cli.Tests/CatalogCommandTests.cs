@@ -30,7 +30,7 @@ public class CatalogCommandTests
         Assert.Equal(0, exitCode);
         using var doc = JsonDocument.Parse(stdout);
         Assert.Equal(JsonValueKind.Array, doc.RootElement.ValueKind);
-        Assert.Equal(6, doc.RootElement.GetArrayLength());
+        Assert.Equal(7, doc.RootElement.GetArrayLength());
 
         var ids = doc.RootElement.EnumerateArray()
             .Select(e => e.GetProperty("id").GetString())
@@ -70,6 +70,12 @@ public class CatalogCommandTests
     [Fact]
     public void CatalogInstall_AlreadyInstalled_ExitsZero()
     {
+        // OpenVINO is linux-x64 only. Elsewhere the install is refused before the already-installed check.
+        if (!CliTestHost.IsLinuxX64Host)
+        {
+            return;
+        }
+
         string tempDir = Path.Combine(Path.GetTempPath(), "linml-test-catalog-" + Guid.NewGuid().ToString("N"));
         try
         {
@@ -98,7 +104,7 @@ public class CatalogCommandTests
         var all = CatalogCommand.ResolveInstallTargets("all", out string? errAll, out bool isBuiltInAll);
         Assert.Null(errAll);
         Assert.False(isBuiltInAll);
-        Assert.Equal(3, all.Count);
+        Assert.Equal(4, all.Count);
 
         var ov = CatalogCommand.ResolveInstallTargets("openvino", out string? errOv, out bool isBuiltInOv);
         Assert.Null(errOv);
@@ -146,5 +152,31 @@ public class CatalogCommandTests
         Assert.NotNull(errInvalid);
         Assert.False(isBuiltInInv);
         Assert.Empty(invalid);
+    }
+
+    [Fact]
+    public void ResolveInstallTargets_Qnn_ResolvesToTheArm64Plugin()
+    {
+        var qnn = CatalogCommand.ResolveInstallTargets("qnn", out string? err, out bool isBuiltIn);
+
+        Assert.Null(err);
+        Assert.False(isBuiltIn);
+        Assert.Equal(KnownPlugins.Qnn.Id, Assert.Single(qnn).Id);
+        Assert.Equal("arm64", Assert.Single(qnn).Architecture);
+    }
+
+    [Fact]
+    public void CatalogInstall_Qnn_OnAnotherArchitecture_RefusesWithoutDownloading()
+    {
+        // On an aarch64 host the install is real, so this check only applies elsewhere.
+        if (System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture == System.Runtime.InteropServices.Architecture.Arm64)
+        {
+            return;
+        }
+
+        var (exitCode, _, stderr) = CliTestHost.Run("catalog", "install", "qnn");
+
+        Assert.Equal(1, exitCode);
+        Assert.Contains("available for linux-arm64 only", stderr, StringComparison.Ordinal);
     }
 }

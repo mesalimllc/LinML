@@ -4,6 +4,7 @@ using LinML.Contracts;
 using LinML.Runtime.Onnx;
 using Microsoft.Extensions.DependencyInjection;
 using System.CommandLine;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -121,7 +122,8 @@ public static class DoctorCommand
 
                     // A plugin whose hardware this host lacks is not applicable whether or not its library is
                     // installed: installing it or registering it cannot make it run here, so no install hint.
-                    string? gap = SetupCommand.MigraphXHardwareNote(p.Id, amdRocm);
+                    string? gap = (spec is null ? null : SetupCommand.ArchitectureNote(spec, RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant()))
+                        ?? SetupCommand.MigraphXHardwareNote(p.Id, amdRocm);
                     if (gap is not null)
                     {
                         catalogReports.Add(new CatalogDoctorReport(

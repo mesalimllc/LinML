@@ -287,7 +287,10 @@ prefix = "linml_migraphx_ep/"
 keep = [n for n in z.namelist()
         if n.startswith(prefix) and not n.endswith("/")]
 for n in keep:
-    with z.open(n) as src, open(os.path.join(out, n[len(prefix):]), "wb") as dst:
+    dest = os.path.join(out, n[len(prefix):])
+    # The archive nests licenses/ under the top-level dir, so create parents.
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    with z.open(n) as src, open(dest, "wb") as dst:
         dst.write(src.read())
 print(f"extracted {len(keep)} files to {out}")
 PYEOF

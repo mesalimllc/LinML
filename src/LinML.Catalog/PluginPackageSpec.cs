@@ -181,10 +181,10 @@ internal static class KnownPlugins
     // inference package. The tarball is flat: the EP plugin .so plus the bundled
     // QAIRT 2.50.40 runtime (libQnnHtp.so, HTP stubs/skels). The EP resolves its
     // bundled libraries via RUNPATH $ORIGIN. The linux-x64 tarball is AOT
-    // compilation only and cannot run inference, so this pin is aarch64-only and
-    // deliberately NOT in All: PluginExecutionProvider only supports linux-x64
-    // hosts today. Unverified on hardware (no Snapdragon NPU available). Same
-    // pin, URL and digest as fetch_qnn in scripts/fetch-ep-plugins.sh.
+    // compilation only and cannot run inference, so this pin is aarch64-only: on
+    // x86_64 hosts the catalog reports it as not applicable. Unverified on hardware
+    // (no Snapdragon NPU available). Same pin, URL and digest as fetch_qnn in
+    // scripts/fetch-ep-plugins.sh.
     public static readonly PluginPackageSpec Qnn = new(
         Id: ProviderId.Qnn,
         RegistrationName: "QNNExecutionProvider",
@@ -194,9 +194,10 @@ internal static class KnownPlugins
         PackagePrefix: "",
         InstallSubdirectory: Path.Combine("ep-plugins", "qnn", "onnxruntime_qnn"),
         LibraryFileName: "libonnxruntime_providers_qnn.so",
-        MinimumOrtVersion: new Version(1, 24, 1));
+        MinimumOrtVersion: new Version(1, 24, 1),
+        Architecture: "arm64");
 
-    public static IReadOnlyList<PluginPackageSpec> All { get; } = [OpenVino, TensorrtRtx, MigraphX];
+    public static IReadOnlyList<PluginPackageSpec> All { get; } = [OpenVino, TensorrtRtx, MigraphX, Qnn];
 
     /// <summary>
     /// The opted-in WSL2 build for <paramref name="spec"/>, if one is vendored, this

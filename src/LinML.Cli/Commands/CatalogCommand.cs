@@ -1,6 +1,7 @@
 using LinML.Catalog;
 using LinML.Contracts;
 using System.CommandLine;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -83,7 +84,9 @@ public static class CatalogCommand
                 string status = p.ReadyState.ToString();
                 string details = p.Source == ProviderSource.BuiltIn
                     ? "(built-in with ORT)"
-                    : (p.LibraryPath is not null && File.Exists(p.LibraryPath) ? p.LibraryPath : $"(not installed; run 'linml catalog install {shortName}')");
+                    : p.ReadyState == ProviderReadyState.Unsupported
+                        ? "(not applicable on this host; see 'linml doctor')"
+                        : (p.LibraryPath is not null && File.Exists(p.LibraryPath) ? p.LibraryPath : $"(not installed; run 'linml catalog install {shortName}')");
 
                 Console.WriteLine($"{shortName,-16} {source,-10} {version,-10} {status,-18} {details}");
             }
@@ -99,7 +102,7 @@ public static class CatalogCommand
         var installCommand = new Command("install", "Install plugin execution providers from the catalog");
         var providerArg = new Argument<string?>("provider")
         {
-            Description = "Plugin provider to install: openvino, trt-rtx, migraphx, or all (default: all)",
+            Description = "Plugin provider to install: openvino, trt-rtx, migraphx, qnn, or all (default: all)",
             Arity = ArgumentArity.ZeroOrOne
         };
         var rootOption = new Option<string?>("--root") { Description = "Custom catalog install root directory" };
@@ -161,6 +164,26 @@ public static class CatalogCommand
                 string shortName = GetShortName(spec.Id);
                 string libraryPath = spec.LibraryPath(installRoot);
                 string installDir = spec.InstallDirectory(installRoot);
+
+                // A plugin for another architecture cannot run here, so do not download it. Explicit single
+                // targets fail; the all-plugins install skips it and carries on.
+                string? archNote = SetupCommand.ArchitectureNote(spec, RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant());
+                if (archNote is not null)
+                {
+                    results.Add(new InstallResultDto(shortName, spec.Version, "NotApplicable", libraryPath, installDir, archNote));
+                    if (!json)
+                    {
+                        Console.Error.WriteLine($"  {shortName}: {archNote}");
+                        Console.WriteLine();
+                    }
+
+                    if (targets.Count == 1)
+                    {
+                        allSuccess = false;
+                    }
+
+                    continue;
+                }
 
                 if (!json)
                 {
@@ -263,7 +286,7 @@ public static class CatalogCommand
             }
         }
 
-        errorMessage = $"Unknown plugin provider '{providerName}'. Available plugins: openvino, trt-rtx, migraphx, all.";
+        errorMessage = $"Unknown plugin provider '{providerName}'. Available plugins: openvino, trt-rtx, migraphx, qnn, all.";
         return [];
     }
 

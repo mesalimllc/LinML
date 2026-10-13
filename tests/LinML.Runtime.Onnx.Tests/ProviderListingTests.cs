@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using LinML.Catalog;
 using LinML.Contracts;
 using LinML.Runtime.Onnx;
@@ -7,6 +8,11 @@ namespace LinML.Runtime.Onnx.Tests;
 
 public class ProviderListingTests
 {
+    // OpenVINO is published for linux-x64 only. Mirrors PluginExecutionProvider.SupportsHost,
+    // which is internal to LinML.Catalog and not visible to this test project.
+    private static bool OpenVinoRunsOnThisHost =>
+        OperatingSystem.IsLinux() && RuntimeInformation.ProcessArchitecture == Architecture.X64;
+
     [Fact]
     public void NotListedReason_BuiltInProvider_DoesNotSuggestCatalogInstall()
     {
@@ -19,9 +25,9 @@ public class ProviderListingTests
     [Fact]
     public void NotListedReason_UnloadedPlugin_SuggestsInstallWithShortId()
     {
-        // Only meaningful while OpenVINO's library is not loaded into this process.
+        // Only meaningful on a host OpenVINO is built for, and while its library is not loaded into this process.
         const string openVinoLibrary = "libonnxruntime_providers_openvino_plugin.so";
-        if (PluginLibraryRegistry.RegisteredLibraryFileNames.Contains(openVinoLibrary))
+        if (!OpenVinoRunsOnThisHost || PluginLibraryRegistry.RegisteredLibraryFileNames.Contains(openVinoLibrary))
         {
             return;
         }
@@ -30,6 +36,20 @@ public class ProviderListingTests
 
         Assert.Contains("is not loaded into this process", reason, StringComparison.Ordinal);
         Assert.Contains("linml catalog install openvino", reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void NotListedReason_PluginForAnotherArchitecture_SaysItWillNotRunHere()
+    {
+        // OpenVINO is linux-x64 only and QNN is linux-arm64 only, so one of them is always for another host.
+        (ProviderId provider, string architecture) = OpenVinoRunsOnThisHost
+            ? (ProviderId.Qnn, "arm64")
+            : (ProviderId.OpenVino, "x64");
+
+        string reason = ProviderListing.NotListedReason(provider);
+
+        Assert.Contains($"available for linux-{architecture} only", reason, StringComparison.Ordinal);
+        Assert.DoesNotContain("catalog install", reason, StringComparison.Ordinal);
     }
 
     [Fact]
