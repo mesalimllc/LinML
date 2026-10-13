@@ -78,7 +78,7 @@ TensorRT-RTX and MIGraphX are plugin execution providers. LinML does not link th
 
 | Plugin | Provider name | Platforms | Pinned artifact | Installed to (under `~/.local/linml-deps`) |
 |--------|---------------|-----------|-----------------|--------------------------------------------|
-| TensorRT-RTX | `NvTensorRTRTXExecutionProvider` | Linux x86_64; Linux aarch64 (SBSA) | NVIDIA `onnxruntime-ep-nv-tensorrt-rtx-cu13` 0.4.0 wheel from PyPI, with TensorRT-RTX 1.6.1 bundled | `ep-plugins/trt-rtx/onnxruntime_ep_nv_tensorrt_rtx/` |
+| TensorRT-RTX | `NvTensorRTRTXExecutionProvider` | Linux x86_64; Linux aarch64 (SBSA) | NVIDIA `onnxruntime-ep-nv-tensorrt-rtx-cu13` 0.4.0 wheel from PyPI, with TensorRT-RTX 1.6.1 bundled | `ep-plugins/trt-rtx/onnxruntime_ep_nv_tensorrt_rtx/` (x86_64); `ep-plugins/trt-rtx-arm64/onnxruntime_ep_nv_tensorrt_rtx/` (aarch64) |
 | TensorRT-RTX on WSL2 | same | WSL2 with GPU passthrough (`/dev/dxg`) | LinML patched build `0.4.0-wsl2p1` (GitHub release), used alongside the wheel above | `ep-plugins/trt-rtx-wsl2/linml_trt_rtx_ep/` |
 | MIGraphX | `MIGraphXExecutionProvider` | Linux x86_64 with an AMD GPU and ROCm | LinML build `2611.1` (GitHub release), built from AMD's `onnxruntime-ep-amdgpu` | `ep-plugins/migraphx/linml_migraphx_ep/` |
 
@@ -122,14 +122,21 @@ These commands use only `curl`, `sha256sum`, `unzip`, and `mktemp`. Each downloa
     x86_64)
       WHEEL=onnxruntime_ep_nv_tensorrt_rtx_cu13-0.4.0-py3-none-manylinux_2_28_x86_64.whl
       URL=https://files.pythonhosted.org/packages/9c/68/093626a054300fa7f4f1a6d18b775d185034c6bb7fb056ac4f9d1e9b50d4/$WHEEL
-      SHA256=68b8f7306b50cf76daf997b8be24ec3813498c15d48e0ddd211db14f2a9daa19 ;;
+      SHA256=68b8f7306b50cf76daf997b8be24ec3813498c15d48e0ddd211db14f2a9daa19
+      DIR=trt-rtx ;;
     aarch64)
       WHEEL=onnxruntime_ep_nv_tensorrt_rtx_cu13-0.4.0-py3-none-manylinux_2_35_aarch64.whl
       URL=https://files.pythonhosted.org/packages/41/63/ef110d73730969957740d770b29c158ca79a9df32c65ee081b01f8b64124/$WHEEL
-      SHA256=0ccf6a636f9f49d74e3e7e3b1b90287aa1c818db770b47fad6e8aa344f4290a5 ;;
+      SHA256=0ccf6a636f9f49d74e3e7e3b1b90287aa1c818db770b47fad6e8aa344f4290a5
+      DIR=trt-rtx-arm64
+      # The aarch64 wheel is manylinux_2_35: refuse an older glibc before downloading it.
+      GLIBC="$(getconf GNU_LIBC_VERSION 2>/dev/null | awk '{print $2}')" || GLIBC=""
+      if [ -z "$GLIBC" ] || [ "$(printf '%s\n' 2.35 "$GLIBC" | sort -V | head -n 1)" != "2.35" ]; then
+        echo "needs glibc 2.35 or newer; this host has ${GLIBC:-no glibc}" >&2; false
+      fi ;;
     *) echo "No TensorRT-RTX build for $(uname -m)" >&2; false ;;
   esac
-  OUT="$DEPS/ep-plugins/trt-rtx/onnxruntime_ep_nv_tensorrt_rtx"
+  OUT="$DEPS/ep-plugins/$DIR/onnxruntime_ep_nv_tensorrt_rtx"
   mkdir -p "$OUT"
   curl -fsSL -o "$TMP/$WHEEL" "$URL"
   echo "$SHA256  $TMP/$WHEEL" | sha256sum -c

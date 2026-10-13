@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using LinML.Contracts;
 using LinML.Runtime.Onnx;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -47,9 +48,11 @@ public class TrtRtxInferenceTests
             }
         }
 
+        // aarch64 hosts install the TensorRT-RTX wheel to its own directory, beside the x86_64 one.
+        string pluginDirectory = RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "trt-rtx-arm64" : "trt-rtx";
         var defaultPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".local", "linml-deps", "ep-plugins", "trt-rtx",
+            ".local", "linml-deps", "ep-plugins", pluginDirectory,
             "onnxruntime_ep_nv_tensorrt_rtx", "libonnxruntime_providers_nv_tensorrt_rtx.so");
         return File.Exists(defaultPath) ? defaultPath : null;
     }

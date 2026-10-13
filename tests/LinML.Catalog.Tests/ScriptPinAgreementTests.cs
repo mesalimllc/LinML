@@ -135,6 +135,20 @@ public partial class ScriptPinAgreementTests
     }
 
     [Fact]
+    public void EnvScript_RegistersTensorRtRtxForEachArchitecture()
+    {
+        // Each architecture's plugin directory is a literal path, so both appear whatever host runs the
+        // test: the env script picks one with uname -m, and the pin-agreement loop only sees the host's pin.
+        string env = File.ReadAllText(Path.Combine(RepoRoot(), "scripts", "env-gpu-deps.sh"));
+
+        foreach (PluginPackageSpec spec in new[] { KnownPlugins.TensorrtRtxLinuxX64, KnownPlugins.TensorrtRtxLinuxArm64 })
+        {
+            string expected = "$DEPS/" + Path.Combine(spec.InstallSubdirectory, spec.LibraryFileName).Replace('\\', '/');
+            Assert.Contains($"=\"{expected}\"", env, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
     public void EnvScript_RegistersOpenVinoUnderTheCatalogRegistrationName()
     {
         string env = File.ReadAllText(Path.Combine(RepoRoot(), "scripts", "env-gpu-deps.sh"));

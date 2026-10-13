@@ -114,13 +114,21 @@ PYEOF
 }
 
 fetch_trt_rtx_arm64() {
-    local OUT="$DEPS/ep-plugins/trt-rtx/onnxruntime_ep_nv_tensorrt_rtx"
+    local OUT="$DEPS/ep-plugins/trt-rtx-arm64/onnxruntime_ep_nv_tensorrt_rtx"
     local WHEEL_URL="https://files.pythonhosted.org/packages/41/63/ef110d73730969957740d770b29c158ca79a9df32c65ee081b01f8b64124/onnxruntime_ep_nv_tensorrt_rtx_cu13-0.4.0-py3-none-manylinux_2_35_aarch64.whl"
     local WHEEL_SHA256="0ccf6a636f9f49d74e3e7e3b1b90287aa1c818db770b47fad6e8aa344f4290a5"
     local WHEEL_NAME="onnxruntime_ep_nv_tensorrt_rtx_cu13-0.4.0-py3-none-manylinux_2_35_aarch64.whl"
     local TMP="$TMP_ROOT/trt-rtx"
 
     echo "=== LinML EP plugin fetch (TensorRT-RTX) ==="
+
+    # The wheel is manylinux_2_35: refuse an older glibc before downloading it.
+    local GLIBC
+    GLIBC="$(getconf GNU_LIBC_VERSION 2>/dev/null | awk '{print $2}')" || GLIBC=""
+    if [ -z "$GLIBC" ] || [ "$(printf '%s\n' 2.35 "$GLIBC" | sort -V | head -n 1)" != "2.35" ]; then
+        echo "TensorRT-RTX (aarch64) needs glibc 2.35 or newer; this host has ${GLIBC:-no glibc}." >&2
+        return 1
+    fi
 
     if [ -f "$OUT/libonnxruntime_providers_nv_tensorrt_rtx.so" ]; then
         echo "Already vendored: $OUT"

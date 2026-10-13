@@ -263,8 +263,7 @@ internal sealed class PluginInstaller(HttpMessageHandler? httpHandler = null)
         string[] sonamePairs =
         [
             "libtensorrt_rtx.so.1.6.1", "libtensorrt_rtx.so.1",
-            "libtensorrt_onnxparser_rtx.so.1.6.1", "libtensorrt_onnxparser_rtx.so.1",
-            "libcudart.so.13.4.36", "libcudart.so.13"
+            "libtensorrt_onnxparser_rtx.so.1.6.1", "libtensorrt_onnxparser_rtx.so.1"
         ];
 
         for (int i = 0; i < sonamePairs.Length; i += 2)
@@ -277,6 +276,20 @@ internal sealed class PluginInstaller(HttpMessageHandler? httpHandler = null)
             if (File.Exists(targetPath) && !File.Exists(linkPath))
             {
                 File.CreateSymbolicLink(linkPath, targetName);
+            }
+        }
+
+        // The wheel's CUDA runtime is patch-versioned (libcudart.so.13.4.36 on x86_64,
+        // .46 on aarch64), so link whichever version it ships, as the shell fetcher does.
+        string cudartLink = Path.Combine(directory, "libcudart.so.13");
+        if (!File.Exists(cudartLink))
+        {
+            string? cudart = Directory.EnumerateFiles(directory, "libcudart.so.13.*")
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .FirstOrDefault();
+            if (cudart is not null)
+            {
+                File.CreateSymbolicLink(cudartLink, Path.GetFileName(cudart));
             }
         }
     }

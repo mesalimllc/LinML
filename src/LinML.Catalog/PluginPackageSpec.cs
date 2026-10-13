@@ -7,6 +7,7 @@ namespace LinML.Catalog;
 /// A pinned plugin EP wheel: where to get it, how to verify it, and where its
 /// library lands once vendored. <c>Architecture</c> is the Linux host architecture
 /// the wheel is built for, as a RID suffix: <c>x64</c> or <c>arm64</c>.
+/// <c>MinimumGlibc</c>, when set, is the oldest glibc the wheel loads on.
 /// </summary>
 internal sealed record PluginPackageSpec(
     ProviderId Id,
@@ -18,7 +19,8 @@ internal sealed record PluginPackageSpec(
     string InstallSubdirectory,
     string LibraryFileName,
     Version MinimumOrtVersion,
-    string Architecture = "x64")
+    string Architecture = "x64",
+    Version? MinimumGlibc = null)
 {
     public string InstallDirectory(string installRoot) => Path.Combine(installRoot, InstallSubdirectory);
 
@@ -122,8 +124,9 @@ internal static class KnownPlugins
         Architecture: "x64");
 
     // The same EP for Linux aarch64 (SBSA). Same version and ABI, and the same
-    // bundled TensorRT-RTX 1.6.1 runtime, built for aarch64 (manylinux_2_35).
-    // Not yet verified on aarch64 hardware.
+    // bundled TensorRT-RTX 1.6.1 runtime, built for aarch64 (manylinux_2_35, so
+    // glibc 2.35 or newer). Installs beside the x64 build, not over it. Not yet
+    // verified on aarch64 hardware.
     internal static readonly PluginPackageSpec TensorrtRtxLinuxArm64 = new(
         Id: ProviderId.TensorrtRtx,
         RegistrationName: "NvTensorRTRTXExecutionProvider",
@@ -131,10 +134,11 @@ internal static class KnownPlugins
         WheelUrl: new Uri("https://files.pythonhosted.org/packages/41/63/ef110d73730969957740d770b29c158ca79a9df32c65ee081b01f8b64124/onnxruntime_ep_nv_tensorrt_rtx_cu13-0.4.0-py3-none-manylinux_2_35_aarch64.whl"),
         WheelSha256: "0ccf6a636f9f49d74e3e7e3b1b90287aa1c818db770b47fad6e8aa344f4290a5",
         PackagePrefix: "onnxruntime_ep_nv_tensorrt_rtx/",
-        InstallSubdirectory: Path.Combine("ep-plugins", "trt-rtx", "onnxruntime_ep_nv_tensorrt_rtx"),
+        InstallSubdirectory: Path.Combine("ep-plugins", "trt-rtx-arm64", "onnxruntime_ep_nv_tensorrt_rtx"),
         LibraryFileName: "libonnxruntime_providers_nv_tensorrt_rtx.so",
         MinimumOrtVersion: new Version(1, 24, 0),
-        Architecture: "arm64");
+        Architecture: "arm64",
+        MinimumGlibc: new Version(2, 35));
 
     /// <summary>The TensorRT-RTX pin for this host: the wheel built for its architecture.</summary>
     public static PluginPackageSpec TensorrtRtx =>
@@ -195,13 +199,15 @@ internal static class KnownPlugins
     public static IReadOnlyList<PluginPackageSpec> All { get; } = [OpenVino, TensorrtRtx, MigraphX];
 
     /// <summary>
-    /// The opted-in WSL2 build of <paramref name="id"/>'s plugin, if one is vendored
-    /// and this host is WSL2; otherwise null. Preferred over the stock wheel, which
-    /// registers but exposes no devices under WSL2.
+    /// The opted-in WSL2 build for <paramref name="spec"/>, if one is vendored, this
+    /// host is WSL2, and <paramref name="spec"/> is the x86_64 TensorRT-RTX wheel (the
+    /// patched build is x86_64 only); otherwise null. Preferred over the stock wheel,
+    /// which registers but exposes no devices under WSL2.
     /// </summary>
-    internal static string? WslVariantLibrary(ProviderId id, string? root = null)
+    internal static string? WslVariantLibrary(PluginPackageSpec spec, string? root = null)
     {
-        if (id != ProviderId.TensorrtRtx || !PluginExecutionProvider.IsWsl() || PluginExecutionProvider.Wsl2OptedOut())
+        if (spec.Id != ProviderId.TensorrtRtx || spec.Architecture != "x64"
+            || !PluginExecutionProvider.IsWsl() || PluginExecutionProvider.Wsl2OptedOut())
         {
             return null;
         }
@@ -216,7 +222,7 @@ internal static class KnownPlugins
 
             // An explicit root that vendors the stock wheel keeps it; the search only
             // widens to the default roots when the root has neither build.
-            if (File.Exists(TensorrtRtx.LibraryPath(root)))
+            if (File.Exists(spec.LibraryPath(root)))
             {
                 return null;
             }
