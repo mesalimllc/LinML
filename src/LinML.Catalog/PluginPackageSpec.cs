@@ -131,7 +131,7 @@ internal static class KnownPlugins
         WheelUrl: new Uri("https://files.pythonhosted.org/packages/41/63/ef110d73730969957740d770b29c158ca79a9df32c65ee081b01f8b64124/onnxruntime_ep_nv_tensorrt_rtx_cu13-0.4.0-py3-none-manylinux_2_35_aarch64.whl"),
         WheelSha256: "0ccf6a636f9f49d74e3e7e3b1b90287aa1c818db770b47fad6e8aa344f4290a5",
         PackagePrefix: "onnxruntime_ep_nv_tensorrt_rtx/",
-        InstallSubdirectory: Path.Combine("ep-plugins", "trt-rtx", "onnxruntime_ep_nv_tensorrt_rtx"),
+        InstallSubdirectory: Path.Combine("ep-plugins", "trt-rtx-arm64", "onnxruntime_ep_nv_tensorrt_rtx"),
         LibraryFileName: "libonnxruntime_providers_nv_tensorrt_rtx.so",
         MinimumOrtVersion: new Version(1, 24, 0),
         Architecture: "arm64");

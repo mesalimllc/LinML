@@ -38,7 +38,12 @@ add_path "$DEPS/tensorrt-lean/tensorrt_lean_libs"
 
 # TensorRT-RTX plugin EP (vendored wheel) — the EP .so resolves its bundled
 # libtensorrt_rtx via its own directory; add it so dlopen finds them.
-add_path "$DEPS/ep-plugins/trt-rtx/onnxruntime_ep_nv_tensorrt_rtx"
+if [ "$(uname -m)" = "aarch64" ]; then
+    TRT_RTX_STOCK_DIR="$DEPS/ep-plugins/trt-rtx-arm64/onnxruntime_ep_nv_tensorrt_rtx"
+else
+    TRT_RTX_STOCK_DIR="$DEPS/ep-plugins/trt-rtx/onnxruntime_ep_nv_tensorrt_rtx"
+fi
+add_path "$TRT_RTX_STOCK_DIR"
 
 # OpenVINO runtime (pip wheel), if installed
 add_path "$DEPS/openvino/lib"
@@ -55,7 +60,7 @@ export LD_LIBRARY_PATH
 #   2. the LinML-hosted WSL2 fallback build, if vendored
 #      (scripts/fetch-ep-plugins.sh trt-rtx-wsl2), unless LINML_TRT_RTX_WSL2=0.
 #   3. the stock NVIDIA wheel (scripts/fetch-ep-plugins.sh trt-rtx).
-TRT_RTX_DEFAULT_EP="$DEPS/ep-plugins/trt-rtx/onnxruntime_ep_nv_tensorrt_rtx/libonnxruntime_providers_nv_tensorrt_rtx.so"
+TRT_RTX_DEFAULT_EP="$TRT_RTX_STOCK_DIR/libonnxruntime_providers_nv_tensorrt_rtx.so"
 TRT_RTX_WSL2_EP="$DEPS/ep-plugins/trt-rtx-wsl2/linml_trt_rtx_ep/libonnxruntime_providers_nv_tensorrt_rtx.so"
 TRT_RTX_EP="${TRT_RTX_CUSTOM_EP:-}"
 case "${LINML_TRT_RTX_WSL2:-}" in 0|false|off|no) TRT_RTX_WSL2_OPT_OUT=1 ;; *) TRT_RTX_WSL2_OPT_OUT= ;; esac

@@ -274,7 +274,13 @@ internal sealed class PluginInstaller(HttpMessageHandler? httpHandler = null)
             string targetPath = Path.Combine(directory, targetName);
             string linkPath = Path.Combine(directory, linkName);
 
-            if (File.Exists(targetPath) && !File.Exists(linkPath))
+            if (linkName == "libcudart.so.13" && !File.Exists(linkPath))
+            {
+                targetPath = Directory.EnumerateFiles(directory, "libcudart.so.13.*").FirstOrDefault() ?? "";
+                targetName = string.IsNullOrEmpty(targetPath) ? "" : Path.GetFileName(targetPath);
+            }
+
+            if (!string.IsNullOrEmpty(targetName) && File.Exists(Path.Combine(directory, targetName)) && !File.Exists(linkPath))
             {
                 File.CreateSymbolicLink(linkPath, targetName);
             }
