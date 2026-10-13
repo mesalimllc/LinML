@@ -108,8 +108,9 @@ public class CatalogCommandTests
         File.WriteAllText(Path.Combine(wsl2.InstallDirectory(root), "build-info.json"), $"{{ \"epVersion\": \"{epVersion}\" }}");
     }
 
-    private static IReadOnlyList<PluginPackageSpec> TrtRtxTargets() =>
-        CatalogCommand.ResolveInstallTargets("trt-rtx", out _, out _);
+    // The patched build is x86_64 only, and ResolveInstallTargets picks the wheel of the host's architecture, so
+    // these name the x86_64 wheel to mean the same thing on every runner.
+    private static IReadOnlyList<PluginPackageSpec> TrtRtxTargets() => [KnownPlugins.TensorrtRtxLinuxX64];
 
     [Fact]
     public void WithInstalledWsl2Build_EarlierBuildVendored_IsUpgradedAlongsideTheWheel()
@@ -128,11 +129,11 @@ public class CatalogCommandTests
     {
         using var root = new TempDirectory();
         VendorWsl2Build(root.Path, "0.4.0-wsl2p1");
-        var all = CatalogCommand.ResolveInstallTargets("all", out _, out _);
+        PluginPackageSpec[] all = [KnownPlugins.OpenVino, KnownPlugins.TensorrtRtxLinuxX64, KnownPlugins.MigraphX];
 
         var targets = CatalogCommand.WithInstalledWsl2Build(all, root.Path, force: false, wsl2Selected: true);
 
-        Assert.Equal(all.Count + 1, targets.Count);
+        Assert.Equal(all.Length + 1, targets.Count);
         Assert.Contains(KnownPlugins.TensorrtRtxWsl2, targets);
     }
 
@@ -175,12 +176,24 @@ public class CatalogCommandTests
     {
         using var root = new TempDirectory();
         VendorWsl2Build(root.Path, "0.4.0-wsl2p1");
-        var openvino = CatalogCommand.ResolveInstallTargets("openvino", out _, out _);
+        PluginPackageSpec[] openvino = [KnownPlugins.OpenVino];
 
         var targets = CatalogCommand.WithInstalledWsl2Build(openvino, root.Path, force: false, wsl2Selected: true);
 
-        Assert.Equal(openvino.Count, targets.Count);
+        Assert.Equal(openvino.Length, targets.Count);
         Assert.DoesNotContain(KnownPlugins.TensorrtRtxWsl2, targets);
+    }
+
+    [Fact]
+    public void WithInstalledWsl2Build_Arm64Wheel_NeverAddsTheX64OnlyBuild()
+    {
+        using var root = new TempDirectory();
+        VendorWsl2Build(root.Path, "0.4.0-wsl2p1");
+
+        var targets = CatalogCommand.WithInstalledWsl2Build(
+            [KnownPlugins.TensorrtRtxLinuxArm64], root.Path, force: true, wsl2Selected: true);
+
+        Assert.Equal([KnownPlugins.TensorrtRtxLinuxArm64], targets);
     }
 
     [Fact]
