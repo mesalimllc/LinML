@@ -158,6 +158,26 @@ public class PluginInstallerTests
     }
 
     [Fact]
+    public void CreateRequiredSymlinks_FindsAnyCudartPatchVersion()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return;
+        }
+
+        using var root = new TempDir();
+        File.WriteAllText(Path.Combine(root.Path, "libcudart.so.13.4.46"), "dummy");
+
+        PluginInstaller.CreateRequiredSymlinks(root.Path);
+
+        string linkFile = Path.Combine(root.Path, "libcudart.so.13");
+        Assert.True(File.Exists(linkFile));
+        var linkTarget = File.ResolveLinkTarget(linkFile, returnFinalTarget: false);
+        Assert.NotNull(linkTarget);
+        Assert.Equal("libcudart.so.13.4.46", linkTarget.Name);
+    }
+
+    [Fact]
     public async Task Install_WhenAlreadyPresent_RepairsMissingSymlinks()
     {
         if (!OperatingSystem.IsLinux())
