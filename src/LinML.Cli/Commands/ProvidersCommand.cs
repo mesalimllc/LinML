@@ -1,5 +1,7 @@
+using LinML.Catalog;
 using LinML.Cli;
 using LinML.Contracts;
+using LinML.Runtime.Onnx;
 using Microsoft.Extensions.DependencyInjection;
 using System.CommandLine;
 using System.Text.Json;
@@ -18,17 +20,21 @@ public static class ProvidersCommand
 
         var listCommand = new Command("list", "List available execution providers");
         var epLibraryOption = new Option<string[]>("--ep-library") { Description = "Plugin EP library as name=path (repeatable)" };
+        var rootOption = new Option<string?>("--root") { Description = "Custom catalog install root directory" };
         listCommand.Options.Add(epLibraryOption);
-        listCommand.Options.Add(jsonOption);
+        listCommand.Options.Add(rootOption);
 
         listCommand.SetAction(parseResult =>
         {
             var epLibraryArgs = parseResult.GetValue(epLibraryOption) ?? [];
+            var root = parseResult.GetValue(rootOption);
             var json = parseResult.GetValue(jsonOption);
 
-            // Register plugin EP libraries before discovery so they are listed.
+            // Register plugin EP libraries before discovery so they are listed, the same
+            // way `doctor` does, so the two commands report the same providers.
             var epLibraries = ProviderArgs.ParseEpLibraries(epLibraryArgs);
             ProviderArgs.EnsureEpLibrariesRegistered(epLibraries);
+            ProviderArgs.RegisterCatalogPlugins(epLibraryArgs, string.IsNullOrWhiteSpace(root) ? null : root);
 
             var discovery = provider.GetRequiredService<IProviderDiscovery>();
             var report = discovery.Discover();
@@ -43,7 +49,11 @@ public static class ProvidersCommand
                 Console.WriteLine("Available providers:");
                 foreach (var p in report.AvailableProviders)
                 {
-                    Console.WriteLine($"  - {p}");
+                    // A plugin can be registered yet expose no devices on this host; say so, since
+                    // selecting it will not run on this host.
+                    bool plugin = KnownPlugins.All.Any(s => s.Id == p);
+                    string note = plugin && !ProviderListing.HasEpDevices(p) ? " (registered; no EP devices on this host)" : string.Empty;
+                    Console.WriteLine($"  - {p}{note}");
                 }
                 if (report.Devices.Count > 0)
                 {

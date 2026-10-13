@@ -1,4 +1,5 @@
 using System.Text.Json;
+using LinML.Cli.Commands;
 using Xunit;
 
 namespace LinML.Cli.Tests;
@@ -177,7 +178,15 @@ public class ExitCodeTests
         Assert.True(catalog.GetArrayLength() > 0);
 
         var migraphx = catalog.EnumerateArray().First(p => p.GetProperty("id").GetString() == "migraphx");
-        Assert.Contains("linml catalog install migraphx", migraphx.GetProperty("hint").GetString());
+        if (SetupCommand.ProbeAmdRocm())
+        {
+            Assert.Contains("linml catalog install migraphx", migraphx.GetProperty("hint").GetString());
+        }
+        else
+        {
+            Assert.Equal("NotApplicable", migraphx.GetProperty("status").GetString());
+            Assert.Equal(JsonValueKind.Null, migraphx.GetProperty("hint").ValueKind);
+        }
     }
 
     [Fact]
@@ -188,7 +197,15 @@ public class ExitCodeTests
 
         Assert.Equal(0, exitCode);
         Assert.Contains("Catalog plugins:", stdout);
-        Assert.Contains("Run 'linml catalog install migraphx' to vendor missing libraries.", stdout);
+        if (SetupCommand.ProbeAmdRocm())
+        {
+            Assert.Contains("Run 'linml catalog install migraphx' to vendor missing libraries.", stdout);
+        }
+        else
+        {
+            Assert.Contains("migraphx: NOT APPLICABLE", stdout);
+            Assert.DoesNotContain("Run 'linml catalog install migraphx'", stdout);
+        }
     }
 
     [Fact]

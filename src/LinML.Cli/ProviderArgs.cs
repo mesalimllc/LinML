@@ -284,6 +284,27 @@ public static class ProviderArgs
         }
     }
 
+    /// <summary>
+    /// Registers, in this process, every catalog plugin that resolves on this host, so that
+    /// discovery, readiness and catalog status all see the same EP devices. A plugin that
+    /// does not resolve or fails to register is left for the caller's own checks to report.
+    /// </summary>
+    public static void RegisterCatalogPlugins(IEnumerable<string> epLibraryArgs, string? root)
+    {
+        var args = epLibraryArgs.ToList();
+        foreach (var spec in LinML.Catalog.KnownPlugins.All)
+        {
+            try
+            {
+                EnsureEpLibrariesRegistered(ResolveEpLibraries(args, spec.Id, root));
+            }
+            catch
+            {
+                // Reported by the callers' own readiness and status checks.
+            }
+        }
+    }
+
     private static void AddPair(
         Dictionary<string, string> result, string pair, string source)
     {

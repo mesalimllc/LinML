@@ -114,7 +114,7 @@ public class FallbackPolicyTests
     }
 
     [Fact]
-    public void BuildCandidateList_WithAvailable_PreferredFirstThenRankedRest()
+    public void BuildCandidateList_WithAvailable_ExplicitPreferred_FallsBackToCpuNotOtherAccelerators()
     {
         var policy = CreatePolicy();
         var request = new InferenceRequest
@@ -130,8 +130,9 @@ public class FallbackPolicyTests
 
         var candidates = policy.BuildCandidateList(request, available);
 
+        // A failed explicit request goes to CPU, not to another GPU EP.
         Assert.Equal(
-            [ProviderId.Cuda, ProviderId.Tensorrt, ProviderId.Cpu],
+            [ProviderId.Cuda, ProviderId.Cpu],
             candidates);
     }
 
@@ -150,9 +151,9 @@ public class FallbackPolicyTests
         var candidates = policy.BuildCandidateList(request, available);
 
         // Preferred is first even when not listed — selection rejects it
-        // honestly and records why.
+        // honestly and records why — and the only fallback is CPU.
         Assert.Equal(
-            [ProviderId.MigraphX, ProviderId.Cuda, ProviderId.Cpu],
+            [ProviderId.MigraphX, ProviderId.Cpu],
             candidates);
     }
 

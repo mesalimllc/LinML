@@ -31,7 +31,6 @@ public static class DoctorCommand
         doctorCommand.Options.Add(epLibraryOption);
         doctorCommand.Options.Add(epOptionOption);
         doctorCommand.Options.Add(rootOption);
-        doctorCommand.Options.Add(jsonOption);
 
         doctorCommand.SetAction(parseResult =>
         {
@@ -69,18 +68,7 @@ public static class DoctorCommand
                 ProviderArgs.EnsureEpLibrariesRegistered(epLibraries);
 
                 // Pre-register available catalog plugins before discovery so smoke tests and discovery cover them
-                foreach (var cp in catalog.FindAllProviders().OfType<PluginExecutionProvider>())
-                {
-                    try
-                    {
-                        var libs = ProviderArgs.ResolveEpLibraries(epLibraryArgs, cp.Id, root);
-                        ProviderArgs.EnsureEpLibrariesRegistered(libs);
-                    }
-                    catch
-                    {
-                        // Ignore pre-registration errors; reported below
-                    }
-                }
+                ProviderArgs.RegisterCatalogPlugins(epLibraryArgs, root);
 
                 var epOptions = ProviderArgs.ParseEpOptions(epOptionArgs);
 
@@ -99,9 +87,11 @@ public static class DoctorCommand
                     foreach (var p in report.AvailableProviders)
                     {
                         var scopedOptions = ProviderArgs.OptionsForProvider(epOptions, p);
+                        // Per provider, as `run` resolves them: the catalog's library for a plugin, not only the explicit flags.
+                        var providerLibraries = ProviderArgs.ResolveEpLibraries(epLibraryArgs, p, root);
                         readinessReports.Add(smokeRunner.RunSmoke(
                             p, modelIdentity, tensorInputs,
-                            options: scopedOptions, epLibraries: epLibraries));
+                            options: scopedOptions, epLibraries: providerLibraries));
                     }
                 }
                 else
@@ -117,6 +107,7 @@ public static class DoctorCommand
 
                 // Inspect catalog providers and report status & install hints
                 var catalogReports = new List<CatalogDoctorReport>();
+                bool amdRocm = SetupCommand.ProbeAmdRocm();
                 foreach (var p in catalog.FindAllProviders())
                 {
                     if (p.Source == ProviderSource.BuiltIn)
@@ -130,15 +121,17 @@ public static class DoctorCommand
 
                     if (libPath is null || !File.Exists(libPath))
                     {
+                        // A plugin whose hardware this host lacks gets no install hint: installing it cannot help.
+                        string? gap = SetupCommand.MigraphXHardwareNote(p.Id, amdRocm);
                         catalogReports.Add(new CatalogDoctorReport(
                             Id: shortId,
                             Name: p.Id.Value,
                             Source: "plugin",
                             Version: p.PinnedVersion,
-                            Status: "NotPresent",
+                            Status: gap is null ? "NotPresent" : "NotApplicable",
                             LibraryPath: null,
-                            Details: "(not installed)",
-                            Hint: $"Run 'linml catalog install {shortId}' to vendor missing libraries."));
+                            Details: gap ?? "(not installed)",
+                            Hint: gap is null ? $"Run 'linml catalog install {shortId}' to vendor missing libraries." : null));
                     }
                     else
                     {
@@ -273,6 +266,10 @@ public static class DoctorCommand
                             if (c.Status == "NotPresent")
                             {
                                 Console.WriteLine($"  {c.Id}: NOT PRESENT — {c.Hint}");
+                            }
+                            else if (c.Status == "NotApplicable")
+                            {
+                                Console.WriteLine($"  {c.Id}: NOT APPLICABLE ({c.Details})");
                             }
                             else if (c.Status == "Ready")
                             {

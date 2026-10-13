@@ -47,7 +47,6 @@ public static class BenchCommand
         benchCommand.Options.Add(epOptionOption);
         benchCommand.Options.Add(epLibraryOption);
         benchCommand.Options.Add(rootOption);
-        benchCommand.Options.Add(jsonOption);
 
         benchCommand.SetAction(async parseResult =>
         {

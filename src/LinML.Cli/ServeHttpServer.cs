@@ -89,6 +89,13 @@ internal sealed class ServeHttpServer : IAsyncDisposable, IDisposable
         string urlHost = prefixHost == "*" ? "127.0.0.1" : prefixHost;
         Url = $"http://{urlHost}:{Port}/";
         _listener.Prefixes.Add($"http://{prefixHost}:{Port}/");
+
+        // HttpListener routes by the Host header, so a request to http://localhost:<port>
+        // is rejected unless localhost is a registered prefix too. Same socket, same server.
+        if ((Host is "127.0.0.1" or "localhost") && !_listener.Prefixes.Contains($"http://localhost:{Port}/"))
+        {
+            _listener.Prefixes.Add($"http://localhost:{Port}/");
+        }
     }
 
     public void Start()
@@ -235,7 +242,7 @@ internal sealed class ServeHttpServer : IAsyncDisposable, IDisposable
                     status = isHealthy ? "healthy" : "unhealthy",
                     processId = Environment.ProcessId,
                     model = _modelIdentity,
-                    requestedProvider = _preferredProvider?.ToString() ?? "cpu",
+                    requestedProvider = _preferredProvider?.ToString(),
                     selectedProvider = _selectedProvider.ToString(),
                     fallbackChain = _fallbackChain.Select(f => f.Provider.ToString()).ToList(),
                     runtimeVersion = OnnxRuntimeDiagnostics.GetRuntimeVersion()
@@ -360,7 +367,7 @@ internal sealed class ServeHttpServer : IAsyncDisposable, IDisposable
 
                     result = new InferenceResult
                     {
-                        RequestedProvider = _preferredProvider ?? ProviderId.Cpu,
+                        RequestedProvider = _preferredProvider,
                         SelectedProvider = _selectedProvider,
                         FallbackChain = _fallbackChain,
                         Outputs = outputs,

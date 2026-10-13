@@ -183,7 +183,7 @@ public static class ServeCommand
                         }
                     }
 
-                    Console.Error.WriteLine($"Serving: {selectedProvider} (requested: {preferredProvider?.ToString() ?? "cpu"}). Awaiting requests on stdin.");
+                    Console.Error.WriteLine($"Serving: {selectedProvider} (requested: {preferredProvider?.ToString() ?? "auto"}). Awaiting requests on stdin.");
 
                     string? line;
                     while ((line = await Console.In.ReadLineAsync()) is not null)
@@ -231,7 +231,7 @@ public static class ServeCommand
 
                             var result = new InferenceResult
                             {
-                                RequestedProvider = preferredProvider ?? ProviderId.Cpu,
+                                RequestedProvider = preferredProvider,
                                 SelectedProvider = selectedProvider,
                                 FallbackChain = fallbackChain,
                                 Outputs = outputs,
