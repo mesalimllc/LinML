@@ -292,4 +292,17 @@ public class PluginExecutionProviderTests
         Assert.Equal(new Version(2, 35), KnownPlugins.TensorrtRtxLinuxArm64.MinimumGlibc);
         Assert.Null(KnownPlugins.TensorrtRtxLinuxX64.MinimumGlibc);
     }
+
+    [Fact]
+    public void HostGlibc_IsDetectedOnAGlibcLinuxHost()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return;
+        }
+
+        // The aarch64 pin's glibc floor is judged against this probe; a null here would refuse every glibc host.
+        Assert.NotNull(PluginExecutionProvider.HostGlibc);
+        Assert.True(PluginExecutionProvider.GlibcSatisfies(new Version(2, 0), PluginExecutionProvider.HostGlibc));
+    }
 }
