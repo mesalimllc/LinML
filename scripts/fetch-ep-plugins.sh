@@ -413,8 +413,22 @@ for n in keep:
 print(f"extracted {len(keep)} files to {out}")
 PYEOF
 
-    rm -rf "$OUT"
-    mv "$STAGE" "$OUT"
+    # Replacing an earlier build: move it aside rather than delete it, so a failed
+    # move leaves it in place and the plugin is missing only for the instant
+    # between the two renames.
+    local PREVIOUS="$OUT.previous"
+    rm -rf "$PREVIOUS"
+    if [ -e "$OUT" ]; then
+        mv "$OUT" "$PREVIOUS"
+    fi
+    if ! mv "$STAGE" "$OUT"; then
+        if [ -e "$PREVIOUS" ]; then
+            mv "$PREVIOUS" "$OUT"
+        fi
+        echo "ERROR: could not move the new build into place; the previous one was left as it was." >&2
+        return 1
+    fi
+    rm -rf "$PREVIOUS"
 
     echo ""
     echo "=== Vendored ==="

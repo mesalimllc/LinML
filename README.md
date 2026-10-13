@@ -290,9 +290,9 @@ These commands use only `curl`, `sha256sum`, `unzip`, and `mktemp`. Each downloa
   OUT="$DEPS/ep-plugins/trt-rtx-wsl2/linml_trt_rtx_ep"
   curl -fsSL -o "$TMP/$ZIP" "$URL"
   echo "$SHA256  $TMP/$ZIP" | sha256sum -c
-  rm -rf "$OUT"   # replaces any earlier build, e.g. 0.4.0-wsl2p1
-  mkdir -p "$OUT"
   unzip -q -o "$TMP/$ZIP" 'linml_trt_rtx_ep/*' -d "$TMP/unpacked"
+  rm -rf "$OUT"   # replaces any earlier build, e.g. 0.4.0-wsl2p1, only once the new one has unpacked
+  mkdir -p "$OUT"
   cp -r "$TMP/unpacked/linml_trt_rtx_ep/." "$OUT/"
   rm -rf "$TMP"
   echo "Patched TensorRT-RTX installed to $OUT"

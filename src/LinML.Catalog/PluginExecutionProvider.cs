@@ -270,34 +270,42 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
             }
 
             bool downloaded = false;
+            // Why a vendored build of another version could not be replaced, when it stays in use instead.
+            string? updateFailure = null;
+            string WithUpdateNote(string detail) => updateFailure is null
+                ? detail
+                : $"{detail} Could not replace the vendored build with {_wsl2Spec.Version}: {updateFailure}";
             Variant variant = SelectVariant();
             if (variant != Variant.Custom)
             {
                 // On the WSL2 path the patched build needs the stock wheel's runtime directory and
                 // must never be preceded by a stock registration: ORT cannot replace one per process.
-                var needed = new List<PluginPackageSpec>();
+                var needed = new List<(PluginPackageSpec Spec, bool HasFallback)>();
                 if (variant == Variant.Wsl2)
                 {
                     if (StockRuntimeDirectory() is null)
                     {
-                        needed.Add(_spec);
+                        needed.Add((_spec, false));
                     }
 
                     // A vendored build of another version (the pin moved on; 0.4.0-wsl2p1 needs a newer glibc than
-                    // most hosts have) is replaced when downloads are allowed. Without downloads it stays in use:
-                    // it is all there is, and where it loads it works.
-                    if (WslVariantLibraryPath() is not { } vendored
-                        || (options.AllowDownloads && !_wsl2Spec.IsCurrent(vendored)))
+                    // most hosts have) is replaced when downloads are allowed. If it cannot be replaced, or
+                    // downloads are not allowed, it stays in use: it is all there is, and where it loads it works.
+                    if (WslVariantLibraryPath() is not { } vendored)
                     {
-                        needed.Add(_wsl2Spec);
+                        needed.Add((_wsl2Spec, false));
+                    }
+                    else if (options.AllowDownloads && !_wsl2Spec.IsCurrent(vendored))
+                    {
+                        needed.Add((_wsl2Spec, true));
                     }
                 }
                 else if (LibraryPath is null)
                 {
-                    needed.Add(_spec);
+                    needed.Add((_spec, false));
                 }
 
-                foreach (PluginPackageSpec spec in needed)
+                foreach ((PluginPackageSpec spec, bool hasFallback) in needed)
                 {
                     if (!options.AllowDownloads)
                     {
@@ -312,11 +320,23 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
                     }
                     catch (Exception ex) when (ex is HttpRequestException or InvalidDataException or IOException or UnauthorizedAccessException)
                     {
+                        if (hasFallback)
+                        {
+                            updateFailure = ex.Message;
+                            continue;
+                        }
+
                         return Result(ProviderEnsureStatus.Failed, $"Vendoring {Id} {spec.Version} failed: {ex.Message}");
                     }
                     catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
                     {
                         // HttpClient.Timeout surfaces as TaskCanceledException; caller cancellation still propagates.
+                        if (hasFallback)
+                        {
+                            updateFailure = $"timed out: {ex.Message}";
+                            continue;
+                        }
+
                         return Result(ProviderEnsureStatus.Failed, $"Vendoring {Id} {spec.Version} timed out: {ex.Message}");
                     }
                 }
@@ -328,7 +348,7 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
 
             if (!TryRegister(out string? failure))
             {
-                return Result(ProviderEnsureStatus.Failed, failure!);
+                return Result(ProviderEnsureStatus.Failed, WithUpdateNote(failure!));
             }
 
             IReadOnlyList<OrtEpDevice> devices = GetDevices();
@@ -344,18 +364,18 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
                         $"{Id} is registered, but no WSL2 GPU passthrough was found (/dev/dxg is missing), so the patched WSL2 build was not used and the stock wheel exposes no devices. Check that this is WSL2 with NVIDIA GPU support and that 'nvidia-smi' works.",
                     _ => $"{Id} is registered but exposes no EP devices on this host.",
                 };
-                return Result(ProviderEnsureStatus.NoDevices, detail);
+                return Result(ProviderEnsureStatus.NoDevices, WithUpdateNote(detail));
             }
 
             return new ProviderEnsureResult(
                 Id,
                 downloaded ? ProviderEnsureStatus.Downloaded : ProviderEnsureStatus.Ready,
-                variant switch
+                WithUpdateNote(variant switch
                 {
                     Variant.Wsl2 => $"{Id} patched WSL2 build {WslBuildVersion()} ready with {devices.Count} EP device(s).",
                     Variant.Custom => $"{Id} custom build ({TrtRtxCustomEpEnvVar}) ready with {devices.Count} EP device(s).",
                     _ => $"{Id} {_spec.Version} ready with {devices.Count} EP device(s).",
-                },
+                }),
                 devices);
         }
         finally

@@ -153,7 +153,7 @@ not yet verified on aarch64 hardware. The x64 pin is unchanged.
     install of another version (such as `0.4.0-wsl2p1`) is replaced by the pinned one:
     `EnsureReadyAsync(AllowDownloads: true)`, `linml setup --trt-rtx-wsl2`,
     `linml catalog install` and `scripts/fetch-ep-plugins.sh trt-rtx-wsl2` all check it.
-    With downloads disallowed, the earlier build stays in use.
+    With downloads disallowed, or if the download fails, the earlier build stays in use.
   - Verified in WSL2: the patched EP is *selected* (no fallback) and MNIST
     returns the exact output `[11, 22, 13, 24, 15, 26]`.
   - Superseded once PR #12 merges and NVIDIA ships a fixed wheel; the default

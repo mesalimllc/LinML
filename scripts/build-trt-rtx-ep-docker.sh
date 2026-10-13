@@ -27,6 +27,10 @@ OUT_DIR="${OUT_DIR:-$REPO_ROOT/out/trt-rtx-ep}"
 BUILD_IMAGE="${BUILD_IMAGE:-linml-trt-rtx-ep-build:ubuntu22.04}"
 
 command -v docker >/dev/null 2>&1 || { echo "ERROR: docker not found." >&2; exit 1; }
+# The host-side install below unpacks the archive with python3: check before a long build, not after.
+if [ "${NO_INSTALL:-0}" != "1" ]; then
+    command -v python3 >/dev/null 2>&1 || { echo "ERROR: python3 not found (needed to install the build; set NO_INSTALL=1 to skip)." >&2; exit 1; }
+fi
 
 TRT_RTX_SDK="${TRT_RTX_SDK:-}"
 if [ -z "$TRT_RTX_SDK" ] || [ ! -d "$TRT_RTX_SDK/include" ] || [ ! -d "$TRT_RTX_SDK/lib" ]; then
@@ -81,9 +85,11 @@ if [ "${NO_INSTALL:-0}" != "1" ]; then
     ARCHIVE="$(ls -t "$OUT_DIR"/linml-trt-rtx-ep-*-linux-x64.zip | head -n1)"
     DEPS="${DEPS:-$HOME/.local/linml-deps}"
     DEST="$DEPS/ep-plugins/trt-rtx-wsl2/linml_trt_rtx_ep"
-    rm -rf "$DEST"
-    mkdir -p "$DEST"
-    python3 - "$ARCHIVE" "$DEST" <<'PYEOF'
+    # Unpack beside the install and swap, so a failed unpack leaves the existing build alone.
+    STAGE="$DEST.partial"
+    rm -rf "$STAGE"
+    mkdir -p "$STAGE"
+    python3 - "$ARCHIVE" "$STAGE" <<'PYEOF'
 import os, sys, zipfile
 archive, out = sys.argv[1], sys.argv[2]
 prefix = "linml_trt_rtx_ep/"
@@ -95,6 +101,14 @@ with zipfile.ZipFile(archive) as z:
             with z.open(name) as src, open(dest, "wb") as dst:
                 dst.write(src.read())
 PYEOF
+    rm -rf "$DEST.previous"
+    if [ -e "$DEST" ]; then mv "$DEST" "$DEST.previous"; fi
+    if ! mv "$STAGE" "$DEST"; then
+        if [ -e "$DEST.previous" ]; then mv "$DEST.previous" "$DEST"; fi
+        echo "ERROR: could not move the new build into place; the previous one was left as it was." >&2
+        exit 1
+    fi
+    rm -rf "$DEST.previous"
     echo ""
     echo "Installed: $DEST"
 fi

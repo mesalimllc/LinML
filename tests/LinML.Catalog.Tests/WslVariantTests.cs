@@ -326,6 +326,62 @@ public class WslEnsureReadyTests : IDisposable
     }
 
     [Fact]
+    public async Task StaleWsl2Build_WhenTheUpdateCannotBeDownloaded_KeepsUsingTheVendoredBuild()
+    {
+        // GitHub unreachable, a proxy, a pulled release: an earlier build that loads is better than none.
+        using var root = new TempDir();
+        (PluginPackageSpec wsl, _) = PinnedWsl2Build();
+        Vendor(root.Path, _stock);
+        VendorStaleWsl2Build(root.Path, wsl);
+        var handler = new RoutingHandler(new()); // every URL is a 404
+        var registrar = new FakeRegistrar();
+        var provider = new PluginExecutionProvider(_stock, root.Path, new PluginInstaller(handler), registrar, () => true, wsl);
+
+        var result = await provider.EnsureReadyAsync(new EnsureOptions(AllowDownloads: true));
+
+        Assert.Equal([wsl.WheelUrl], handler.Requested);
+        Assert.Equal("previous-build", File.ReadAllText(wsl.LibraryPath(root.Path)));
+        Assert.Equal(wsl.LibraryPath(root.Path), Assert.Single(registrar.Registrations).Path);
+        Assert.NotEqual(ProviderEnsureStatus.Failed, result.Status);
+        Assert.Contains("1.0.0", result.Detail);
+        Assert.Contains("Could not replace", result.Detail);
+        Assert.Contains("2.0.0", result.Detail);
+    }
+
+    [Fact]
+    public async Task StaleWsl2Build_WhenTheUpdateFailsAndItDoesNotLoad_ReportsBothFailures()
+    {
+        using var root = new TempDir();
+        (PluginPackageSpec wsl, _) = PinnedWsl2Build();
+        Vendor(root.Path, _stock);
+        VendorStaleWsl2Build(root.Path, wsl);
+        var registrar = new FakeRegistrar { RegisterThrows = new InvalidOperationException("version `GLIBC_2.43' not found") };
+        var provider = new PluginExecutionProvider(_stock, root.Path, new PluginInstaller(new RoutingHandler(new())), registrar, () => true, wsl);
+
+        var result = await provider.EnsureReadyAsync(new EnsureOptions(AllowDownloads: true));
+
+        Assert.Equal(ProviderEnsureStatus.Failed, result.Status);
+        Assert.Contains("GLIBC_2.43", result.Detail);
+        Assert.Contains("Could not replace", result.Detail);
+    }
+
+    [Fact]
+    public async Task Wsl2BuildNotVendored_WhenTheDownloadFails_StillFails()
+    {
+        // Nothing to fall back to: this must not read as success.
+        using var root = new TempDir();
+        (PluginPackageSpec wsl, _) = PinnedWsl2Build();
+        Vendor(root.Path, _stock);
+        var registrar = new FakeRegistrar();
+        var provider = new PluginExecutionProvider(_stock, root.Path, new PluginInstaller(new RoutingHandler(new())), registrar, () => true, wsl);
+
+        var result = await provider.EnsureReadyAsync(new EnsureOptions(AllowDownloads: true));
+
+        Assert.Equal(ProviderEnsureStatus.Failed, result.Status);
+        Assert.Empty(registrar.Registrations);
+    }
+
+    [Fact]
     public async Task StaleWsl2BuildThatFailsToLoad_PointsAtTheUpdate()
     {
         using var root = new TempDir();

@@ -58,17 +58,17 @@ internal sealed record PluginPackageSpec(
     }
 
     /// <summary>
-    /// Whether the library at <paramref name="libraryPath"/> is the pinned build. A package without a
-    /// <see cref="VersionManifestFile"/> has nothing to compare, so any library counts. With one, the vendored
+    /// Whether the library at <paramref name="libraryPath"/> exists and is the pinned build. A package without
+    /// a <see cref="VersionManifestFile"/> has nothing to compare, so any library counts. With one, the vendored
     /// version must equal <see cref="Version"/>: successive builds share one install directory, and a library
     /// that is merely present may be an earlier build the pin replaced.
     /// </summary>
     public bool IsCurrent(string libraryPath) =>
-        VersionManifestFile is null || string.Equals(VendoredVersion(libraryPath), Version, StringComparison.Ordinal);
+        File.Exists(libraryPath)
+        && (VersionManifestFile is null || string.Equals(VendoredVersion(libraryPath), Version, StringComparison.Ordinal));
 
     /// <summary>Whether the pinned build is vendored under <paramref name="installRoot"/>.</summary>
-    public bool IsVendored(string installRoot) =>
-        File.Exists(LibraryPath(installRoot)) && IsCurrent(LibraryPath(installRoot));
+    public bool IsVendored(string installRoot) => IsCurrent(LibraryPath(installRoot));
 
     public static readonly IReadOnlyList<string> DefaultCandidateRoots =
     [

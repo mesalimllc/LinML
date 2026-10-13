@@ -236,6 +236,53 @@ public class PluginInstallerTests
     }
 
     [Fact]
+    public void Promote_ForcedReplacement_WhenTheStagedMoveFails_PutsTheOldBuildBack()
+    {
+        // An upgrade must never leave a host with neither build: the old directory is only discarded once
+        // the staged one is in place.
+        using var root = new TempDir();
+        string finalDir = Path.Combine(root.Path, "install");
+        Directory.CreateDirectory(finalDir);
+        File.WriteAllText(Path.Combine(finalDir, FakeWheel.Library), "old-build");
+
+        Assert.ThrowsAny<IOException>(() =>
+            PluginInstaller.Promote(Path.Combine(root.Path, "no-such-stage"), finalDir, FakeWheel.Library, force: true));
+
+        Assert.Equal("old-build", File.ReadAllText(Path.Combine(finalDir, FakeWheel.Library)));
+        Assert.Equal([finalDir], Directory.GetDirectories(root.Path));
+    }
+
+    [Fact]
+    public void Promote_ForcedReplacement_LeavesOnlyTheNewBuild()
+    {
+        using var root = new TempDir();
+        string finalDir = Path.Combine(root.Path, "install");
+        string stage = Path.Combine(root.Path, "stage");
+        Directory.CreateDirectory(finalDir);
+        Directory.CreateDirectory(stage);
+        File.WriteAllText(Path.Combine(finalDir, FakeWheel.Library), "old-build");
+        File.WriteAllText(Path.Combine(stage, FakeWheel.Library), "new-build");
+
+        bool promoted = PluginInstaller.Promote(stage, finalDir, FakeWheel.Library, force: true);
+
+        Assert.True(promoted);
+        Assert.Equal("new-build", File.ReadAllText(Path.Combine(finalDir, FakeWheel.Library)));
+        Assert.Equal([finalDir], Directory.GetDirectories(root.Path));
+    }
+
+    [Fact]
+    public void IsCurrent_ALibraryThatIsNotThere_IsNotCurrent_WhateverTheManifestSays()
+    {
+        using var root = new TempDir();
+        PluginPackageSpec pinned = Versioned(FakeWheel.Build(), "2.0.0");
+        Directory.CreateDirectory(pinned.InstallDirectory(root.Path));
+        File.WriteAllText(Path.Combine(pinned.InstallDirectory(root.Path), "build-info.json"), FakeWheel.BuildInfo("2.0.0"));
+
+        Assert.False(pinned.IsCurrent(pinned.LibraryPath(root.Path)));
+        Assert.False(pinned.IsVendored(root.Path));
+    }
+
+    [Fact]
     public void Promote_WhenAnotherInstallerWon_KeepsTheExistingInstall()
     {
         using var root = new TempDir();
