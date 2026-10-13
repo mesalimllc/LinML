@@ -155,13 +155,18 @@ public static class CatalogCommand
                 return 0;
             }
 
+            // An earlier patched WSL2 build is upgraded with the wheel, or this would report success and leave
+            // the old one selected.
+            targets = WithInstalledWsl2Build(
+                targets, installRoot, force, PluginExecutionProvider.IsWsl2() && !PluginExecutionProvider.Wsl2OptedOut());
+
             var installer = new PluginInstaller();
             var results = new List<InstallResultDto>();
             bool allSuccess = true;
 
             foreach (var spec in targets)
             {
-                string shortName = GetShortName(spec.Id);
+                string shortName = ReferenceEquals(spec, KnownPlugins.TensorrtRtxWsl2) ? "trt-rtx-wsl2" : GetShortName(spec.Id);
                 string libraryPath = spec.LibraryPath(installRoot);
                 string installDir = spec.InstallDirectory(installRoot);
 
@@ -288,6 +293,28 @@ public static class CatalogCommand
 
         errorMessage = $"Unknown plugin provider '{providerName}'. Available plugins: openvino, trt-rtx, migraphx, qnn, all.";
         return [];
+    }
+
+    /// <summary>
+    /// <paramref name="targets"/>, plus the patched WSL2 TensorRT-RTX build when the install includes the
+    /// x86_64 <c>trt-rtx</c> wheel, this host selects that build (<paramref name="wsl2Selected"/>), and one is
+    /// already vendored under <paramref name="installRoot"/> and is not the pinned one (or <paramref name="force"/>
+    /// asks for a reinstall). It never installs the build where none is vendored: the catalog fetches it on first
+    /// use, and a fresh install is the caller's choice, as with <c>linml setup --trt-rtx-wsl2</c>.
+    /// </summary>
+    internal static IReadOnlyList<PluginPackageSpec> WithInstalledWsl2Build(
+        IReadOnlyList<PluginPackageSpec> targets,
+        string installRoot,
+        bool force,
+        bool wsl2Selected)
+    {
+        PluginPackageSpec wsl2 = KnownPlugins.TensorrtRtxWsl2;
+        bool installsTheWheel = targets.Any(t => t.Id == wsl2.Id && t.Architecture == "x64");
+        bool vendored = File.Exists(wsl2.LibraryPath(installRoot));
+
+        return wsl2Selected && installsTheWheel && vendored && (force || !wsl2.IsVendored(installRoot))
+            ? [.. targets, wsl2]
+            : targets;
     }
 
     internal static string GetShortName(ProviderId id) => ProviderArgs.GetShortName(id);

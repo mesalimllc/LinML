@@ -152,8 +152,9 @@ not yet verified on aarch64 hardware. The x64 pin is unchanged.
   - **Upgrading.** The patched build records its version in `build-info.json`. An
     install of another version (such as `0.4.0-wsl2p1`) is replaced by the pinned one:
     `EnsureReadyAsync(AllowDownloads: true)`, `linml setup --trt-rtx-wsl2` and
-    `scripts/fetch-ep-plugins.sh trt-rtx-wsl2` all check it (`linml catalog install trt-rtx`
-    installs only the stock wheel). The build needs glibc 2.35 or newer, so on an older
+    `scripts/fetch-ep-plugins.sh trt-rtx-wsl2` all check it, and `linml catalog install trt-rtx`
+    upgrades a patched build that is already vendored (it never installs one where there is
+    none). The build needs glibc 2.35 or newer, so on an older
     WSL2 distro (Ubuntu 20.04) `EnsureReadyAsync` returns `NotAvailable` instead of
     downloading it.
     With downloads disallowed, or if the download fails, the earlier build stays in use.

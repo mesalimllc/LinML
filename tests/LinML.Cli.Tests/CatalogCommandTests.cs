@@ -98,6 +98,91 @@ public class CatalogCommandTests
         }
     }
 
+    // `catalog install` only knows KnownPlugins.All, so on its own it would report success for trt-rtx and leave an
+    // earlier patched WSL2 build (0.4.0-wsl2p1: needs a newer glibc than most hosts have) selected.
+    private static void VendorWsl2Build(string root, string epVersion)
+    {
+        PluginPackageSpec wsl2 = KnownPlugins.TensorrtRtxWsl2;
+        Directory.CreateDirectory(wsl2.InstallDirectory(root));
+        File.WriteAllText(wsl2.LibraryPath(root), "fake-so");
+        File.WriteAllText(Path.Combine(wsl2.InstallDirectory(root), "build-info.json"), $"{{ \"epVersion\": \"{epVersion}\" }}");
+    }
+
+    private static IReadOnlyList<PluginPackageSpec> TrtRtxTargets() =>
+        CatalogCommand.ResolveInstallTargets("trt-rtx", out _, out _);
+
+    [Fact]
+    public void WithInstalledWsl2Build_EarlierBuildVendored_IsUpgradedAlongsideTheWheel()
+    {
+        using var root = new TempDirectory();
+        VendorWsl2Build(root.Path, "0.4.0-wsl2p1");
+
+        var targets = CatalogCommand.WithInstalledWsl2Build(TrtRtxTargets(), root.Path, force: false, wsl2Selected: true);
+
+        Assert.Equal([KnownPlugins.TensorrtRtx.Version, KnownPlugins.TensorrtRtxWsl2.Version], targets.Select(t => t.Version));
+        Assert.Same(KnownPlugins.TensorrtRtxWsl2, targets[^1]);
+    }
+
+    [Fact]
+    public void WithInstalledWsl2Build_AlsoAppliesToTheAllPluginsInstall()
+    {
+        using var root = new TempDirectory();
+        VendorWsl2Build(root.Path, "0.4.0-wsl2p1");
+        var all = CatalogCommand.ResolveInstallTargets("all", out _, out _);
+
+        var targets = CatalogCommand.WithInstalledWsl2Build(all, root.Path, force: false, wsl2Selected: true);
+
+        Assert.Equal(all.Count + 1, targets.Count);
+        Assert.Contains(KnownPlugins.TensorrtRtxWsl2, targets);
+    }
+
+    [Fact]
+    public void WithInstalledWsl2Build_CurrentBuild_IsLeftAlone_UnlessForced()
+    {
+        using var root = new TempDirectory();
+        VendorWsl2Build(root.Path, KnownPlugins.TensorrtRtxWsl2.Version);
+
+        Assert.DoesNotContain(KnownPlugins.TensorrtRtxWsl2,
+            CatalogCommand.WithInstalledWsl2Build(TrtRtxTargets(), root.Path, force: false, wsl2Selected: true));
+        Assert.Contains(KnownPlugins.TensorrtRtxWsl2,
+            CatalogCommand.WithInstalledWsl2Build(TrtRtxTargets(), root.Path, force: true, wsl2Selected: true));
+    }
+
+    [Fact]
+    public void WithInstalledWsl2Build_NothingVendored_DoesNotInstallItFresh()
+    {
+        using var root = new TempDirectory();
+
+        var targets = CatalogCommand.WithInstalledWsl2Build(TrtRtxTargets(), root.Path, force: false, wsl2Selected: true);
+
+        Assert.DoesNotContain(KnownPlugins.TensorrtRtxWsl2, targets);
+        Assert.Equal(TrtRtxTargets().Count, targets.Count);
+    }
+
+    [Fact]
+    public void WithInstalledWsl2Build_NotSelectedOnThisHost_ChangesNothing()
+    {
+        using var root = new TempDirectory();
+        VendorWsl2Build(root.Path, "0.4.0-wsl2p1");
+
+        var targets = CatalogCommand.WithInstalledWsl2Build(TrtRtxTargets(), root.Path, force: false, wsl2Selected: false);
+
+        Assert.DoesNotContain(KnownPlugins.TensorrtRtxWsl2, targets);
+    }
+
+    [Fact]
+    public void WithInstalledWsl2Build_OtherPluginsOnly_ChangesNothing()
+    {
+        using var root = new TempDirectory();
+        VendorWsl2Build(root.Path, "0.4.0-wsl2p1");
+        var openvino = CatalogCommand.ResolveInstallTargets("openvino", out _, out _);
+
+        var targets = CatalogCommand.WithInstalledWsl2Build(openvino, root.Path, force: false, wsl2Selected: true);
+
+        Assert.Equal(openvino.Count, targets.Count);
+        Assert.DoesNotContain(KnownPlugins.TensorrtRtxWsl2, targets);
+    }
+
     [Fact]
     public void ResolveInstallTargets_MapsAliasesCorrectly()
     {
@@ -178,5 +263,27 @@ public class CatalogCommandTests
 
         Assert.Equal(1, exitCode);
         Assert.Contains("available for linux-arm64 only", stderr, StringComparison.Ordinal);
+    }
+
+    private sealed class TempDirectory : IDisposable
+    {
+        public TempDirectory()
+        {
+            Path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "linml-cli-catalog-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(Path);
+        }
+
+        public string Path { get; }
+
+        public void Dispose()
+        {
+            try
+            {
+                Directory.Delete(Path, recursive: true);
+            }
+            catch (IOException)
+            {
+            }
+        }
     }
 }
