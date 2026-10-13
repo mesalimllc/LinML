@@ -23,6 +23,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="..\fixtures\model.onnx" CopyToOutputDirectory="PreserveNewest" Link="fixtures\model.onnx" />
     <None Include="..\fixtures\real\**\*" CopyToOutputDirectory="PreserveNewest" Link="fixtures\real\%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
 

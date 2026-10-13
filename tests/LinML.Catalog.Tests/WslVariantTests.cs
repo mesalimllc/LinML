@@ -185,6 +185,25 @@ public class WslEnsureReadyTests : IDisposable
     }
 
     [Fact]
+    public async Task Wsl2BuildRegistersButExposesNoDevices_ReportsNoDevices_WithoutStockFallback()
+    {
+        using var root = new TempDir();
+        Vendor(root.Path, _stock);
+        Vendor(root.Path, _wsl);
+        var registrar = new FakeRegistrar(); // GetDevices() stays empty
+        var handler = Handler();
+
+        var result = await Provider(root.Path, handler, registrar).EnsureReadyAsync(new EnsureOptions(AllowDownloads: true));
+
+        Assert.Equal(ProviderEnsureStatus.NoDevices, result.Status);
+        Assert.Contains("/dev/dxg", result.Detail);
+        Assert.Contains("nvidia-smi", result.Detail);
+        Assert.Empty(handler.Requested);
+        Assert.Equal(_wsl.LibraryPath(root.Path), Assert.Single(registrar.Registrations).Path);
+        Assert.DoesNotContain(registrar.Registrations, r => r.Path == _stock.LibraryPath(root.Path));
+    }
+
+    [Fact]
     public async Task StockVendoredOnly_DownloadsOnlyTheWsl2Build_NeverRegistersStock()
     {
         using var root = new TempDir();
