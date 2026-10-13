@@ -504,6 +504,12 @@ public static class SetupCommand
         {
             foreach (var plugin in KnownPlugins.All)
             {
+                // Built for another architecture: it cannot run here, so it is reported as skipped instead.
+                if (ArchitectureNote(plugin, hardware.Cpu.Architecture) is not null)
+                {
+                    continue;
+                }
+
                 string shortName = ProviderArgs.GetShortName(plugin.Id);
                 list.Add(new ProviderRecommendation(
                     Spec: plugin,
@@ -574,6 +580,15 @@ public static class SetupCommand
 
         return list;
     }
+
+    /// <summary>
+    /// Why a plugin cannot run on a host of <paramref name="hostArchitecture"/> (<c>x64</c> or <c>arm64</c>),
+    /// or null when its architecture matches. The wording fits "{plugin}: ..." in the command output.
+    /// </summary>
+    internal static string? ArchitectureNote(PluginPackageSpec spec, string hostArchitecture) =>
+        string.Equals(spec.Architecture, hostArchitecture, StringComparison.OrdinalIgnoreCase)
+            ? null
+            : $"available for linux-{spec.Architecture} only; this host is {hostArchitecture}, so it will not run here.";
 
     /// <summary>
     /// Why a plugin will not run on this host, or null when no hardware gap is known.
@@ -673,6 +688,17 @@ public static class SetupCommand
     internal static List<string> DescribeSkippedRecommendations(HostHardwareInfo hardware, bool all, bool trtRtxWsl2 = false)
     {
         var skipped = new List<string>();
+        if (all)
+        {
+            foreach (var plugin in KnownPlugins.All)
+            {
+                if (ArchitectureNote(plugin, hardware.Cpu.Architecture) is { } note)
+                {
+                    skipped.Add($"{ProviderArgs.GetShortName(plugin.Id)}: {note}");
+                }
+            }
+        }
+
         bool isLinuxX64 = OperatingSystem.IsLinux()
             && string.Equals(hardware.Cpu.Architecture, "x64", StringComparison.OrdinalIgnoreCase);
         if (!all && isLinuxX64 && !HasIntelHardware(hardware))

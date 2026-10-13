@@ -1,4 +1,5 @@
 using LinML.Catalog;
+using System.Runtime.InteropServices;
 using LinML.Contracts;
 using Microsoft.ML.OnnxRuntime;
 
@@ -31,6 +32,12 @@ public static class ProviderListing
             return $"Provider '{provider}' is not listed by the ORT runtime (not built into this ONNX Runtime, or no device is available).";
         }
 
+        // A plugin built for another architecture is not something to install here.
+        if (!PluginExecutionProvider.SupportsHost(plugin.Architecture, OperatingSystem.IsLinux(), RuntimeInformation.ProcessArchitecture))
+        {
+            return $"Provider '{provider}' is available for linux-{plugin.Architecture} only; this host is {RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant()}, so it will not run here.";
+        }
+
         // Matched by library file name: a library can be registered under an alias key
         // (e.g. --ep-library trt-rtx=...), not only under the plugin's registration name.
         string file = plugin.LibraryFileName;
@@ -53,6 +60,7 @@ public static class ProviderListing
         "NvTensorRTRTXExecutionProvider" => "trt-rtx",
         "OpenVINOExecutionProvider" => "openvino",
         "MIGraphXExecutionProvider" => "migraphx",
+        "QNNExecutionProvider" => "qnn",
         _ => provider.Value,
     };
 }

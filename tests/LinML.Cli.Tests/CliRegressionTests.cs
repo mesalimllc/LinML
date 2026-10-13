@@ -281,7 +281,9 @@ public class CliRegressionTests
             var migraphx = doc.RootElement.GetProperty("catalog").EnumerateArray()
                 .Single(c => c.GetProperty("id").GetString() == "migraphx");
             Assert.Equal("NotApplicable", migraphx.GetProperty("status").GetString());
-            Assert.Contains("ROCm", migraphx.GetProperty("details").GetString(), StringComparison.Ordinal);
+            // On linux-x64 the reason is the missing ROCm; on any other host MIGraphX is not built for it at all.
+            string expected = CliTestHost.IsLinuxX64Host ? "ROCm" : "linux-x64";
+            Assert.Contains(expected, migraphx.GetProperty("details").GetString(), StringComparison.Ordinal);
         }
         finally
         {
