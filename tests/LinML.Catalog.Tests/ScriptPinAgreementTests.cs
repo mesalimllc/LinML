@@ -232,4 +232,15 @@ public partial class ScriptPinAgreementTests
         // The stock wheel and the other plugins carry no such manifest; theirs is a plain presence check.
         Assert.All(KnownPlugins.All, p => Assert.Null(p.VersionManifestFile));
     }
+
+    [Fact]
+    public void Wsl2TrtRtxVariant_MinimumGlibcIsTheFloorTheBuildGateEnforces()
+    {
+        // The catalog refuses a host older than the build is allowed to need, so the two must name one number.
+        string gate = File.ReadAllText(Path.Combine(RepoRoot(), "scripts", "check-elf-floor.sh"));
+        Match floor = Regex.Match(gate, @"MAX_GLIBC=""\$\{MAX_GLIBC:-(?<v>[0-9.]+)\}""");
+
+        Assert.True(floor.Success, "scripts/check-elf-floor.sh has no MAX_GLIBC default.");
+        Assert.Equal(Version.Parse(floor.Groups["v"].Value), KnownPlugins.TensorrtRtxWsl2.MinimumGlibc);
+    }
 }

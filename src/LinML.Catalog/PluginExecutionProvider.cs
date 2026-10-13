@@ -413,15 +413,18 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
 
     // The wheel's glibc floor is a runtime requirement, separate from the architecture
     // check above, so an arm64 host on an older distribution is reported, not downloaded.
+    // It is the floor of the build that will load: the patched WSL2 build is built against a
+    // newer glibc than the stock wheel, so that is the one checked when it is selected.
     private string? GlibcReason()
     {
-        if (GlibcSatisfies(_spec.MinimumGlibc, HostGlibc))
+        PluginPackageSpec spec = SelectVariant() == Variant.Wsl2 ? _wsl2Spec : _spec;
+        if (GlibcSatisfies(spec.MinimumGlibc, HostGlibc))
         {
             return null;
         }
 
         string host = HostGlibc is null ? "no glibc (not a glibc system)" : $"glibc {HostGlibc}";
-        return $"{Id} plugin {_spec.Version} needs glibc {_spec.MinimumGlibc} or newer; this host has {host}.";
+        return $"{Id} plugin {spec.Version} needs glibc {spec.MinimumGlibc} or newer; this host has {host}.";
     }
 
     [DllImport("libc", EntryPoint = "gnu_get_libc_version")]

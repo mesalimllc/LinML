@@ -422,6 +422,45 @@ public class WslEnsureReadyTests : IDisposable
         Assert.Empty(registrar.Registrations);
     }
 
+    // The patched build is built against glibc 2.35, newer than the stock wheel's manylinux_2_28, so a WSL2 distro
+    // between the two (Ubuntu 20.04) loads the wheel but not this. It must be reported before anything is downloaded.
+    [Fact]
+    public async Task Wsl2BuildNeedsANewerGlibcThanTheHostHas_IsNotAvailable_WithoutDownloading()
+    {
+        using var root = new TempDir();
+        PluginPackageSpec wsl = _wsl with { MinimumGlibc = new Version(99, 0) };
+        var handler = Handler();
+        var registrar = new FakeRegistrar();
+        var provider = new PluginExecutionProvider(_stock, root.Path, new PluginInstaller(handler), registrar, () => true, wsl);
+
+        var result = await provider.EnsureReadyAsync(new EnsureOptions(AllowDownloads: true));
+
+        Assert.Equal(ProviderEnsureStatus.NotAvailable, result.Status);
+        Assert.Contains("glibc 99.0", result.Detail);
+        Assert.Contains(wsl.Version, result.Detail);
+        Assert.Empty(handler.Requested);
+        Assert.Empty(registrar.Registrations);
+        Assert.False(provider.TryRegister(out string? reason));
+        Assert.Contains("glibc 99.0", reason);
+        Assert.Equal(ProviderReadyState.Unsupported, provider.ReadyState);
+    }
+
+    [Fact]
+    public async Task Wsl2BuildGlibcMinimum_DoesNotApply_WhenTheStockWheelIsSelected()
+    {
+        _env["LINML_TRT_RTX_WSL2"] = "0";
+        using var root = new TempDir();
+        PluginPackageSpec wsl = _wsl with { MinimumGlibc = new Version(99, 0) };
+        var handler = Handler();
+        var registrar = new FakeRegistrar();
+        var provider = new PluginExecutionProvider(_stock, root.Path, new PluginInstaller(handler), registrar, () => true, wsl);
+
+        await provider.EnsureReadyAsync(new EnsureOptions(AllowDownloads: true));
+
+        Assert.Equal([_stock.WheelUrl], handler.Requested);
+        Assert.Equal(_stock.LibraryPath(root.Path), Assert.Single(registrar.Registrations).Path);
+    }
+
     [Fact]
     public async Task Wsl1_NoDxg_UsesStockAndNeverDownloadsTheWsl2Build()
     {

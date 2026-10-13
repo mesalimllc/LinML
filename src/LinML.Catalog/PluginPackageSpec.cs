@@ -220,6 +220,9 @@ internal static class KnownPlugins
         InstallSubdirectory: Path.Combine("ep-plugins", "trt-rtx-wsl2", "linml_trt_rtx_ep"),
         LibraryFileName: "libonnxruntime_providers_nv_tensorrt_rtx.so",
         MinimumOrtVersion: new Version(1, 24, 0),
+        // The floor scripts/check-elf-floor.sh holds the build to: above the stock wheel's manylinux_2_28, so
+        // an older WSL2 distro (Ubuntu 20.04) loads the wheel but not this.
+        MinimumGlibc: new Version(2, 35),
         VersionManifestFile: "build-info.json");
 
     // Qualcomm QNN plugin EP (onnxruntime/onnxruntime-qnn v2.6.0), Linux aarch64
