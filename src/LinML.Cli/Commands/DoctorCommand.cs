@@ -119,19 +119,32 @@ public static class DoctorCommand
                     var spec = KnownPlugins.All.FirstOrDefault(k => k.Id == p.Id);
                     var libPath = p.LibraryPath ?? (spec is not null ? spec.FindLibrary(root) : null);
 
-                    if (libPath is null || !File.Exists(libPath))
+                    // A plugin whose hardware this host lacks is not applicable whether or not its library is
+                    // installed: installing it or registering it cannot make it run here, so no install hint.
+                    string? gap = SetupCommand.MigraphXHardwareNote(p.Id, amdRocm);
+                    if (gap is not null)
                     {
-                        // A plugin whose hardware this host lacks gets no install hint: installing it cannot help.
-                        string? gap = SetupCommand.MigraphXHardwareNote(p.Id, amdRocm);
                         catalogReports.Add(new CatalogDoctorReport(
                             Id: shortId,
                             Name: p.Id.Value,
                             Source: "plugin",
                             Version: p.PinnedVersion,
-                            Status: gap is null ? "NotPresent" : "NotApplicable",
+                            Status: "NotApplicable",
+                            LibraryPath: libPath,
+                            Details: gap,
+                            Hint: null));
+                    }
+                    else if (libPath is null || !File.Exists(libPath))
+                    {
+                        catalogReports.Add(new CatalogDoctorReport(
+                            Id: shortId,
+                            Name: p.Id.Value,
+                            Source: "plugin",
+                            Version: p.PinnedVersion,
+                            Status: "NotPresent",
                             LibraryPath: null,
-                            Details: gap ?? "(not installed)",
-                            Hint: gap is null ? $"Run 'linml catalog install {shortId}' to vendor missing libraries." : null));
+                            Details: "(not installed)",
+                            Hint: $"Run 'linml catalog install {shortId}' to vendor missing libraries."));
                     }
                     else
                     {

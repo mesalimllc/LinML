@@ -1,4 +1,5 @@
 using System.Text.Json;
+using LinML.Cli.Commands;
 using LinML.Contracts;
 using Xunit;
 
@@ -231,6 +232,58 @@ public class CliRegressionTests
         };
 
         Assert.True(result.FallbackOccurred);
+    }
+
+    [Fact]
+    public async Task CatalogList_CustomRootWithoutLibrary_ReportsPluginNotPresent()
+    {
+        // Nothing is vendored under this root, so trt-rtx is not installed here, whatever any other registration exposes.
+        string root = Path.Combine(Path.GetTempPath(), "linml-empty-root-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var (exitCode, stdout, _) = await Task.Run(() => CliTestHost.Run("catalog", "list", "--root", root, "--json"));
+
+            Assert.Equal(0, exitCode);
+            using var doc = JsonDocument.Parse(stdout);
+            var trt = doc.RootElement.EnumerateArray().Single(e => e.GetProperty("id").GetString() == "trt-rtx");
+            Assert.Equal("NotPresent", trt.GetProperty("status").GetString());
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Doctor_InstalledMigraphxWithoutRocm_IsNotApplicable()
+    {
+        // On an AMD host with ROCm the plugin does apply, so the check is for hosts without it.
+        if (SetupCommand.ProbeAmdRocm())
+        {
+            return;
+        }
+
+        string root = Path.Combine(Path.GetTempPath(), "linml-migraphx-root-" + Guid.NewGuid().ToString("N"));
+        // Installed, at the path PluginPackageSpec.LibraryPath gives for MIGraphX.
+        string library = Path.Combine(root, "ep-plugins", "migraphx", "linml_migraphx_ep", "libmigraphx-ep.so");
+        Directory.CreateDirectory(Path.GetDirectoryName(library)!);
+        File.WriteAllText(library, "installed, but this host cannot run it");
+        try
+        {
+            var (exitCode, stdout, _) = await Task.Run(() => CliTestHost.Run("doctor", "--root", root, "--json"));
+
+            Assert.Equal(0, exitCode);
+            using var doc = JsonDocument.Parse(stdout);
+            var migraphx = doc.RootElement.GetProperty("catalog").EnumerateArray()
+                .Single(c => c.GetProperty("id").GetString() == "migraphx");
+            Assert.Equal("NotApplicable", migraphx.GetProperty("status").GetString());
+            Assert.Contains("ROCm", migraphx.GetProperty("details").GetString(), StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
     }
 
     private static HashSet<string> Names(JsonElement array) =>

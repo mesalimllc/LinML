@@ -64,11 +64,25 @@ internal static class InferencePipeline
 
         var report = discovery.Discover();
         var candidates = fallbackPolicy.BuildCandidateList(request, report.AvailableProviders);
+
+        // A plugin that is not visible says why (failed to load, not loaded, ...), so the
+        // selection failure and fallback messages carry the real reason, not just "not available".
+        var unavailableReasons = new Dictionary<ProviderId, string>();
+        foreach (var candidate in candidates)
+        {
+            if (!report.AvailableProviders.Contains(candidate)
+                && KnownPlugins.All.Any(p => p.Id == candidate))
+            {
+                unavailableReasons[candidate] = ProviderListing.NotListedReason(candidate);
+            }
+        }
+
         var decision = selector.Select(new SelectionRequest
         {
             Candidates = candidates,
             RequireFirst = requireProvider,
-            Model = model
+            Model = model,
+            UnavailableReasons = unavailableReasons
         });
 
         return new SelectionOutcome(decision, candidates);

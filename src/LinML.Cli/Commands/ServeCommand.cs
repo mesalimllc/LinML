@@ -171,6 +171,10 @@ public static class ServeCommand
                         {
                             server.Start();
                             Console.Error.WriteLine($"Serving HTTP: {selectedProvider} listening on {server.Url}");
+                            if (server.LocalhostDropped)
+                            {
+                                Console.Error.WriteLine("Note: http://localhost could not be bound on this host; use the address above.");
+                            }
                             Console.Error.WriteLine("Endpoints: GET /health, POST /v1/models/predict, POST /shutdown");
 
                             await server.WaitForShutdownAsync();
