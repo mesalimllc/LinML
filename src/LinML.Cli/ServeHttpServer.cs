@@ -25,7 +25,9 @@ internal sealed class ServeHttpServer : IAsyncDisposable, IDisposable
     private readonly IReadOnlyDictionary<string, string> _epOptions;
     private readonly IReadOnlyDictionary<string, string> _epLibraries;
 
-    private readonly HttpListener _listener;
+    private HttpListener _listener;
+    private readonly string _primaryPrefix;
+    private readonly string? _localhostPrefix;
     private readonly SemaphoreSlim _sessionLock = new(1, 1);
     private readonly TaskCompletionSource _shutdownTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource _allRequestsDrained = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -42,6 +44,12 @@ internal sealed class ServeHttpServer : IAsyncDisposable, IDisposable
     public int Port { get; }
     public string Url { get; }
     public bool IsListening => _listener.IsListening;
+
+    /// <summary>
+    /// True when the extra http://localhost prefix could not be bound at start and was dropped, so only the
+    /// primary address serves. Requests by the 127.0.0.1 address still work.
+    /// </summary>
+    public bool LocalhostDropped { get; private set; }
 
     public ServeHttpServer(
         ServiceProvider services,
@@ -71,7 +79,6 @@ internal sealed class ServeHttpServer : IAsyncDisposable, IDisposable
         Host = string.IsNullOrWhiteSpace(host) ? "127.0.0.1" : host;
         Port = port;
 
-        _listener = new HttpListener();
         string prefixHost;
         if (Host is "0.0.0.0" or "*" or "+")
         {
@@ -88,12 +95,43 @@ internal sealed class ServeHttpServer : IAsyncDisposable, IDisposable
 
         string urlHost = prefixHost == "*" ? "127.0.0.1" : prefixHost;
         Url = $"http://{urlHost}:{Port}/";
-        _listener.Prefixes.Add($"http://{prefixHost}:{Port}/");
+        _primaryPrefix = $"http://{prefixHost}:{Port}/";
+
+        // HttpListener routes by the Host header, so a request to http://localhost:<port> is rejected
+        // unless localhost is a registered prefix too. Only the 127.0.0.1 host needs this extra prefix.
+        _localhostPrefix = Host == "127.0.0.1" ? $"http://localhost:{Port}/" : null;
+
+        _listener = CreateListener(includeLocalhost: _localhostPrefix is not null);
+    }
+
+    private HttpListener CreateListener(bool includeLocalhost)
+    {
+        var listener = new HttpListener();
+        listener.Prefixes.Add(_primaryPrefix);
+        if (includeLocalhost && _localhostPrefix is not null)
+        {
+            listener.Prefixes.Add(_localhostPrefix);
+        }
+
+        return listener;
     }
 
     public void Start()
     {
-        _listener.Start();
+        try
+        {
+            _listener.Start();
+        }
+        catch (HttpListenerException) when (_localhostPrefix is not null)
+        {
+            // localhost can resolve to a second address (often ::1) that this host cannot bind, or that another
+            // process already holds. Serve the primary address alone; fail only if that address fails too.
+            _listener.Close();
+            _listener = CreateListener(includeLocalhost: false);
+            LocalhostDropped = true;
+            _listener.Start();
+        }
+
         _listenerLoopTask = Task.Run(() => AcceptLoopAsync(_serverCts.Token));
     }
 
@@ -235,7 +273,7 @@ internal sealed class ServeHttpServer : IAsyncDisposable, IDisposable
                     status = isHealthy ? "healthy" : "unhealthy",
                     processId = Environment.ProcessId,
                     model = _modelIdentity,
-                    requestedProvider = _preferredProvider?.ToString() ?? "cpu",
+                    requestedProvider = _preferredProvider?.ToString(),
                     selectedProvider = _selectedProvider.ToString(),
                     fallbackChain = _fallbackChain.Select(f => f.Provider.ToString()).ToList(),
                     runtimeVersion = OnnxRuntimeDiagnostics.GetRuntimeVersion()
@@ -360,7 +398,7 @@ internal sealed class ServeHttpServer : IAsyncDisposable, IDisposable
 
                     result = new InferenceResult
                     {
-                        RequestedProvider = _preferredProvider ?? ProviderId.Cpu,
+                        RequestedProvider = _preferredProvider,
                         SelectedProvider = _selectedProvider,
                         FallbackChain = _fallbackChain,
                         Outputs = outputs,

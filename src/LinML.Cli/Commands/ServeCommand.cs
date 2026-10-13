@@ -171,6 +171,10 @@ public static class ServeCommand
                         {
                             server.Start();
                             Console.Error.WriteLine($"Serving HTTP: {selectedProvider} listening on {server.Url}");
+                            if (server.LocalhostDropped)
+                            {
+                                Console.Error.WriteLine("Note: http://localhost could not be bound on this host; use the address above.");
+                            }
                             Console.Error.WriteLine("Endpoints: GET /health, POST /v1/models/predict, POST /shutdown");
 
                             await server.WaitForShutdownAsync();
@@ -183,7 +187,7 @@ public static class ServeCommand
                         }
                     }
 
-                    Console.Error.WriteLine($"Serving: {selectedProvider} (requested: {preferredProvider?.ToString() ?? "cpu"}). Awaiting requests on stdin.");
+                    Console.Error.WriteLine($"Serving: {selectedProvider} (requested: {preferredProvider?.ToString() ?? "auto"}). Awaiting requests on stdin.");
 
                     string? line;
                     while ((line = await Console.In.ReadLineAsync()) is not null)
@@ -231,7 +235,7 @@ public static class ServeCommand
 
                             var result = new InferenceResult
                             {
-                                RequestedProvider = preferredProvider ?? ProviderId.Cpu,
+                                RequestedProvider = preferredProvider,
                                 SelectedProvider = selectedProvider,
                                 FallbackChain = fallbackChain,
                                 Outputs = outputs,

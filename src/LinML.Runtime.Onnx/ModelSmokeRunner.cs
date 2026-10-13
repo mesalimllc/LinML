@@ -42,13 +42,15 @@ public sealed class ModelSmokeRunner
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var available = OrtEnv.Instance().GetAvailableProviders();
+            // Same listing rule as the readiness probe: plugin EPs appear as EP devices,
+            // not in GetAvailableProviders, so checking only the latter would reject them.
+            var listed = ProviderListing.IsListed(provider);
             durations[ReadinessPhase.Load] = DateTime.UtcNow - loadStart;
 
-            if (!available.Contains(provider.Value))
+            if (!listed)
             {
                 return Fail(provider, phaseResults, durations, ReadinessPhase.Load,
-                    $"Provider '{provider}' is not listed by the ORT runtime.");
+                    ProviderListing.NotListedReason(provider));
             }
             phaseResults.Add(new ReadinessPhaseResult { Phase = ReadinessPhase.Load, Success = true });
         }

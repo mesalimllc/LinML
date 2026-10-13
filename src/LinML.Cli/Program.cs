@@ -48,7 +48,24 @@ public static class Program
 
         // Version is built-in via RootCommand (--version)
 
-        return rootCommand.Parse(args).Invoke();
+        var parseResult = rootCommand.Parse(args);
+        if (parseResult.Errors.Count > 0 && !IsInformationalInvocation(args))
+        {
+            // A usage error gets its message and the documented invalid-arguments exit code (2),
+            // not the parser's full help dump.
+            // "Required command" is a consequence when another error (e.g. an unknown command) already explains the failure.
+            var errors = parseResult.Errors.Count > 1
+                ? parseResult.Errors.Where(e => !e.Message.StartsWith("Required command was not provided", StringComparison.Ordinal))
+                : parseResult.Errors;
+            foreach (var error in errors)
+            {
+                Console.Error.WriteLine($"Error: {error.Message}");
+            }
+            Console.Error.WriteLine("Run 'linml --help' or 'linml <command> --help' for usage.");
+            return 2;
+        }
+
+        return parseResult.Invoke();
     }
 
     /// <summary>The value of <c>--root</c> / <c>--root=</c> if present (the catalog install root).</summary>

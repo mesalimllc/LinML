@@ -51,7 +51,9 @@ public sealed class ProviderSelector
             // Check if provider is even visible in the runtime
             if (!availableProviders.Contains(candidate))
             {
-                var reason = $"Provider '{candidate}' is not available in the runtime.";
+                var reason = request.UnavailableReasons.TryGetValue(candidate, out var known)
+                    ? known
+                    : $"Provider '{candidate}' is not available in the runtime.";
                 _logger.LogWarning("Provider {Provider} rejected: {Reason}", candidate, reason);
                 rejected.Add(new RejectedCandidate { Provider = candidate, Reason = reason });
 

@@ -60,8 +60,8 @@ public sealed class FallbackPolicy
 
     /// <summary>
     /// Build an ordered candidate list from the providers the runtime actually
-    /// lists: preferred provider first (if available), then remaining available
-    /// providers in preference-rank order, CPU last.
+    /// lists. With an explicit preference: the preferred provider, then CPU. With
+    /// none: the available providers in preference-rank order, CPU last.
     /// </summary>
     public IReadOnlyList<ProviderId> BuildCandidateList(
         InferenceRequest request,
@@ -73,14 +73,20 @@ public sealed class FallbackPolicy
         var available = new HashSet<ProviderId>(availableProviders);
         var candidates = new List<ProviderId>();
 
-        // Preferred provider first (even if not listed — selection will reject
-        // it honestly and record why).
-        if (request.PreferredProvider is not null && !candidates.Contains(request.PreferredProvider))
+        // An explicit --provider falls back to CPU, never to another accelerator, so a
+        // failed request is predictable. The preferred provider goes first even if not
+        // listed; selection rejects it honestly and records why.
+        if (request.PreferredProvider is not null)
         {
             candidates.Add(request.PreferredProvider);
+            if (request.PreferredProvider != ProviderId.Cpu)
+            {
+                candidates.Add(ProviderId.Cpu);
+            }
+            return candidates;
         }
 
-        // Remaining available providers in preference-rank order.
+        // Auto (no preference): available providers in preference-rank order.
         foreach (var provider in available
                      .Where(p => !candidates.Contains(p))
                      .OrderBy(PreferenceRank))

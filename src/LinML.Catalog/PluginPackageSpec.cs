@@ -148,6 +148,25 @@ internal static class KnownPlugins
         LibraryFileName: "libonnxruntime_providers_nv_tensorrt_rtx.so",
         MinimumOrtVersion: new Version(1, 24, 0));
 
+    // Qualcomm QNN plugin EP (onnxruntime/onnxruntime-qnn v2.6.0), Linux aarch64
+    // inference package. The tarball is flat: the EP plugin .so plus the bundled
+    // QAIRT 2.50.40 runtime (libQnnHtp.so, HTP stubs/skels). The EP resolves its
+    // bundled libraries via RUNPATH $ORIGIN. The linux-x64 tarball is AOT
+    // compilation only and cannot run inference, so this pin is aarch64-only and
+    // deliberately NOT in All: PluginExecutionProvider only supports linux-x64
+    // hosts today. Unverified on hardware (no Snapdragon NPU available). Same
+    // pin, URL and digest as fetch_qnn in scripts/fetch-ep-plugins.sh.
+    public static readonly PluginPackageSpec Qnn = new(
+        Id: ProviderId.Qnn,
+        RegistrationName: "QNNExecutionProvider",
+        Version: "2.6.0",
+        WheelUrl: new Uri("https://github.com/onnxruntime/onnxruntime-qnn/releases/download/v2.6.0/onnxruntime-qnn-2.6.0-linux-aarch64.tgz"),
+        WheelSha256: "c61507ec7f9fa0eb2c0c1cefe5a0e8bdf48f185504de224917b23a389f362b38",
+        PackagePrefix: "",
+        InstallSubdirectory: Path.Combine("ep-plugins", "qnn", "onnxruntime_qnn"),
+        LibraryFileName: "libonnxruntime_providers_qnn.so",
+        MinimumOrtVersion: new Version(1, 24, 1));
+
     public static IReadOnlyList<PluginPackageSpec> All { get; } = [OpenVino, TensorrtRtx, MigraphX];
 
     /// <summary>

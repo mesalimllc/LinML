@@ -135,3 +135,15 @@ if [ -f "$MIGRAPHX_EP" ]; then
     export LINML_EP_LIBRARIES
 fi
 
+
+# Convenience: default plugin EP library registration for Qualcomm QNN
+# (vendored by scripts/fetch-ep-plugins.sh qnn, linux-aarch64 only). The plugin
+# resolves its bundled QAIRT runtime via RUNPATH $ORIGIN.
+QNN_EP="$DEPS/ep-plugins/qnn/onnxruntime_qnn/libonnxruntime_providers_qnn.so"
+if [ -f "$QNN_EP" ]; then
+    case ";${LINML_EP_LIBRARIES:-};" in
+        *";QNNExecutionProvider="*|*";qnn="*) ;;
+        *) LINML_EP_LIBRARIES="QNNExecutionProvider=$QNN_EP${LINML_EP_LIBRARIES:+;$LINML_EP_LIBRARIES}" ;;
+    esac
+    export LINML_EP_LIBRARIES
+fi

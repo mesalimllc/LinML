@@ -77,7 +77,7 @@ Returned by `linml doctor --json`.
 
 ## InferenceResult
 
-Returned by `linml run --json`.
+Returned by `linml run --json`. `requestedProvider` is `null` when no `--provider` was given (auto selection, best available); `fallbackOccurred` is then always `false`.
 
 ```json
 {

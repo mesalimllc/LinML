@@ -84,6 +84,28 @@ public class ProviderArgsTests
     }
 
     [Fact]
+    public void ResolveEpLibraries_SkipMalformed_KeepsValidEnvEntries()
+    {
+        const string envVar = ProviderArgs.EpLibrariesEnvVar;
+        var original = Environment.GetEnvironmentVariable(envVar);
+        try
+        {
+            Environment.SetEnvironmentVariable(envVar, "not-a-mapping;fromenv=/libs/env.so");
+
+            // Catalog registration tolerates a malformed entry so one bad mapping cannot hide the others.
+            var tolerant = ProviderArgs.ResolveEpLibraries([], skipMalformed: true);
+            Assert.Equal("/libs/env.so", tolerant["fromenv"]);
+
+            // The run path still reports it.
+            Assert.Throws<ArgumentException>(() => ProviderArgs.ResolveEpLibraries([]));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(envVar, original);
+        }
+    }
+
+    [Fact]
     public void ParseEpLibraries_BadFormat_Throws()
     {
         Assert.Throws<ArgumentException>(() => ProviderArgs.ParseEpLibraries(["no-equals-sign"]));

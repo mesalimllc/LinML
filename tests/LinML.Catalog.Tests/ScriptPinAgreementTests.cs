@@ -121,6 +121,25 @@ public partial class ScriptPinAgreementTests
     }
 
     [Fact]
+    public void QnnPlugin_MatchesTheFetchScriptPin_AndTheEnvScript()
+    {
+        // QNN is aarch64-only and not in KnownPlugins.All, so the loops above skip it.
+        PluginPackageSpec spec = KnownPlugins.Qnn;
+
+        ScriptPin? pin = ReadFetchScriptPins().SingleOrDefault(p => p.Function == "fetch_qnn");
+
+        Assert.True(pin is not null, "scripts/fetch-ep-plugins.sh has no fetch_qnn.");
+        Assert.Equal(spec.WheelUrl.ToString(), pin.Url);
+        Assert.Equal(spec.WheelSha256, pin.Sha256);
+        Assert.Equal(spec.InstallSubdirectory.Replace('\\', '/'), pin.InstallSubdirectory);
+
+        string env = File.ReadAllText(Path.Combine(RepoRoot(), "scripts", "env-gpu-deps.sh"));
+        string expected = "$DEPS/" + Path.Combine(spec.InstallSubdirectory, spec.LibraryFileName).Replace('\\', '/');
+        Assert.Contains($"QNN_EP=\"{expected}\"", env, StringComparison.Ordinal);
+        Assert.Contains($"{spec.RegistrationName}=$QNN_EP", env, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Wsl2TrtRtxVariant_MatchesTheFetchScriptPin()
     {
         // The opt-in WSL2 build is not in KnownPlugins.All (it is a drop-in for

@@ -2,6 +2,20 @@
 
 All notable changes to LinML are documented here. This project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- **Provider labels.** With no `--provider`, `run`, `serve` and `--profile` reported `requested: cpu` while running the best available provider. They now report `requested: auto`, and `requestedProvider` is `null` in JSON. Auto selection never counts as a fallback.
+- **Explicit requests fall back to CPU.** A failed `--provider X` now falls back to CPU, not to another accelerator such as TensorRT.
+- **`providers list` matches `doctor`.** Catalog plugins are registered before discovery, so trt-rtx and OpenVINO appear. A plugin registered with no EP devices is marked as such. `providers list` also gained `--root`.
+- **`catalog list` status.** Plugin status is read after the resolvable plugins are registered, so a working trt-rtx reads `Ready`. `catalog install` also prints the active library when it differs from the installed one.
+- **`doctor --model`.** The smoke Load phase counts plugin EP devices, as the plain readiness probe does, and each provider gets its catalog libraries. trt-rtx no longer reads NOT READY in smoke mode.
+- **Readiness messages.** A plugin that is loaded but has no devices now says so. It no longer suggests a missing library.
+- **`serve --port` on `localhost`.** Requests to `http://localhost:<port>` reached a .NET default 404 page. The loopback host is now also registered as a prefix.
+- **Usage errors.** Missing or unknown options print one message and exit `2`, as documented, instead of dumping the full help.
+- **`--json` help.** It is listed once per command. The global option works before or after the subcommand.
+- **Version.** `--version` reports the latest release line (`VersionPrefix` was stuck at 0.2.0).
+
 ## [0.4.2] — 2026-10-12
 
 ### Changed

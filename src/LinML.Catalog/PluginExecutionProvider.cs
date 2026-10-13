@@ -131,12 +131,14 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
                 return ProviderReadyState.Unsupported;
             }
 
-            if (GetDevices().Count > 0)
+            // Not vendored under this catalog's root. Devices from some other registration (an
+            // env mapping, another root) do not make this catalog entry installed or ready.
+            if (LibraryPath is null)
             {
-                return ProviderReadyState.Ready;
+                return ProviderReadyState.NotPresent;
             }
 
-            return LibraryPath is null ? ProviderReadyState.NotPresent : ProviderReadyState.NotReady;
+            return GetDevices().Count > 0 ? ProviderReadyState.Ready : ProviderReadyState.NotReady;
         }
     }
 
