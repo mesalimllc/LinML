@@ -1,10 +1,12 @@
+using System.Runtime.InteropServices;
 using LinML.Contracts;
 
 namespace LinML.Catalog;
 
 /// <summary>
 /// A pinned plugin EP wheel: where to get it, how to verify it, and where its
-/// library lands once vendored.
+/// library lands once vendored. <c>Architecture</c> is the Linux host architecture
+/// the wheel is built for, as a RID suffix: <c>x64</c> or <c>arm64</c>.
 /// </summary>
 internal sealed record PluginPackageSpec(
     ProviderId Id,
@@ -15,7 +17,8 @@ internal sealed record PluginPackageSpec(
     string PackagePrefix,
     string InstallSubdirectory,
     string LibraryFileName,
-    Version MinimumOrtVersion)
+    Version MinimumOrtVersion,
+    string Architecture = "x64")
 {
     public string InstallDirectory(string installRoot) => Path.Combine(installRoot, InstallSubdirectory);
 
@@ -101,10 +104,12 @@ internal static class KnownPlugins
         LibraryFileName: "libonnxruntime_providers_openvino_plugin.so",
         MinimumOrtVersion: new Version(1, 23, 0));
 
-    // NVIDIA TensorRT-RTX standalone plugin EP. Works on RTX Ampere+ GPUs.
+    // NVIDIA TensorRT-RTX standalone plugin EP. Works on RTX Ampere+ GPUs. The
+    // wheel is per architecture: x86_64 for desktop and workstation hosts, and
+    // aarch64 for Linux SBSA hosts (TensorRT-RTX 1.6 supports Ubuntu 24.04 SBSA).
     // Under WSL2, stock PyPI wheels register but expose zero devices due to
     // virtual PCI bus mapping; see docs/compatibility.md.
-    public static readonly PluginPackageSpec TensorrtRtx = new(
+    internal static readonly PluginPackageSpec TensorrtRtxLinuxX64 = new(
         Id: ProviderId.TensorrtRtx,
         RegistrationName: "NvTensorRTRTXExecutionProvider",
         Version: "0.4.0",
@@ -113,7 +118,27 @@ internal static class KnownPlugins
         PackagePrefix: "onnxruntime_ep_nv_tensorrt_rtx/",
         InstallSubdirectory: Path.Combine("ep-plugins", "trt-rtx", "onnxruntime_ep_nv_tensorrt_rtx"),
         LibraryFileName: "libonnxruntime_providers_nv_tensorrt_rtx.so",
-        MinimumOrtVersion: new Version(1, 24, 0));
+        MinimumOrtVersion: new Version(1, 24, 0),
+        Architecture: "x64");
+
+    // The same EP for Linux aarch64 (SBSA). Same version and ABI, and the same
+    // bundled TensorRT-RTX 1.6.1 runtime, built for aarch64 (manylinux_2_35).
+    // Not yet verified on aarch64 hardware.
+    internal static readonly PluginPackageSpec TensorrtRtxLinuxArm64 = new(
+        Id: ProviderId.TensorrtRtx,
+        RegistrationName: "NvTensorRTRTXExecutionProvider",
+        Version: "0.4.0",
+        WheelUrl: new Uri("https://files.pythonhosted.org/packages/41/63/ef110d73730969957740d770b29c158ca79a9df32c65ee081b01f8b64124/onnxruntime_ep_nv_tensorrt_rtx_cu13-0.4.0-py3-none-manylinux_2_35_aarch64.whl"),
+        WheelSha256: "0ccf6a636f9f49d74e3e7e3b1b90287aa1c818db770b47fad6e8aa344f4290a5",
+        PackagePrefix: "onnxruntime_ep_nv_tensorrt_rtx/",
+        InstallSubdirectory: Path.Combine("ep-plugins", "trt-rtx", "onnxruntime_ep_nv_tensorrt_rtx"),
+        LibraryFileName: "libonnxruntime_providers_nv_tensorrt_rtx.so",
+        MinimumOrtVersion: new Version(1, 24, 0),
+        Architecture: "arm64");
+
+    /// <summary>The TensorRT-RTX pin for this host: the wheel built for its architecture.</summary>
+    public static PluginPackageSpec TensorrtRtx =>
+        RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? TensorrtRtxLinuxArm64 : TensorrtRtxLinuxX64;
 
     // Standalone MIGraphX plugin EP built from onnxruntime-ep-amdgpu by
     // scripts/build-migraphx-ep.sh and published to LinML releases. Requires

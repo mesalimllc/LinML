@@ -2,6 +2,11 @@
 
 All notable changes to LinML are documented here. This project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **TensorRT-RTX on Linux aarch64 (SBSA).** NVIDIA's TensorRT-RTX 1.6 supports Ubuntu 24.04 SBSA. `PluginPackageSpec.TensorrtRtx` is now the wheel for the host's architecture: `x86_64` as before, and `manylinux_2_35_aarch64` (EP 0.4.0, same bundled TensorRT-RTX 1.6.1 runtime) on aarch64 hosts. The plugin gate follows the spec's architecture, and the WSL2 variant stays x86_64 only. `scripts/fetch-ep-plugins.sh` has a `fetch_trt_rtx_arm64` function, chosen for aarch64 hosts. Not yet verified on aarch64 hardware.
+
 ## [0.4.2] — 2026-10-12
 
 ### Changed

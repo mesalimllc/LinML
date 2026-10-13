@@ -64,6 +64,7 @@ public partial class ScriptPinAgreementTests
         Assert.Contains(pins, p => p.Function == "fetch_trt_rtx");
         Assert.Contains(pins, p => p.Function == "fetch_migraphx");
         Assert.Contains(pins, p => p.Function == "fetch_trt_rtx_wsl2");
+        Assert.Contains(pins, p => p.Function == "fetch_trt_rtx_arm64");
     }
 
     [Fact]
@@ -76,6 +77,29 @@ public partial class ScriptPinAgreementTests
             ScriptPin? pin = pins.SingleOrDefault(p => p.Url == spec.WheelUrl.ToString());
             Assert.True(pin is not null,
                 $"{spec.Id} {spec.Version}: scripts/fetch-ep-plugins.sh has no fetch function for {spec.WheelUrl}.");
+            Assert.Equal(spec.WheelSha256, pin.Sha256);
+            Assert.Equal(spec.InstallSubdirectory.Replace('\\', '/'), pin.InstallSubdirectory);
+        }
+    }
+
+    [Fact]
+    public void TensorrtRtxPins_MatchTheFetchScript_ForBothArchitectures()
+    {
+        // KnownPlugins.All holds only the host's TensorRT-RTX wheel, so check each architecture's pin here
+        // on every host: a pin bumped on one side only would install a different binary than the script.
+        List<ScriptPin> pins = ReadFetchScriptPins();
+
+        (string Function, PluginPackageSpec Spec)[] expected =
+        [
+            ("fetch_trt_rtx", KnownPlugins.TensorrtRtxLinuxX64),
+            ("fetch_trt_rtx_arm64", KnownPlugins.TensorrtRtxLinuxArm64),
+        ];
+
+        foreach (var (function, spec) in expected)
+        {
+            ScriptPin? pin = pins.SingleOrDefault(p => p.Function == function);
+            Assert.True(pin is not null, $"scripts/fetch-ep-plugins.sh has no {function}.");
+            Assert.Equal(spec.WheelUrl.ToString(), pin.Url);
             Assert.Equal(spec.WheelSha256, pin.Sha256);
             Assert.Equal(spec.InstallSubdirectory.Replace('\\', '/'), pin.InstallSubdirectory);
         }

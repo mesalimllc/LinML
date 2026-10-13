@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using Microsoft.ML.OnnxRuntime;
 using Xunit;
 
@@ -234,5 +235,29 @@ public class PluginExecutionProviderTests
         {
             Assert.Contains("CUDA", result.FailureReason);
         }
+    }
+
+    [Theory]
+    [InlineData("x64", true, Architecture.X64, true)]
+    [InlineData("x64", true, Architecture.Arm64, false)]
+    [InlineData("arm64", true, Architecture.Arm64, true)]
+    [InlineData("arm64", true, Architecture.X64, false)]
+    [InlineData("x64", false, Architecture.X64, false)]
+    [InlineData("arm64", false, Architecture.Arm64, false)]
+    [InlineData("riscv64", true, Architecture.X64, false)]
+    public void SupportsHost_OnlyTheMatchingLinuxArchitecture(string architecture, bool linux, Architecture host, bool expected)
+    {
+        Assert.Equal(expected, PluginExecutionProvider.SupportsHost(architecture, linux, host));
+    }
+
+    [Fact]
+    public void TensorrtRtx_IsTheWheelBuiltForThisHost()
+    {
+        PluginPackageSpec expected = RuntimeInformation.ProcessArchitecture == Architecture.Arm64
+            ? KnownPlugins.TensorrtRtxLinuxArm64
+            : KnownPlugins.TensorrtRtxLinuxX64;
+
+        Assert.Same(expected, KnownPlugins.TensorrtRtx);
+        Assert.Equal(RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "arm64" : "x64", KnownPlugins.TensorrtRtx.Architecture);
     }
 }

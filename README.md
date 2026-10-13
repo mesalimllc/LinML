@@ -62,7 +62,7 @@ See [CHANGELOG.md](CHANGELOG.md) for full release history.
 | `CPUExecutionProvider` | ✅ Verified | Any x86_64 / aarch64 CPU | Always available, built into standard ORT |
 | `CUDAExecutionProvider` | ✅ Verified | NVIDIA GeForce RTX 5070 (x86_64), Jetson Orin (aarch64) | Blackwell (sm_120); requires cuDNN 9.x for Conv ops |
 | `TensorrtExecutionProvider` | ✅ Verified | NVIDIA GeForce RTX 5070 (x86_64), Jetson Orin (aarch64) | TensorRT 10.16; enable engine cache for repeated runs |
-| `NvTensorRTRTXExecutionProvider` | ✅ Verified (Native Linux) | NVIDIA GeForce RTX 4090 | Verified in Daytona cloud runtime; on WSL2 the stock plugin exposes no devices (virtual PCI constraint), so use the [opt-in patched build](docs/compatibility.md) (`bash scripts/fetch-ep-plugins.sh trt-rtx-wsl2`); **x86_64 only** |
+| `NvTensorRTRTXExecutionProvider` | ✅ Verified (Native Linux) | NVIDIA GeForce RTX 4090 | Verified in Daytona cloud runtime; on WSL2 the stock plugin exposes no devices (virtual PCI constraint), so use the [opt-in patched build](docs/compatibility.md) (`bash scripts/fetch-ep-plugins.sh trt-rtx-wsl2`); **x86_64 and Linux aarch64 (SBSA)**, the aarch64 wheel not yet verified on hardware |
 | `OpenVINOExecutionProvider` | ✅ Verified | Intel Xeon CPU | Plugin EP 1.6.1; dynamically registered at runtime; **x86_64 only** |
 | `MIGraphXExecutionProvider` | ✅ Verified | AMD Instinct MI355X (gfx950) | ROCm / MIGraphX verified in Daytona sandbox; **x86_64 only** |
 | `QNNExecutionProvider` | 🔌 Wired / Gated | Qualcomm Snapdragon (aarch64) | Contract and probe wired; blocked on physical hardware / QAIRT SDK access; **aarch64 primary target** |

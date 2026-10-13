@@ -30,7 +30,7 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
         _installRoot = installRoot;
         _installer = installer;
         _registrar = registrar;
-        _isSupportedPlatform = isSupportedPlatform ?? IsLinuxX64;
+        _isSupportedPlatform = isSupportedPlatform ?? (() => SupportsHost(spec.Architecture, OperatingSystem.IsLinux(), RuntimeInformation.ProcessArchitecture));
     }
 
     public ProviderId Id => _spec.Id;
@@ -63,7 +63,8 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
             return Variant.Custom;
         }
 
-        return IsWsl2() && !Wsl2OptedOut() ? Variant.Wsl2 : Variant.Stock;
+        // The patched WSL2 build is x86_64 only; WSL2 on an ARM host uses the stock wheel.
+        return IsWsl2() && !Wsl2OptedOut() && _spec.Architecture == "x64" ? Variant.Wsl2 : Variant.Stock;
     }
 
     private string? CustomLibraryPath()
@@ -342,7 +343,7 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
     {
         if (!_isSupportedPlatform())
         {
-            return $"{Id} plugin {_spec.Version} is available for linux-x64 only.";
+            return $"{Id} plugin {_spec.Version} is available for linux-{_spec.Architecture} only.";
         }
 
         Version ort = _registrar.OrtVersion;
@@ -353,8 +354,21 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
 
     private ProviderEnsureResult Result(ProviderEnsureStatus status, string detail) => new(Id, status, detail, []);
 
-    private static bool IsLinuxX64() =>
-        OperatingSystem.IsLinux() && RuntimeInformation.ProcessArchitecture == Architecture.X64;
+    /// <summary>
+    /// Whether a plugin built for <paramref name="architecture"/> (<c>x64</c> or <c>arm64</c>) can run on this
+    /// host: Linux, with the same processor architecture. Pure, so tests can check every combination.
+    /// </summary>
+    internal static bool SupportsHost(string architecture, bool isLinux, Architecture hostArchitecture)
+    {
+        Architecture? built = architecture switch
+        {
+            "x64" => Architecture.X64,
+            "arm64" => Architecture.Arm64,
+            _ => null,
+        };
+
+        return isLinux && built == hostArchitecture;
+    }
 
     /// <summary>Whether this host is WSL2. Replaceable so tests can exercise WSL-only selection anywhere.</summary>
     internal static Func<bool> WslProbe { get; set; } = DetectWsl;
