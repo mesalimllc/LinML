@@ -5,7 +5,8 @@
 #
 #   trt-rtx   NvTensorRTRTXExecutionProvider (NVIDIA). The wheel bundles the EP
 #             plugin .so AND the TensorRT-RTX 1.6.1 runtime libraries, so no
-#             separate TensorRT-RTX SDK install is needed.
+#             separate TensorRT-RTX SDK install is needed. x86_64 hosts get the
+#             x86_64 wheel; Linux aarch64 (SBSA) hosts get the aarch64 wheel.
 #   openvino  OpenVINOExecutionProvider (Intel onnxruntime-ep-openvino). The
 #             wheel bundles the EP plugin .so AND the OpenVINO 2026.2.1 runtime
 #             with its CPU/GPU/NPU device plugins. 1.6.1 is pinned because
@@ -94,6 +95,89 @@ PYEOF
     done
     if [ -f "$STAGE/libcudart.so.13.4.36" ] && [ ! -e "$STAGE/libcudart.so.13" ]; then
         ln -s "libcudart.so.13.4.36" "$STAGE/libcudart.so.13"
+    fi
+
+    rm -rf "$OUT"
+    mv "$STAGE" "$OUT"
+
+    echo ""
+    echo "=== Vendored ==="
+    ls -la "$OUT"
+    echo ""
+    echo "Next: source scripts/env-gpu-deps.sh"
+    echo "  linml providers list            # after registration the EP appears via GetEpDevices"
+    echo "  linml run --provider trt-rtx --model ... --inputs ..."
+    echo ""
+    echo "Note: in WSL2 the EP registers but exposes zero devices (WSL virtual PCI"
+    echo "bus id is rejected by cudaDeviceGetByPCIBusId). Works on native Windows /"
+    echo "bare-metal Linux. See docs/compatibility.md."
+}
+
+fetch_trt_rtx_arm64() {
+    local OUT="$DEPS/ep-plugins/trt-rtx-arm64/onnxruntime_ep_nv_tensorrt_rtx"
+    local WHEEL_URL="https://files.pythonhosted.org/packages/41/63/ef110d73730969957740d770b29c158ca79a9df32c65ee081b01f8b64124/onnxruntime_ep_nv_tensorrt_rtx_cu13-0.4.0-py3-none-manylinux_2_35_aarch64.whl"
+    local WHEEL_SHA256="0ccf6a636f9f49d74e3e7e3b1b90287aa1c818db770b47fad6e8aa344f4290a5"
+    local WHEEL_NAME="onnxruntime_ep_nv_tensorrt_rtx_cu13-0.4.0-py3-none-manylinux_2_35_aarch64.whl"
+    local TMP="$TMP_ROOT/trt-rtx"
+
+    echo "=== LinML EP plugin fetch (TensorRT-RTX) ==="
+
+    # The wheel is manylinux_2_35: refuse an older glibc before downloading it.
+    local GLIBC
+    GLIBC="$(getconf GNU_LIBC_VERSION 2>/dev/null | awk '{print $2}')" || GLIBC=""
+    if [ -z "$GLIBC" ] || [ "$(printf '%s\n' 2.35 "$GLIBC" | sort -V | head -n 1)" != "2.35" ]; then
+        echo "TensorRT-RTX (aarch64) needs glibc 2.35 or newer; this host has ${GLIBC:-no glibc}." >&2
+        return 1
+    fi
+
+    if [ -f "$OUT/libonnxruntime_providers_nv_tensorrt_rtx.so" ]; then
+        echo "Already vendored: $OUT"
+        return 0
+    fi
+
+    # Staged like the OpenVINO fetch: a failed extract never leaves a
+    # truncated plugin .so that the check above treats as vendored.
+    local STAGE="$OUT.partial"
+    rm -rf "$STAGE"
+    mkdir -p "$STAGE" "$TMP"
+
+    echo "Downloading $WHEEL_NAME ..."
+    curl -fsSL -o "$TMP/ep.whl" "$WHEEL_URL"
+
+    echo "Verifying sha256..."
+    echo "$WHEEL_SHA256  $TMP/ep.whl" | sha256sum -c
+
+    echo "Extracting native libraries..."
+    python3 - "$TMP/ep.whl" "$STAGE" << 'PYEOF'
+import os, sys, zipfile
+wheel, out = sys.argv[1], sys.argv[2]
+z = zipfile.ZipFile(wheel)
+prefix = "onnxruntime_ep_nv_tensorrt_rtx/"
+keep = [n for n in z.namelist()
+        if n.startswith(prefix) and "/" not in n[len(prefix):]
+        and (n.endswith(".so") or ".so." in n or n.endswith(".h") or n.endswith("README.txt"))]
+# Flatten into $OUT (strip the package prefix) so the libraries sit where
+# the check above, env-gpu-deps.sh and TrtRtxInferenceTests look for them.
+for n in keep:
+    with z.open(n) as src, open(os.path.join(out, n[len(prefix):]), "wb") as dst:
+        dst.write(src.read())
+print(f"extracted {len(keep)} files to {out}")
+PYEOF
+
+    # The EP .so links against SONAMEs (libtensorrt_rtx.so.1 etc.); the wheel ships
+    # versioned files only. Create the SONAME symlinks next to the libraries.
+    local lib
+    for lib in libtensorrt_rtx libtensorrt_onnxparser_rtx; do
+        if [ -f "$STAGE/${lib}.so.1.6.1" ] && [ ! -e "$STAGE/${lib}.so.1" ]; then
+            ln -s "${lib}.so.1.6.1" "$STAGE/${lib}.so.1"
+        fi
+    done
+    # The aarch64 wheel ships libcudart.so.13.4.46; link whatever patch version it has.
+    if [ ! -e "$STAGE/libcudart.so.13" ]; then
+        cudart="$(compgen -G "$STAGE/libcudart.so.13.*" | head -n 1 || true)"
+        if [ -n "$cudart" ]; then
+            ln -s "$(basename "$cudart")" "$STAGE/libcudart.so.13"
+        fi
     fi
 
     rm -rf "$OUT"
@@ -337,7 +421,9 @@ if [ ${#PLUGINS[@]} -eq 0 ]; then
 fi
 for plugin in "${PLUGINS[@]}"; do
     case "$plugin" in
-        trt-rtx) fetch_trt_rtx ;;
+        trt-rtx)
+            if [ "$(uname -m)" = "aarch64" ]; then fetch_trt_rtx_arm64; else fetch_trt_rtx; fi
+            ;;
         trt-rtx-wsl2) fetch_trt_rtx_wsl2 ;;
         openvino) fetch_openvino ;;
         migraphx) fetch_migraphx ;;

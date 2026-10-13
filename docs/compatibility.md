@@ -16,6 +16,12 @@
 | CUDA Toolkit | 12.9, 13.3 | Available in WSL2 |
 | GPU | NVIDIA GeForce RTX 5070 (Blackwell, sm_120, 12GB) | Verified |
 
+**TensorRT-RTX on aarch64.** NVIDIA's TensorRT-RTX 1.6 supports Ubuntu 24.04 SBSA
+(Linux aarch64) with CUDA 13.4, gcc 11.4, and compute capabilities 7.5, 8.6, 8.9,
+12.0 and 12.13. LinML pins the same EP version (0.4.0) for `manylinux_2_35_aarch64`
+(glibc 2.35 or newer), selected automatically on aarch64 hosts. The aarch64 build is
+not yet verified on aarch64 hardware. The x64 pin is unchanged.
+
 ## Execution Providers
 
 | Provider | Status | Evidence |

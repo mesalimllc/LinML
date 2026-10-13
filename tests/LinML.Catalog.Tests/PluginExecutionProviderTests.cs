@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using Microsoft.ML.OnnxRuntime;
 using Xunit;
 
@@ -234,5 +235,74 @@ public class PluginExecutionProviderTests
         {
             Assert.Contains("CUDA", result.FailureReason);
         }
+    }
+
+    [Theory]
+    [InlineData("x64", true, Architecture.X64, true)]
+    [InlineData("x64", true, Architecture.Arm64, false)]
+    [InlineData("arm64", true, Architecture.Arm64, true)]
+    [InlineData("arm64", true, Architecture.X64, false)]
+    [InlineData("x64", false, Architecture.X64, false)]
+    [InlineData("arm64", false, Architecture.Arm64, false)]
+    [InlineData("riscv64", true, Architecture.X64, false)]
+    public void SupportsHost_OnlyTheMatchingLinuxArchitecture(string architecture, bool linux, Architecture host, bool expected)
+    {
+        Assert.Equal(expected, PluginExecutionProvider.SupportsHost(architecture, linux, host));
+    }
+
+    [Fact]
+    public void TensorrtRtx_IsTheWheelBuiltForThisHost()
+    {
+        PluginPackageSpec expected = RuntimeInformation.ProcessArchitecture == Architecture.Arm64
+            ? KnownPlugins.TensorrtRtxLinuxArm64
+            : KnownPlugins.TensorrtRtxLinuxX64;
+
+        Assert.Same(expected, KnownPlugins.TensorrtRtx);
+        Assert.Equal(RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "arm64" : "x64", KnownPlugins.TensorrtRtx.Architecture);
+    }
+
+    [Theory]
+    [InlineData("2.35", "2.35", true)]
+    [InlineData("2.35", "2.39", true)]
+    [InlineData("2.35", "2.34", false)]
+    [InlineData(null, null, true)]
+    [InlineData(null, "2.10", true)]
+    public void GlibcSatisfies_ComparesHostAgainstTheMinimum(string? required, string? host, bool expected)
+    {
+        Assert.Equal(expected, PluginExecutionProvider.GlibcSatisfies(
+            required is null ? null : new Version(required),
+            host is null ? null : new Version(host)));
+    }
+
+    [Fact]
+    public void GlibcSatisfies_NoGlibcAtAll_FailsAPlugin_WithAMinimum()
+    {
+        // musl or a non-glibc system: a wheel built against glibc cannot load there.
+        Assert.False(PluginExecutionProvider.GlibcSatisfies(new Version(2, 35), null));
+    }
+
+    [Fact]
+    public void Arm64Pin_InstallsBesideTheX64Pin_AndDeclaresItsGlibcFloor()
+    {
+        using var root = new TempDir();
+
+        Assert.NotEqual(
+            KnownPlugins.TensorrtRtxLinuxX64.InstallDirectory(root.Path),
+            KnownPlugins.TensorrtRtxLinuxArm64.InstallDirectory(root.Path));
+        Assert.Equal(new Version(2, 35), KnownPlugins.TensorrtRtxLinuxArm64.MinimumGlibc);
+        Assert.Null(KnownPlugins.TensorrtRtxLinuxX64.MinimumGlibc);
+    }
+
+    [Fact]
+    public void HostGlibc_IsDetectedOnAGlibcLinuxHost()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return;
+        }
+
+        // The aarch64 pin's glibc floor is judged against this probe; a null here would refuse every glibc host.
+        Assert.NotNull(PluginExecutionProvider.HostGlibc);
+        Assert.True(PluginExecutionProvider.GlibcSatisfies(new Version(2, 0), PluginExecutionProvider.HostGlibc));
     }
 }

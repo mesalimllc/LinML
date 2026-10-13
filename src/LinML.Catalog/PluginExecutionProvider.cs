@@ -30,7 +30,7 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
         _installRoot = installRoot;
         _installer = installer;
         _registrar = registrar;
-        _isSupportedPlatform = isSupportedPlatform ?? IsLinuxX64;
+        _isSupportedPlatform = isSupportedPlatform ?? (() => SupportsHost(spec.Architecture, OperatingSystem.IsLinux(), RuntimeInformation.ProcessArchitecture));
     }
 
     public ProviderId Id => _spec.Id;
@@ -63,7 +63,8 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
             return Variant.Custom;
         }
 
-        return IsWsl2() && !Wsl2OptedOut() ? Variant.Wsl2 : Variant.Stock;
+        // The patched WSL2 build is x86_64 only; WSL2 on an ARM host uses the stock wheel.
+        return IsWsl2() && !Wsl2OptedOut() && _spec.Architecture == "x64" ? Variant.Wsl2 : Variant.Stock;
     }
 
     private string? CustomLibraryPath()
@@ -223,6 +224,12 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
             return Result(ProviderEnsureStatus.NotAvailable, UnsupportedReason()!);
         }
 
+        // Checked before any download: a host too old for the wheel would otherwise fetch it and then fail to load it.
+        if (GlibcReason() is { } glibcReason)
+        {
+            return Result(ProviderEnsureStatus.NotAvailable, glibcReason);
+        }
+
         if (_registrar.OrtVersion < _spec.MinimumOrtVersion)
         {
             return Result(ProviderEnsureStatus.AbiIncompatible, UnsupportedReason()!);
@@ -344,7 +351,12 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
     {
         if (!_isSupportedPlatform())
         {
-            return $"{Id} plugin {_spec.Version} is available for linux-x64 only.";
+            return $"{Id} plugin {_spec.Version} is available for linux-{_spec.Architecture} only.";
+        }
+
+        if (GlibcReason() is { } glibcReason)
+        {
+            return glibcReason;
         }
 
         Version ort = _registrar.OrtVersion;
@@ -355,8 +367,61 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
 
     private ProviderEnsureResult Result(ProviderEnsureStatus status, string detail) => new(Id, status, detail, []);
 
-    private static bool IsLinuxX64() =>
-        OperatingSystem.IsLinux() && RuntimeInformation.ProcessArchitecture == Architecture.X64;
+    /// <summary>The glibc this process runs on, or null when there is none (musl, or not Linux).</summary>
+    internal static Version? HostGlibc { get; } = DetectGlibc();
+
+    /// <summary>Whether a host glibc satisfies a plugin's minimum. A plugin with no minimum always does.</summary>
+    internal static bool GlibcSatisfies(Version? required, Version? host) =>
+        required is null || (host is not null && host >= required);
+
+    // The wheel's glibc floor is a runtime requirement, separate from the architecture
+    // check above, so an arm64 host on an older distribution is reported, not downloaded.
+    private string? GlibcReason()
+    {
+        if (GlibcSatisfies(_spec.MinimumGlibc, HostGlibc))
+        {
+            return null;
+        }
+
+        string host = HostGlibc is null ? "no glibc (not a glibc system)" : $"glibc {HostGlibc}";
+        return $"{Id} plugin {_spec.Version} needs glibc {_spec.MinimumGlibc} or newer; this host has {host}.";
+    }
+
+    [DllImport("libc", EntryPoint = "gnu_get_libc_version")]
+    private static extern IntPtr GnuGetLibcVersion();
+
+    private static Version? DetectGlibc()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return null;
+        }
+
+        try
+        {
+            return Version.TryParse(Marshal.PtrToStringAnsi(GnuGetLibcVersion()), out Version? version) ? version : null;
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Whether a plugin built for <paramref name="architecture"/> (<c>x64</c> or <c>arm64</c>) can run on this
+    /// host: Linux, with the same processor architecture. Pure, so tests can check every combination.
+    /// </summary>
+    internal static bool SupportsHost(string architecture, bool isLinux, Architecture hostArchitecture)
+    {
+        Architecture? built = architecture switch
+        {
+            "x64" => Architecture.X64,
+            "arm64" => Architecture.Arm64,
+            _ => null,
+        };
+
+        return isLinux && built == hostArchitecture;
+    }
 
     /// <summary>Whether this host is WSL2. Replaceable so tests can exercise WSL-only selection anywhere.</summary>
     internal static Func<bool> WslProbe { get; set; } = DetectWsl;

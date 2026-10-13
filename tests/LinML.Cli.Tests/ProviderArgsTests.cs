@@ -1,3 +1,4 @@
+using LinML.Catalog;
 using LinML.Cli;
 using LinML.Contracts;
 using Xunit;
@@ -247,7 +248,7 @@ public class ProviderArgsTests
         var tempRoot = Path.Combine(Path.GetTempPath(), "linml-test-" + Guid.NewGuid().ToString("N"));
         try
         {
-            var fakeTrtDir = Path.Combine(tempRoot, "ep-plugins", "trt-rtx", "onnxruntime_ep_nv_tensorrt_rtx");
+            var fakeTrtDir = Path.Combine(tempRoot, KnownPlugins.TensorrtRtx.InstallSubdirectory);
             Directory.CreateDirectory(fakeTrtDir);
             var fakeSo = Path.Combine(fakeTrtDir, "libonnxruntime_providers_nv_tensorrt_rtx.so");
             File.WriteAllText(fakeSo, "fake-so-content");
@@ -276,7 +277,7 @@ public class ProviderArgsTests
         var original = Environment.GetEnvironmentVariable(envVar);
         try
         {
-            var vendoredDir = Path.Combine(tempDir, "ep-plugins", "trt-rtx", "onnxruntime_ep_nv_tensorrt_rtx");
+            var vendoredDir = Path.Combine(tempDir, KnownPlugins.TensorrtRtx.InstallSubdirectory);
             Directory.CreateDirectory(vendoredDir);
             File.WriteAllText(Path.Combine(vendoredDir, "libonnxruntime_providers_nv_tensorrt_rtx.so"), "wheel");
 
@@ -307,7 +308,7 @@ public class ProviderArgsTests
         var original = Environment.GetEnvironmentVariable(envVar);
         try
         {
-            var vendoredDir = Path.Combine(tempDir, "ep-plugins", "trt-rtx", "onnxruntime_ep_nv_tensorrt_rtx");
+            var vendoredDir = Path.Combine(tempDir, KnownPlugins.TensorrtRtx.InstallSubdirectory);
             Directory.CreateDirectory(vendoredDir);
             var vendoredSo = Path.Combine(vendoredDir, "libonnxruntime_providers_nv_tensorrt_rtx.so");
             File.WriteAllText(vendoredSo, "wheel");
@@ -421,7 +422,7 @@ public class ProviderArgsTests
         private readonly Func<bool> _probeBefore = LinML.Catalog.PluginExecutionProvider.WslProbe;
 
         public string Root { get; } = Path.Combine(Path.GetTempPath(), "linml-test-wsl-" + Guid.NewGuid().ToString("N"));
-        public string Stock => Path.Combine(Root, "ep-plugins", "trt-rtx", "onnxruntime_ep_nv_tensorrt_rtx", "libonnxruntime_providers_nv_tensorrt_rtx.so");
+        public string Stock => Path.Combine(Root, KnownPlugins.TensorrtRtx.InstallSubdirectory, "libonnxruntime_providers_nv_tensorrt_rtx.so");
         public string Patched => Path.Combine(Root, "ep-plugins", "trt-rtx-wsl2", "linml_trt_rtx_ep", "libonnxruntime_providers_nv_tensorrt_rtx.so");
 
         public WslLayout(bool installStock = true, bool installPatched = true)
@@ -457,7 +458,9 @@ public class ProviderArgsTests
 
         var result = ProviderArgs.ResolveEpLibraries([], ProviderId.TensorrtRtx, layout.Root);
 
-        Assert.Equal(layout.Patched, result["NvTensorRTRTXExecutionProvider"]);
+        // The patched WSL2 build is x86_64 only. An aarch64 host keeps the stock library it was given.
+        string expected = KnownPlugins.TensorrtRtx.Architecture == "x64" ? layout.Patched : layout.Stock;
+        Assert.Equal(expected, result["NvTensorRTRTXExecutionProvider"]);
         Assert.Single(result);
     }
 

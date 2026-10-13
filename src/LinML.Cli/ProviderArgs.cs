@@ -209,7 +209,7 @@ public static class ProviderArgs
     /// </summary>
     private static string? ResolveWslVariant(PluginPackageSpec spec, string? customRoot)
     {
-        string? variant = KnownPlugins.WslVariantLibrary(spec.Id, customRoot);
+        string? variant = KnownPlugins.WslVariantLibrary(spec, customRoot);
         if (variant is null || KnownPlugins.WslVariantRuntimeDirectory(customRoot) is not { } runtimeDir)
         {
             return null;

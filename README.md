@@ -21,6 +21,7 @@ LinML also provides `LinML.Catalog`, the Linux counterpart to WinML's `Execution
 
 - [Status](#status)
 - [Execution Providers](#execution-providers)
+- [Plugin Execution Providers: TensorRT-RTX and MIGraphX](#plugin-execution-providers-tensorrt-rtx-and-migraphx)
 - [Quick Start](#quick-start)
   - [1. Install Pre-built CLI (Recommended)](#1-install-pre-built-cli-recommended)
   - [2. Install C# NuGet Packages](#2-install-c-nuget-packages)
@@ -62,12 +63,163 @@ See [CHANGELOG.md](CHANGELOG.md) for full release history.
 | `CPUExecutionProvider` | ✅ Verified | Any x86_64 / aarch64 CPU | Always available, built into standard ORT |
 | `CUDAExecutionProvider` | ✅ Verified | NVIDIA GeForce RTX 5070 (x86_64), Jetson Orin (aarch64) | Blackwell (sm_120); requires cuDNN 9.x for Conv ops |
 | `TensorrtExecutionProvider` | ✅ Verified | NVIDIA GeForce RTX 5070 (x86_64), Jetson Orin (aarch64) | TensorRT 10.16; enable engine cache for repeated runs |
-| `NvTensorRTRTXExecutionProvider` | ✅ Verified (Native Linux) | NVIDIA GeForce RTX 4090 | Verified in Daytona cloud runtime; on WSL2 the stock plugin exposes no devices (virtual PCI constraint), so use the [opt-in patched build](docs/compatibility.md) (`bash scripts/fetch-ep-plugins.sh trt-rtx-wsl2`); **x86_64 only** |
+| `NvTensorRTRTXExecutionProvider` | ✅ Verified (Native Linux) | NVIDIA GeForce RTX 4090 | Verified in Daytona cloud runtime; on WSL2 the stock plugin exposes no devices (virtual PCI constraint), so use the [patched build](#plugin-execution-providers-tensorrt-rtx-and-migraphx); **x86_64 and Linux aarch64 (SBSA)**; aarch64 not yet verified on hardware; [install](#plugin-execution-providers-tensorrt-rtx-and-migraphx) |
 | `OpenVINOExecutionProvider` | ✅ Verified | Intel Xeon CPU | Plugin EP 1.6.1; dynamically registered at runtime; **x86_64 only** |
-| `MIGraphXExecutionProvider` | ✅ Verified | AMD Instinct MI355X (gfx950) | ROCm / MIGraphX verified in Daytona sandbox; **x86_64 only** |
+| `MIGraphXExecutionProvider` | ✅ Verified | AMD Instinct MI355X (gfx950) | ROCm / MIGraphX verified in Daytona sandbox; **x86_64 only**; [install and requirements](#plugin-execution-providers-tensorrt-rtx-and-migraphx) |
 | `QNNExecutionProvider` | 🔌 Wired / Gated | Qualcomm Snapdragon (aarch64) | Contract and probe wired; blocked on physical hardware / QAIRT SDK access; **aarch64 primary target** |
 
 See the [Compatibility Report](docs/compatibility.md) for detailed hardware matrices, driver requirements, and known constraints.
+
+---
+
+## Plugin Execution Providers: TensorRT-RTX and MIGraphX
+
+TensorRT-RTX and MIGraphX are plugin execution providers. LinML does not link them into the CLI. It vendors a pinned build of each into `~/.local/linml-deps`, checks its SHA-256, and registers it with ONNX Runtime at run time. Install them with `linml catalog install`, or with the standalone commands below, which need neither the LinML CLI nor a clone of this repository.
+
+| Plugin | Provider name | Platforms | Pinned artifact | Installed to (under `~/.local/linml-deps`) |
+|--------|---------------|-----------|-----------------|--------------------------------------------|
+| TensorRT-RTX | `NvTensorRTRTXExecutionProvider` | Linux x86_64; Linux aarch64 (SBSA) | NVIDIA `onnxruntime-ep-nv-tensorrt-rtx-cu13` 0.4.0 wheel from PyPI, with TensorRT-RTX 1.6.1 bundled | `ep-plugins/trt-rtx/onnxruntime_ep_nv_tensorrt_rtx/` (x86_64); `ep-plugins/trt-rtx-arm64/onnxruntime_ep_nv_tensorrt_rtx/` (aarch64) |
+| TensorRT-RTX on WSL2 | same | WSL2 with GPU passthrough (`/dev/dxg`) | LinML patched build `0.4.0-wsl2p1` (GitHub release), used alongside the wheel above | `ep-plugins/trt-rtx-wsl2/linml_trt_rtx_ep/` |
+| MIGraphX | `MIGraphXExecutionProvider` | Linux x86_64 with an AMD GPU and ROCm | LinML build `2611.1` (GitHub release), built from AMD's `onnxruntime-ep-amdgpu` | `ep-plugins/migraphx/linml_migraphx_ep/` |
+
+The CLI finds these in `~/.local/linml-deps` automatically. Pass `--root <dir>` to `linml catalog` or `linml providers list` to use another location.
+
+### Requirements
+
+**TensorRT-RTX**
+- An NVIDIA GPU, with a driver that supports CUDA 13. NVIDIA's TensorRT-RTX 1.6 matrix targets compute capabilities 7.5, 8.6, 8.9, 12.0 and 12.13. `linml setup` recommends the plugin for RTX Ampere and newer GPUs.
+- ONNX Runtime 1.24 or newer. LinML ships ONNX Runtime 1.31.
+- **WSL2:** the stock wheel exposes no GPU devices, because WSL's virtual PCI bus blocks enumeration. Install the patched build as well (see [Standalone download](#standalone-download-no-cli-no-clone)).
+- **aarch64:** the wheel is built for `manylinux_2_35` (glibc 2.35 or newer). The aarch64 build is not yet verified on aarch64 hardware.
+- The wheel ships NVIDIA's license terms and acknowledgements, and TensorRT-RTX is subject to them.
+
+**MIGraphX**
+- An AMD GPU, with ROCm installed at `/opt/rocm` and MIGraphX 2.17 or newer. The plugin loads `libmigraphx_c.so.3`. Check it with `ls /opt/rocm/lib/libmigraphx_c.so.3`.
+- ONNX Runtime 1.24 or newer.
+- Linux x86_64 only.
+
+### Install with the CLI
+
+```bash
+linml catalog install trt-rtx     # TensorRT-RTX wheel for this machine's architecture
+linml setup --trt-rtx-wsl2        # WSL2 only: the patched TensorRT-RTX build (also installs the wheel)
+linml catalog install migraphx    # MIGraphX (AMD ROCm hosts)
+linml catalog list                # status of each plugin
+```
+
+### Standalone download (no CLI, no clone)
+
+These commands use only `curl`, `sha256sum`, `unzip`, and `mktemp`. Each downloads from the pinned URL, verifies the SHA-256, and installs into `~/.local/linml-deps`. Each runs in a subshell, so a failed check stops that block and not your terminal.
+
+**TensorRT-RTX wheel (x86_64 or aarch64).** Run this on every TensorRT-RTX host, including WSL2:
+
+```bash
+(
+  set -euo pipefail
+  DEPS="$HOME/.local/linml-deps"
+  TMP="$(mktemp -d)"
+  case "$(uname -m)" in
+    x86_64)
+      WHEEL=onnxruntime_ep_nv_tensorrt_rtx_cu13-0.4.0-py3-none-manylinux_2_28_x86_64.whl
+      URL=https://files.pythonhosted.org/packages/9c/68/093626a054300fa7f4f1a6d18b775d185034c6bb7fb056ac4f9d1e9b50d4/$WHEEL
+      SHA256=68b8f7306b50cf76daf997b8be24ec3813498c15d48e0ddd211db14f2a9daa19
+      DIR=trt-rtx ;;
+    aarch64)
+      WHEEL=onnxruntime_ep_nv_tensorrt_rtx_cu13-0.4.0-py3-none-manylinux_2_35_aarch64.whl
+      URL=https://files.pythonhosted.org/packages/41/63/ef110d73730969957740d770b29c158ca79a9df32c65ee081b01f8b64124/$WHEEL
+      SHA256=0ccf6a636f9f49d74e3e7e3b1b90287aa1c818db770b47fad6e8aa344f4290a5
+      DIR=trt-rtx-arm64
+      # The aarch64 wheel is manylinux_2_35: refuse an older glibc before downloading it.
+      GLIBC="$(getconf GNU_LIBC_VERSION 2>/dev/null | awk '{print $2}')" || GLIBC=""
+      if [ -z "$GLIBC" ] || [ "$(printf '%s\n' 2.35 "$GLIBC" | sort -V | head -n 1)" != "2.35" ]; then
+        echo "needs glibc 2.35 or newer; this host has ${GLIBC:-no glibc}" >&2; false
+      fi ;;
+    *) echo "No TensorRT-RTX build for $(uname -m)" >&2; false ;;
+  esac
+  OUT="$DEPS/ep-plugins/$DIR/onnxruntime_ep_nv_tensorrt_rtx"
+  mkdir -p "$OUT"
+  curl -fsSL -o "$TMP/$WHEEL" "$URL"
+  echo "$SHA256  $TMP/$WHEEL" | sha256sum -c
+  unzip -q -j -o "$TMP/$WHEEL" 'onnxruntime_ep_nv_tensorrt_rtx/*' -d "$OUT"
+  # The plugin links SONAMEs, but the wheel ships only versioned files: add the links.
+  (cd "$OUT" &&
+    ln -sf libtensorrt_rtx.so.1.6.1 libtensorrt_rtx.so.1 &&
+    ln -sf libtensorrt_onnxparser_rtx.so.1.6.1 libtensorrt_onnxparser_rtx.so.1 &&
+    ln -sf "$(ls libcudart.so.13.* | head -n 1)" libcudart.so.13)
+  rm -rf "$TMP"
+  echo "TensorRT-RTX installed to $OUT"
+)
+```
+
+**TensorRT-RTX patched build (WSL2 only).** Run this after the wheel block above. The patched build links the runtime libraries that only the wheel bundles:
+
+```bash
+(
+  set -euo pipefail
+  DEPS="$HOME/.local/linml-deps"
+  TMP="$(mktemp -d)"
+  ZIP=linml-trt-rtx-ep-0.4.0-wsl2p1-linux-x64.zip
+  URL=https://github.com/trackdubllc/LinML/releases/download/ep-trt-rtx-wsl2-0.4.0-wsl2p1/$ZIP
+  SHA256=e87adedba3dfc86ea96cd7c6f5b9a965de584aeda971ee7792ae6d1e0074d2df
+  OUT="$DEPS/ep-plugins/trt-rtx-wsl2/linml_trt_rtx_ep"
+  curl -fsSL -o "$TMP/$ZIP" "$URL"
+  echo "$SHA256  $TMP/$ZIP" | sha256sum -c
+  mkdir -p "$OUT"
+  unzip -q -o "$TMP/$ZIP" 'linml_trt_rtx_ep/*' -d "$TMP/unpacked"
+  cp -r "$TMP/unpacked/linml_trt_rtx_ep/." "$OUT/"
+  rm -rf "$TMP"
+  echo "Patched TensorRT-RTX installed to $OUT"
+)
+```
+
+**MIGraphX (AMD ROCm hosts):**
+
+```bash
+(
+  set -euo pipefail
+  DEPS="$HOME/.local/linml-deps"
+  TMP="$(mktemp -d)"
+  ZIP=linml-migraphx-ep-2611.1-linux-x64.zip
+  URL=https://github.com/trackdubllc/LinML/releases/download/ep-migraphx-2611.1/$ZIP
+  SHA256=968bdb1aa294c1ab4af04cfec0d4318fb2ffa4c69f0b34bc3b98532a199acd86
+  OUT="$DEPS/ep-plugins/migraphx/linml_migraphx_ep"
+  curl -fsSL -o "$TMP/$ZIP" "$URL"
+  echo "$SHA256  $TMP/$ZIP" | sha256sum -c
+  mkdir -p "$OUT"
+  unzip -q -j -o "$TMP/$ZIP" 'linml_migraphx_ep/*' -d "$OUT"
+  rm -rf "$TMP"
+  echo "MIGraphX installed to $OUT"
+)
+```
+
+Or download the one script that does all of the above, and run it:
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/trackdubllc/LinML/main/scripts/fetch-ep-plugins.sh
+bash fetch-ep-plugins.sh trt-rtx-wsl2   # WSL2: the wheel, then the patched build
+bash fetch-ep-plugins.sh trt-rtx        # native Linux: the wheel
+bash fetch-ep-plugins.sh migraphx       # AMD ROCm hosts
+```
+
+The script needs `curl`, `sha256sum` and `python3`. Its pins are the ones in the commands above.
+
+### Verify
+
+```bash
+linml providers list    # NvTensorRTRTXExecutionProvider appears, with its GPU device
+linml doctor            # readiness per provider; MIGraphX reports NOT APPLICABLE without AMD ROCm
+linml run --provider trt-rtx --require-provider --model model.onnx --inputs inputs.json
+linml run --provider migraphx --require-provider --model model.onnx --inputs inputs.json
+```
+
+`--require-provider` makes a missing plugin fail with exit code `3`, instead of falling back to CPU. A successful TensorRT-RTX run prints `Provider: NvTensorRTRTXExecutionProvider (requested: NvTensorRTRTXExecutionProvider)`.
+
+### Troubleshooting
+
+- **TensorRT-RTX on WSL2 is listed as `registered; no EP devices`, and runs fail with exit code `3`.** The stock wheel alone exposes no devices under WSL2, and `linml doctor` says so. Install the patched build (`linml setup --trt-rtx-wsl2`, or the standalone block above). `LINML_TRT_RTX_WSL2=0` keeps the stock wheel, which still exposes no devices on WSL2.
+- **`linml doctor` reports MIGraphX as NOT APPLICABLE, or a run fails with `libmigraphx_c.so.3: cannot open shared object file`.** The plugin needs an AMD GPU with ROCm and MIGraphX 2.17 or newer. The host does not have them. With `--require-provider` the run exits with code `3`.
+- **`available for linux-x64 only`.** That plugin has no build for this architecture. MIGraphX and OpenVINO are x86_64 only.
+- **Remove the plugins:** `rm -rf ~/.local/linml-deps/ep-plugins/{trt-rtx,trt-rtx-wsl2,migraphx}`.
 
 ---
 
@@ -183,7 +335,7 @@ All subcommands accept:
 
 ### Execution Provider Catalog (`linml catalog`)
 
-Inspect the multi-provider catalog and download/install pinned plugin execution providers (OpenVINO, TensorRT-RTX, MIGraphX) directly through the CLI without external shell or Python dependencies:
+Inspect the multi-provider catalog and download/install pinned plugin execution providers (OpenVINO, TensorRT-RTX, MIGraphX) directly through the CLI without external shell or Python dependencies: For TensorRT-RTX and MIGraphX requirements and standalone downloads that need no CLI, see [Plugin Execution Providers](#plugin-execution-providers-tensorrt-rtx-and-migraphx).
 
 ```bash
 # List all 6 execution providers with type, version, readiness status, and location

@@ -4,6 +4,9 @@ All notable changes to LinML are documented here. This project follows [Semantic
 
 ## [Unreleased]
 
+### Added
+- **TensorRT-RTX on Linux aarch64 (SBSA).** NVIDIA's TensorRT-RTX 1.6 supports Ubuntu 24.04 SBSA. `PluginPackageSpec.TensorrtRtx` is now the wheel for the host's architecture: `x86_64` as before, and `manylinux_2_35_aarch64` (EP 0.4.0, same bundled TensorRT-RTX 1.6.1 runtime) on aarch64 hosts. The plugin gate follows the spec's architecture, and the WSL2 variant stays x86_64 only. `scripts/fetch-ep-plugins.sh` has a `fetch_trt_rtx_arm64` function, chosen for aarch64 hosts. The aarch64 wheel installs to `ep-plugins/trt-rtx-arm64/`, beside the x86_64 one, so an x86_64 install is never mistaken for it. Both the catalog and the fetch script refuse a glibc older than 2.35 before downloading it. Not yet verified on aarch64 hardware.
+
 ### Fixed
 - **Provider labels.** With no `--provider`, `run`, `serve` and `--profile` reported `requested: cpu` while running the best available provider. They now report `requested: auto`, and `requestedProvider` is `null` in JSON. Auto selection never counts as a fallback.
 - **Explicit requests fall back to CPU.** A failed `--provider X` now falls back to CPU, not to another accelerator such as TensorRT.
