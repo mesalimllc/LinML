@@ -12,6 +12,15 @@
 # The EP source is Apache-2.0 (NVIDIA/TensorRT-RTX-EP-ABI); this build is a
 # modified version and carries a change notice (PATCH-NOTICE.md).
 #
+# Build in an old-glibc environment. A library built on a current distro needs
+# that distro's glibc (the 0.4.0-wsl2p1 build required GLIBC_2.43 and loaded
+# nowhere older), so the archive must be built where glibc is no newer than the
+# oldest host it supports: Ubuntu 22.04, glibc 2.35, the floor of the stock
+# wheel. `scripts/build-trt-rtx-ep-docker.sh` does that in an ubuntu:22.04
+# container. This script runs scripts/check-elf-floor.sh on its output and fails
+# if the library needs a newer GLIBC_, GLIBCXX_ or CXXABI_, so a build on a new
+# host cannot be released by mistake.
+#
 # The TensorRT-RTX SDK (headers + import libs) is NOT redistributable and sits
 # behind NVIDIA's license acceptance, so it cannot be downloaded automatically:
 # point TRT_RTX_SDK at an extracted SDK. As with the MIGraphX EP, the archive
@@ -24,9 +33,9 @@
 #   linml-trt-rtx-ep-<EP_VERSION>-linux-x64.zip         archive for the catalog
 #   linml-trt-rtx-ep-<EP_VERSION>-linux-x64.zip.sha256  its checksum
 #
-# Usage:
+# Usage (inside an old-glibc environment; see above):
 #   TRT_RTX_SDK=/path/to/TensorRT-RTX-1.6.1.120 \
-#       bash scripts/build-trt-rtx-ep.sh
+#       bash scripts/build-trt-rtx-ep-docker.sh
 #   (env overrides: TRT_RTX_SDK, CUDA_ROOT, OUT_DIR, WORK, DEPS, NO_INSTALL=1)
 
 set -euo pipefail
@@ -35,7 +44,7 @@ set -euo pipefail
 # Bump EP_VERSION whenever the emitted .so changes: a published release archive
 # is pinned by sha256 and is never overwritten.
 
-EP_VERSION="0.4.0-wsl2p1"
+EP_VERSION="0.4.0-wsl2p2"
 # TODO: switch to NVIDIA/TensorRT-RTX-EP-ABI @ the merged commit once PR #12 lands.
 EP_REPO="https://github.com/tonythethompson/TensorRT-RTX-EP-ABI.git"
 EP_COMMIT="6777dafa257dd569f489f1708473d5bee0f0a6d7" # PR #12 head (per-GPU registration)
@@ -100,7 +109,7 @@ fi
 
 # --- Toolchain -----------------------------------------------------------------
 
-for tool in cmake curl git python3 sha256sum strip readelf nm; do
+for tool in cmake curl git python3 sha256sum strip readelf nm objdump; do
     command -v "$tool" >/dev/null 2>&1 || { echo "ERROR: $tool not found on PATH." >&2; exit 1; }
 done
 
@@ -154,7 +163,9 @@ cmake -B "$BUILD" \
         exit 1
     }
 
-cmake --build "$BUILD" -j "$(nproc)" > "$WORK/cmake-build.log" 2>&1 || {
+# Only the plugin: the EP's unit-test binary needs a CUDA driver (libcuda.so.1) to be
+# linked and discovered, which a build container does not have, and it is not shipped.
+cmake --build "$BUILD" --target TensorRTRtxEp -j "$(nproc)" > "$WORK/cmake-build.log" 2>&1 || {
     echo "ERROR: build failed -- see $WORK/cmake-build.log" >&2
     tail -30 "$WORK/cmake-build.log" >&2
     exit 1
@@ -189,6 +200,13 @@ if ! grep -q '\$ORIGIN' <<< "$DYNAMIC"; then
     exit 1
 fi
 strip --strip-unneeded "$EP_SO"
+
+# The glibc / libstdc++ floor: the library must load wherever the stock wheel does.
+echo "--- symbol version floor"
+bash "$REPO_ROOT/scripts/check-elf-floor.sh" "$EP_SO" || {
+    echo "ERROR: $EP_SO needs a newer glibc / libstdc++ than the supported floor; not packaging it." >&2
+    exit 1
+}
 
 echo "--- dynamic section"
 grep -E 'NEEDED|RUNPATH|RPATH' <<< "$DYNAMIC"

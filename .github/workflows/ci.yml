@@ -33,6 +33,14 @@ jobs:
       - name: Test
         run: dotnet test LinML.slnx -c Release --no-build -m:1 --logger "console;verbosity=normal"
 
+      # Downloads the pinned patched WSL2 TensorRT-RTX archive (sha256-verified) and fails if its library
+      # needs a newer glibc / libstdc++ than the stock wheel's floor, so a rebuild on a current host
+      # cannot be released again (0.4.0-wsl2p1 needed GLIBC_2.43 and did not load on Ubuntu 24.04).
+      - name: Published TensorRT-RTX WSL2 build is within the glibc floor
+        env:
+          LINML_CATALOG_NETWORK_TESTS: "1"
+        run: dotnet test tests/LinML.Catalog.Tests/LinML.Catalog.Tests.csproj -c Release --no-build -m:1 --filter "FullyQualifiedName~PublishedTrtRtxWsl2Pin" --logger "console;verbosity=normal"
+
       - name: Publish (linux-x64)
         run: |
           dotnet restore src/LinML.Cli/LinML.Cli.csproj -r linux-x64 --locked-mode

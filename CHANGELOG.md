@@ -7,6 +7,17 @@ All notable changes to LinML are documented here. This project follows [Semantic
 ### Added
 - **QNN in the catalog.** `linml catalog install qnn` installs the Qualcomm QNN plugin (`onnxruntime-qnn` 2.6.0, aarch64) on Snapdragon aarch64 hosts. On other architectures the catalog reports it as not applicable, `catalog install` refuses without downloading it, and `setup --all` and `doctor` skip it with the reason. Not verified on hardware.
 
+## [0.5.1] — 2026-10-12
+
+### Fixed
+- **The patched WSL2 TensorRT-RTX build now loads on Ubuntu 24.04 and 22.04.** The `0.4.0-wsl2p1` archive was built on a host with glibc 2.43 and needed `GLIBC_2.43` (also `GLIBCXX_3.4.32`, `CXXABI_1.3.15`), so registration failed with ``libm.so.6: version `GLIBC_2.43' not found`` on every WSL2 distro or container older than the build host, including Docker Desktop containers on Ubuntu 24.04 (glibc 2.39). The pin is now `0.4.0-wsl2p2` (release `ep-trt-rtx-wsl2-0.4.0-wsl2p2`), built in an `ubuntu:22.04` container (glibc 2.35, libstdc++ 3.4.30: the floor of the stock wheel). The zip layout and install path are unchanged. The patched build now declares a glibc 2.35 minimum (the stock wheel is `manylinux_2_28`), so on a WSL2 distro older than that `EnsureReadyAsync` returns `NotAvailable` before downloading it.
+- **A vendored `0.4.0-wsl2p1` is replaced.** `p1` and `p2` share one install directory, and the installer treated any library already there as installed, so a host that had `p1` would have kept the broken library. The patched build's `build-info.json` records its `epVersion`; an install of another version is now replaced by the pinned one, with the download verified before the old directory is touched. This applies to `EnsureReadyAsync(AllowDownloads: true)`, `linml setup --trt-rtx-wsl2` and `scripts/fetch-ep-plugins.sh trt-rtx-wsl2`. `linml catalog install trt-rtx` (or `all`) upgrades a patched build that is already vendored when it installs the wheel on a WSL2 host, and, as before, never installs one where there is none. The replacement is verified before the old directory is touched, and a failed move puts the old build back. With downloads disallowed, or if the download fails, the earlier build stays in use, and if it fails to load the error names the vendored and pinned versions.
+
+### Added
+- **Build gate.** `scripts/check-elf-floor.sh` fails if a plugin library needs a newer `GLIBC_` than 2.35, `GLIBCXX_` than 3.4.30 or `CXXABI_` than 1.3.13, and prints the offending symbols. `scripts/build-trt-rtx-ep.sh` runs it on its output, so a build on a new host cannot be packaged. `scripts/build-trt-rtx-ep-docker.sh` runs the build in `ubuntu:22.04` (`scripts/docker/trt-rtx-ep-build.Dockerfile`), with the TensorRT-RTX SDK and CUDA toolkit mounted from the host.
+- **Published-pin check.** With `LINML_CATALOG_NETWORK_TESTS=1`, a test downloads the pinned archive, verifies its sha256 and `epVersion`, and applies the same gate.
+- `PluginPackageSpec.VersionManifestFile`, an internal opt-in for packages that record their build version. `IExecutionProvider`, `EnsureOptions` and `ProviderEnsureResult` are unchanged.
+
 ## [0.5.0] — 2026-10-12
 
 ### Added

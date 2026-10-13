@@ -74,6 +74,140 @@ public class PluginInstallerTests
         Assert.True(File.Exists(spec.LibraryPath(root.Path)));
     }
 
+    // A package that ships a build-info.json (the patched WSL2 TensorRT-RTX build) records the version it
+    // was built as. Presence of the library alone must not count as installed: 0.4.0-wsl2p1 and p2 share
+    // one install directory, and p1 does not load on Ubuntu 24.04.
+    private static PluginPackageSpec Versioned(byte[] wheel, string version) =>
+        FakeWheel.Spec(wheel) with { Version = version, VersionManifestFile = "build-info.json" };
+
+    private static void VendorByHand(PluginPackageSpec spec, string root, string? buildInfoVersion)
+    {
+        Directory.CreateDirectory(spec.InstallDirectory(root));
+        File.WriteAllText(spec.LibraryPath(root), "previous-build");
+        if (buildInfoVersion is not null)
+        {
+            File.WriteAllText(Path.Combine(spec.InstallDirectory(root), "build-info.json"), FakeWheel.BuildInfo(buildInfoVersion));
+        }
+    }
+
+    [Fact]
+    public async Task Install_VersionedPackage_ReplacesAnInstallOfAnotherVersion()
+    {
+        using var root = new TempDir();
+        byte[] wheel = FakeWheel.Build(buildInfoVersion: "2.0.0");
+        PluginPackageSpec pinned = Versioned(wheel, "2.0.0");
+        VendorByHand(pinned, root.Path, buildInfoVersion: "1.0.0");
+        var handler = new FakeWheelHandler(wheel);
+
+        bool installed = await new PluginInstaller(handler).InstallAsync(pinned, root.Path, CancellationToken.None);
+
+        Assert.True(installed);
+        Assert.Equal(1, handler.Requests);
+        Assert.Equal("plugin", File.ReadAllText(pinned.LibraryPath(root.Path)));
+        Assert.Equal("2.0.0", pinned.VendoredVersion(pinned.LibraryPath(root.Path)));
+        // No staging or moved-aside directories are left beside it.
+        Assert.Equal(
+            [pinned.InstallDirectory(root.Path)],
+            Directory.GetDirectories(Path.GetDirectoryName(pinned.InstallDirectory(root.Path))!));
+    }
+
+    [Fact]
+    public async Task Install_VersionedPackage_ReplacesAnInstallWithNoManifest()
+    {
+        using var root = new TempDir();
+        byte[] wheel = FakeWheel.Build(buildInfoVersion: "2.0.0");
+        PluginPackageSpec pinned = Versioned(wheel, "2.0.0");
+        VendorByHand(pinned, root.Path, buildInfoVersion: null);
+
+        bool installed = await new PluginInstaller(new FakeWheelHandler(wheel)).InstallAsync(pinned, root.Path, CancellationToken.None);
+
+        Assert.True(installed);
+        Assert.Equal("plugin", File.ReadAllText(pinned.LibraryPath(root.Path)));
+    }
+
+    [Fact]
+    public async Task Install_VersionedPackage_KeepsAnInstallOfTheSameVersion()
+    {
+        using var root = new TempDir();
+        byte[] wheel = FakeWheel.Build(buildInfoVersion: "2.0.0");
+        PluginPackageSpec pinned = Versioned(wheel, "2.0.0");
+        var handler = new FakeWheelHandler(wheel);
+        var installer = new PluginInstaller(handler);
+        await installer.InstallAsync(pinned, root.Path, CancellationToken.None);
+
+        bool second = await installer.InstallAsync(pinned, root.Path, CancellationToken.None);
+
+        Assert.False(second);
+        Assert.Equal(1, handler.Requests);
+    }
+
+    [Fact]
+    public async Task Install_VersionedPackage_FailedDownloadLeavesTheStaleInstallInPlace()
+    {
+        using var root = new TempDir();
+        byte[] wheel = FakeWheel.Build(buildInfoVersion: "2.0.0");
+        PluginPackageSpec pinned = Versioned(wheel, "2.0.0") with { WheelSha256 = new string('0', 64) };
+        VendorByHand(pinned, root.Path, buildInfoVersion: "1.0.0");
+
+        await Assert.ThrowsAsync<InvalidDataException>(() =>
+            new PluginInstaller(new FakeWheelHandler(wheel)).InstallAsync(pinned, root.Path, CancellationToken.None));
+
+        Assert.Equal("previous-build", File.ReadAllText(pinned.LibraryPath(root.Path)));
+    }
+
+    [Fact]
+    public void IsVendored_UnversionedPackage_OnlyNeedsTheLibrary()
+    {
+        using var root = new TempDir();
+        PluginPackageSpec spec = FakeWheel.Spec(FakeWheel.Build());
+        Assert.False(spec.IsVendored(root.Path));
+
+        VendorByHand(spec, root.Path, buildInfoVersion: "anything");
+
+        Assert.True(spec.IsVendored(root.Path));
+    }
+
+    [Theory]
+    [InlineData("2.0.0", true)]
+    [InlineData("1.0.0", false)]
+    [InlineData(null, false)]
+    public void IsVendored_VersionedPackage_RequiresTheManifestToMatchThePin(string? vendoredVersion, bool expected)
+    {
+        using var root = new TempDir();
+        PluginPackageSpec pinned = Versioned(FakeWheel.Build(), "2.0.0");
+        VendorByHand(pinned, root.Path, vendoredVersion);
+
+        Assert.Equal(expected, pinned.IsVendored(root.Path));
+    }
+
+    [Fact]
+    public void IsVendored_VersionedPackage_UnreadableManifestIsStale()
+    {
+        using var root = new TempDir();
+        PluginPackageSpec pinned = Versioned(FakeWheel.Build(), "2.0.0");
+        VendorByHand(pinned, root.Path, buildInfoVersion: null);
+        File.WriteAllText(Path.Combine(pinned.InstallDirectory(root.Path), "build-info.json"), "{ not json");
+
+        Assert.False(pinned.IsVendored(root.Path));
+        Assert.Null(pinned.VendoredVersion(pinned.LibraryPath(root.Path)));
+    }
+
+    [Fact]
+    public void IsVendored_PatchedWsl2Build_IsStaleOnAnInstallOfWsl2p1()
+    {
+        // What a host that installed catalog 0.4.2-0.5.0 has on disk.
+        using var root = new TempDir();
+        PluginPackageSpec pinned = KnownPlugins.TensorrtRtxWsl2;
+        VendorByHand(pinned, root.Path, buildInfoVersion: "0.4.0-wsl2p1");
+
+        Assert.NotEqual("0.4.0-wsl2p1", pinned.Version);
+        Assert.False(pinned.IsVendored(root.Path));
+
+        File.WriteAllText(Path.Combine(pinned.InstallDirectory(root.Path), "build-info.json"), FakeWheel.BuildInfo(pinned.Version));
+
+        Assert.True(pinned.IsVendored(root.Path));
+    }
+
     [Fact]
     public async Task Install_ShaMismatch_Throws_AndLeavesNothingBehind()
     {
@@ -99,6 +233,53 @@ public class PluginInstallerTests
             new PluginInstaller(new FakeWheelHandler(wheel)).InstallAsync(spec, root.Path, CancellationToken.None));
 
         Assert.False(Directory.Exists(spec.InstallDirectory(root.Path)));
+    }
+
+    [Fact]
+    public void Promote_ForcedReplacement_WhenTheStagedMoveFails_PutsTheOldBuildBack()
+    {
+        // An upgrade must never leave a host with neither build: the old directory is only discarded once
+        // the staged one is in place.
+        using var root = new TempDir();
+        string finalDir = Path.Combine(root.Path, "install");
+        Directory.CreateDirectory(finalDir);
+        File.WriteAllText(Path.Combine(finalDir, FakeWheel.Library), "old-build");
+
+        Assert.ThrowsAny<IOException>(() =>
+            PluginInstaller.Promote(Path.Combine(root.Path, "no-such-stage"), finalDir, FakeWheel.Library, force: true));
+
+        Assert.Equal("old-build", File.ReadAllText(Path.Combine(finalDir, FakeWheel.Library)));
+        Assert.Equal([finalDir], Directory.GetDirectories(root.Path));
+    }
+
+    [Fact]
+    public void Promote_ForcedReplacement_LeavesOnlyTheNewBuild()
+    {
+        using var root = new TempDir();
+        string finalDir = Path.Combine(root.Path, "install");
+        string stage = Path.Combine(root.Path, "stage");
+        Directory.CreateDirectory(finalDir);
+        Directory.CreateDirectory(stage);
+        File.WriteAllText(Path.Combine(finalDir, FakeWheel.Library), "old-build");
+        File.WriteAllText(Path.Combine(stage, FakeWheel.Library), "new-build");
+
+        bool promoted = PluginInstaller.Promote(stage, finalDir, FakeWheel.Library, force: true);
+
+        Assert.True(promoted);
+        Assert.Equal("new-build", File.ReadAllText(Path.Combine(finalDir, FakeWheel.Library)));
+        Assert.Equal([finalDir], Directory.GetDirectories(root.Path));
+    }
+
+    [Fact]
+    public void IsCurrent_ALibraryThatIsNotThere_IsNotCurrent_WhateverTheManifestSays()
+    {
+        using var root = new TempDir();
+        PluginPackageSpec pinned = Versioned(FakeWheel.Build(), "2.0.0");
+        Directory.CreateDirectory(pinned.InstallDirectory(root.Path));
+        File.WriteAllText(Path.Combine(pinned.InstallDirectory(root.Path), "build-info.json"), FakeWheel.BuildInfo("2.0.0"));
+
+        Assert.False(pinned.IsCurrent(pinned.LibraryPath(root.Path)));
+        Assert.False(pinned.IsVendored(root.Path));
     }
 
     [Fact]

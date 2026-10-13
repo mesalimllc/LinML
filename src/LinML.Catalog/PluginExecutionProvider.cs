@@ -123,6 +123,19 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
             : null;
     }
 
+    // The version of the vendored WSL2 build actually in use, which predates the pin when it could not be replaced.
+    private string WslBuildVersion() =>
+        WslVariantLibraryPath() is { } library && !_wsl2Spec.IsCurrent(library)
+            ? _wsl2Spec.VendoredVersion(library) ?? "(unknown version)"
+            : _wsl2Spec.Version;
+
+    // A build of an earlier version failing to load is most often why it was replaced: say so.
+    private string StaleWsl2BuildHint(string library) =>
+        IsWslVariant(library) && !_wsl2Spec.IsCurrent(library)
+            ? $" The vendored WSL2 build is {_wsl2Spec.VendoredVersion(library) ?? "of unknown version"}, but {_wsl2Spec.Version} is pinned: "
+                + "allow downloads or run 'linml setup --trt-rtx-wsl2' to replace it."
+            : "";
+
     public ProviderReadyState ReadyState
     {
         get
@@ -210,7 +223,7 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
         }
         catch (Exception ex) when (ex is OnnxRuntimeException or InvalidOperationException or ArgumentException or IOException or DllNotFoundException)
         {
-            failureReason = $"Registering {library} failed: {ex.Message}";
+            failureReason = $"Registering {library} failed: {ex.Message}{StaleWsl2BuildHint(library)}";
             return false;
         }
     }
@@ -257,30 +270,42 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
             }
 
             bool downloaded = false;
+            // Why a vendored build of another version could not be replaced, when it stays in use instead.
+            string? updateFailure = null;
+            string WithUpdateNote(string detail) => updateFailure is null
+                ? detail
+                : $"{detail} Could not replace the vendored build with {_wsl2Spec.Version}: {updateFailure}";
             Variant variant = SelectVariant();
             if (variant != Variant.Custom)
             {
                 // On the WSL2 path the patched build needs the stock wheel's runtime directory and
                 // must never be preceded by a stock registration: ORT cannot replace one per process.
-                var needed = new List<PluginPackageSpec>();
+                var needed = new List<(PluginPackageSpec Spec, bool HasFallback)>();
                 if (variant == Variant.Wsl2)
                 {
                     if (StockRuntimeDirectory() is null)
                     {
-                        needed.Add(_spec);
+                        needed.Add((_spec, false));
                     }
 
-                    if (WslVariantLibraryPath() is null)
+                    // A vendored build of another version (the pin moved on; 0.4.0-wsl2p1 needs a newer glibc than
+                    // most hosts have) is replaced when downloads are allowed. If it cannot be replaced, or
+                    // downloads are not allowed, it stays in use: it is all there is, and where it loads it works.
+                    if (WslVariantLibraryPath() is not { } vendored)
                     {
-                        needed.Add(_wsl2Spec);
+                        needed.Add((_wsl2Spec, false));
+                    }
+                    else if (options.AllowDownloads && !_wsl2Spec.IsCurrent(vendored))
+                    {
+                        needed.Add((_wsl2Spec, true));
                     }
                 }
                 else if (LibraryPath is null)
                 {
-                    needed.Add(_spec);
+                    needed.Add((_spec, false));
                 }
 
-                foreach (PluginPackageSpec spec in needed)
+                foreach ((PluginPackageSpec spec, bool hasFallback) in needed)
                 {
                     if (!options.AllowDownloads)
                     {
@@ -295,11 +320,23 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
                     }
                     catch (Exception ex) when (ex is HttpRequestException or InvalidDataException or IOException or UnauthorizedAccessException)
                     {
+                        if (hasFallback)
+                        {
+                            updateFailure = ex.Message;
+                            continue;
+                        }
+
                         return Result(ProviderEnsureStatus.Failed, $"Vendoring {Id} {spec.Version} failed: {ex.Message}");
                     }
                     catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
                     {
                         // HttpClient.Timeout surfaces as TaskCanceledException; caller cancellation still propagates.
+                        if (hasFallback)
+                        {
+                            updateFailure = $"timed out: {ex.Message}";
+                            continue;
+                        }
+
                         return Result(ProviderEnsureStatus.Failed, $"Vendoring {Id} {spec.Version} timed out: {ex.Message}");
                     }
                 }
@@ -311,7 +348,7 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
 
             if (!TryRegister(out string? failure))
             {
-                return Result(ProviderEnsureStatus.Failed, failure!);
+                return Result(ProviderEnsureStatus.Failed, WithUpdateNote(failure!));
             }
 
             IReadOnlyList<OrtEpDevice> devices = GetDevices();
@@ -319,7 +356,7 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
             {
                 string detail = variant switch
                 {
-                    Variant.Wsl2 => $"{Id} (patched WSL2 build {_wsl2Spec.Version}) is registered but exposes no EP devices. Check that 'nvidia-smi' works in this distro and that /dev/dxg exists (WSL2 GPU passthrough).",
+                    Variant.Wsl2 => $"{Id} (patched WSL2 build {WslBuildVersion()}) is registered but exposes no EP devices. Check that 'nvidia-smi' works in this distro and that /dev/dxg exists (WSL2 GPU passthrough).",
                     Variant.Custom => $"{Id} (custom build from {TrtRtxCustomEpEnvVar}) is registered but exposes no EP devices on this host.",
                     _ when Id == ProviderId.TensorrtRtx && IsWsl() && Wsl2OptedOut() =>
                         $"{Id} is registered, but in WSL2 virtual PCI mapping blocks device enumeration with the stock wheel (see docs/compatibility.md). You opted out of the patched WSL2 build: remove {Wsl2OptOutEnvVar}=0 from the environment to use it, or use bare-metal Linux.",
@@ -327,18 +364,18 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
                         $"{Id} is registered, but no WSL2 GPU passthrough was found (/dev/dxg is missing), so the patched WSL2 build was not used and the stock wheel exposes no devices. Check that this is WSL2 with NVIDIA GPU support and that 'nvidia-smi' works.",
                     _ => $"{Id} is registered but exposes no EP devices on this host.",
                 };
-                return Result(ProviderEnsureStatus.NoDevices, detail);
+                return Result(ProviderEnsureStatus.NoDevices, WithUpdateNote(detail));
             }
 
             return new ProviderEnsureResult(
                 Id,
                 downloaded ? ProviderEnsureStatus.Downloaded : ProviderEnsureStatus.Ready,
-                variant switch
+                WithUpdateNote(variant switch
                 {
-                    Variant.Wsl2 => $"{Id} patched WSL2 build {_wsl2Spec.Version} ready with {devices.Count} EP device(s).",
+                    Variant.Wsl2 => $"{Id} patched WSL2 build {WslBuildVersion()} ready with {devices.Count} EP device(s).",
                     Variant.Custom => $"{Id} custom build ({TrtRtxCustomEpEnvVar}) ready with {devices.Count} EP device(s).",
                     _ => $"{Id} {_spec.Version} ready with {devices.Count} EP device(s).",
-                },
+                }),
                 devices);
         }
         finally
@@ -376,15 +413,18 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
 
     // The wheel's glibc floor is a runtime requirement, separate from the architecture
     // check above, so an arm64 host on an older distribution is reported, not downloaded.
+    // It is the floor of the build that will load: the patched WSL2 build is built against a
+    // newer glibc than the stock wheel, so that is the one checked when it is selected.
     private string? GlibcReason()
     {
-        if (GlibcSatisfies(_spec.MinimumGlibc, HostGlibc))
+        PluginPackageSpec spec = SelectVariant() == Variant.Wsl2 ? _wsl2Spec : _spec;
+        if (GlibcSatisfies(spec.MinimumGlibc, HostGlibc))
         {
             return null;
         }
 
         string host = HostGlibc is null ? "no glibc (not a glibc system)" : $"glibc {HostGlibc}";
-        return $"{Id} plugin {_spec.Version} needs glibc {_spec.MinimumGlibc} or newer; this host has {host}.";
+        return $"{Id} plugin {spec.Version} needs glibc {spec.MinimumGlibc} or newer; this host has {host}.";
     }
 
     [DllImport("libc", EntryPoint = "gnu_get_libc_version")]

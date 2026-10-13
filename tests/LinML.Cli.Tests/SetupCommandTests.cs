@@ -493,11 +493,7 @@ public class SetupCommandTests
         string tempDir = Path.Combine(Path.GetTempPath(), "linml-test-setup-wsl2-" + Guid.NewGuid().ToString("N"));
         try
         {
-            foreach (var spec in new[] { KnownPlugins.TensorrtRtx, KnownPlugins.TensorrtRtxWsl2 })
-            {
-                Directory.CreateDirectory(spec.InstallDirectory(tempDir));
-                File.WriteAllText(spec.LibraryPath(tempDir), "fake-so");
-            }
+            VendorForSetup(tempDir, wsl2BuildVersion: KnownPlugins.TensorrtRtxWsl2.Version);
 
             var (exitCode, stdout, _) = await Task.Run(() => CliTestHost.Run(
                 "setup", "--trt-rtx-wsl2", "--root", tempDir, "--dry-run", "--json"));
@@ -516,6 +512,51 @@ public class SetupCommandTests
             {
                 Assert.Contains(root.GetProperty("skipped").EnumerateArray(),
                     n => n.GetString()!.StartsWith("trt-rtx-wsl2"));
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, recursive: true);
+            }
+        }
+    }
+
+    // The stock wheel and the patched build, as a host that ran an earlier release has them.
+    private static void VendorForSetup(string root, string wsl2BuildVersion)
+    {
+        foreach (var spec in new[] { KnownPlugins.TensorrtRtx, KnownPlugins.TensorrtRtxWsl2 })
+        {
+            Directory.CreateDirectory(spec.InstallDirectory(root));
+            File.WriteAllText(spec.LibraryPath(root), "fake-so");
+        }
+
+        File.WriteAllText(
+            Path.Combine(KnownPlugins.TensorrtRtxWsl2.InstallDirectory(root), "build-info.json"),
+            $"{{ \"epVersion\": \"{wsl2BuildVersion}\" }}");
+    }
+
+    [Fact]
+    public async Task Setup_TrtRtxWsl2_CustomRoot_EarlierBuildVendored_IsReplacedNotReportedAsInstalled()
+    {
+        // 0.4.0-wsl2p1 needs a newer glibc than Ubuntu 24.04 has and shares p2's install directory.
+        string tempDir = Path.Combine(Path.GetTempPath(), "linml-test-setup-wsl2-stale-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            VendorForSetup(tempDir, wsl2BuildVersion: "0.4.0-wsl2p1");
+
+            var (exitCode, stdout, _) = await Task.Run(() => CliTestHost.Run(
+                "setup", "--trt-rtx-wsl2", "--root", tempDir, "--dry-run", "--json"));
+
+            Assert.Equal(0, exitCode);
+            using var doc = JsonDocument.Parse(stdout);
+            using var services = Program.BuildServices();
+            if (SetupCommand.IsTrtRtxWsl2Eligible(SetupCommand.ProbeHostHardware(services)))
+            {
+                var action = Assert.Single(doc.RootElement.GetProperty("actions").EnumerateArray(),
+                    a => a.GetProperty("provider").GetString() == "trt-rtx-wsl2");
+                Assert.Equal("WouldInstall", action.GetProperty("status").GetString());
             }
         }
         finally

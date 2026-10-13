@@ -34,7 +34,9 @@ internal static class FakeWheel
     public const string Prefix = "fake_ep/";
     public const string Library = "libfake_plugin.so";
 
-    public static byte[] Build(bool includeLibrary = true)
+    /// <param name="includeLibrary">Whether the plugin library itself is in the archive.</param>
+    /// <param name="buildInfoVersion">When set, adds the <c>build-info.json</c> a versioned package ships, recording this <c>epVersion</c>.</param>
+    public static byte[] Build(bool includeLibrary = true, string? buildInfoVersion = null)
     {
         using var buffer = new MemoryStream();
         using (var zip = new ZipArchive(buffer, ZipArchiveMode.Create, leaveOpen: true))
@@ -46,6 +48,11 @@ internal static class FakeWheel
 
             Add(zip, Prefix + "libruntime.so.2621", "runtime");
             Add(zip, Prefix + "cache.json", "{}");
+            if (buildInfoVersion is not null)
+            {
+                Add(zip, Prefix + "build-info.json", BuildInfo(buildInfoVersion));
+            }
+
             Add(zip, Prefix + "__init__.py", "python");
             Add(zip, Prefix + "nested/libnested.so", "nested");
             Add(zip, "fake_ep-1.0.0.dist-info/METADATA", "meta");
@@ -53,6 +60,8 @@ internal static class FakeWheel
 
         return buffer.ToArray();
     }
+
+    public static string BuildInfo(string version) => $"{{ \"epVersion\": \"{version}\" }}";
 
     public static string Sha256(byte[] bytes) => Convert.ToHexStringLower(SHA256.HashData(bytes));
 

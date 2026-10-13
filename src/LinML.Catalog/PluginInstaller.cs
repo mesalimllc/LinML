@@ -15,7 +15,11 @@ internal sealed class PluginInstaller(HttpMessageHandler? httpHandler = null)
 {
     private readonly HttpMessageHandler? _httpHandler = httpHandler;
 
-    /// <summary>Installs the plugin unless its library is already present, or forces reinstallation if <paramref name="force"/> is true.</summary>
+    /// <summary>
+    /// Installs the plugin unless the pinned build is already vendored, or forces reinstallation if
+    /// <paramref name="force"/> is true. A library of another version (see
+    /// <see cref="PluginPackageSpec.VersionManifestFile"/>) is not the pinned build and is replaced.
+    /// </summary>
     /// <param name="spec">Specification of the plugin package to install.</param>
     /// <param name="installRoot">Target root directory for installation.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
@@ -29,11 +33,15 @@ internal sealed class PluginInstaller(HttpMessageHandler? httpHandler = null)
         bool force = false)
     {
         string finalDir = spec.InstallDirectory(installRoot);
-        if (!force && File.Exists(spec.LibraryPath(installRoot)))
+        if (!force && spec.IsVendored(installRoot))
         {
             CreateRequiredSymlinks(finalDir);
             return false;
         }
+
+        // A library that is present but is not the pinned build is replaced like a forced reinstall: the
+        // staged copy is verified first, and the old directory is only removed once it can be swapped in.
+        force |= File.Exists(spec.LibraryPath(installRoot));
 
         string parent = Path.GetDirectoryName(finalDir)!;
         Directory.CreateDirectory(parent);
@@ -312,44 +320,71 @@ internal sealed class PluginInstaller(HttpMessageHandler? httpHandler = null)
         string library = Path.Combine(finalDir, libraryFileName);
         for (int attempt = 0; attempt < 2; attempt++)
         {
+            // The directory a forced install replaces. It is kept until the staged directory is in place, so
+            // a failed move puts the old build back instead of leaving the host with neither.
+            string? aside = null;
             try
             {
                 if (force && Directory.Exists(finalDir))
                 {
-                    string aside = $"{finalDir}.stale-{Guid.NewGuid():N}";
+                    string candidate = $"{finalDir}.stale-{Guid.NewGuid():N}";
                     try
                     {
-                        Directory.Move(finalDir, aside);
+                        Directory.Move(finalDir, candidate);
+                        aside = candidate;
                     }
                     catch (IOException)
                     {
                         // A concurrent installer moved the leftover first.
                     }
-
-                    TryDeleteDirectory(aside);
                 }
 
                 Directory.Move(stage, finalDir);
+                if (aside is not null)
+                {
+                    TryDeleteDirectory(aside);
+                }
+
                 return true;
+            }
+            catch (Exception) when (aside is not null && !Directory.Exists(finalDir))
+            {
+                try
+                {
+                    Directory.Move(aside, finalDir);
+                }
+                catch (IOException)
+                {
+                    // Nothing more to do: the old build stays in the moved-aside directory, and the
+                    // original failure is the one worth reporting.
+                }
+
+                throw;
             }
             catch (IOException) when (Directory.Exists(finalDir))
             {
+                if (aside is not null)
+                {
+                    // Another installer filled the directory after the old one was moved away.
+                    TryDeleteDirectory(aside);
+                }
+
                 if (!force && File.Exists(library))
                 {
                     return false;
                 }
 
-                string aside = $"{finalDir}.stale-{Guid.NewGuid():N}";
+                string leftover = $"{finalDir}.stale-{Guid.NewGuid():N}";
                 try
                 {
-                    Directory.Move(finalDir, aside);
+                    Directory.Move(finalDir, leftover);
                 }
                 catch (IOException)
                 {
                     // A concurrent installer moved the leftover first.
                 }
 
-                TryDeleteDirectory(aside);
+                TryDeleteDirectory(leftover);
             }
         }
 

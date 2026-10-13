@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using LinML.Contracts;
 
 namespace LinML.Catalog;
@@ -8,6 +9,8 @@ namespace LinML.Catalog;
 /// library lands once vendored. <c>Architecture</c> is the Linux host architecture
 /// the wheel is built for, as a RID suffix: <c>x64</c> or <c>arm64</c>.
 /// <c>MinimumGlibc</c>, when set, is the oldest glibc the wheel loads on.
+/// <c>VersionManifestFile</c>, when set, names a JSON file in the package whose <c>epVersion</c> records the
+/// version it was built as: an install only counts as vendored when that equals <c>Version</c>.
 /// </summary>
 internal sealed record PluginPackageSpec(
     ProviderId Id,
@@ -20,11 +23,52 @@ internal sealed record PluginPackageSpec(
     string LibraryFileName,
     Version MinimumOrtVersion,
     string Architecture = "x64",
-    Version? MinimumGlibc = null)
+    Version? MinimumGlibc = null,
+    string? VersionManifestFile = null)
 {
     public string InstallDirectory(string installRoot) => Path.Combine(installRoot, InstallSubdirectory);
 
     public string LibraryPath(string installRoot) => Path.Combine(InstallDirectory(installRoot), LibraryFileName);
+
+    /// <summary>
+    /// The version a vendored library was built as, read from <see cref="VersionManifestFile"/> beside it, or
+    /// null when this package has no manifest, the file is missing or it is unreadable.
+    /// </summary>
+    public string? VendoredVersion(string libraryPath)
+    {
+        string? directory = Path.GetDirectoryName(libraryPath);
+        if (VersionManifestFile is null || directory is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            using JsonDocument manifest = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(directory, VersionManifestFile)));
+            return manifest.RootElement is { ValueKind: JsonValueKind.Object } root
+                && root.TryGetProperty("epVersion", out JsonElement version)
+                && version.ValueKind == JsonValueKind.String
+                    ? version.GetString()
+                    : null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Whether the library at <paramref name="libraryPath"/> exists and is the pinned build. A package without
+    /// a <see cref="VersionManifestFile"/> has nothing to compare, so any library counts. With one, the vendored
+    /// version must equal <see cref="Version"/>: successive builds share one install directory, and a library
+    /// that is merely present may be an earlier build the pin replaced.
+    /// </summary>
+    public bool IsCurrent(string libraryPath) =>
+        File.Exists(libraryPath)
+        && (VersionManifestFile is null || string.Equals(VendoredVersion(libraryPath), Version, StringComparison.Ordinal));
+
+    /// <summary>Whether the pinned build is vendored under <paramref name="installRoot"/>.</summary>
+    public bool IsVendored(string installRoot) => IsCurrent(LibraryPath(installRoot));
 
     public static readonly IReadOnlyList<string> DefaultCandidateRoots =
     [
@@ -159,7 +203,7 @@ internal static class KnownPlugins
         MinimumOrtVersion: new Version(1, 24, 0));
 
     // Opt-in LinML-hosted patched TensorRT-RTX EP for WSL2 (release
-    // ep-trt-rtx-wsl2-0.4.0-wsl2p1, built by scripts/build-trt-rtx-ep.sh; fixes
+    // ep-trt-rtx-wsl2-0.4.0-wsl2p2, built by scripts/build-trt-rtx-ep-docker.sh; fixes
     // device enumeration on the WSL2 virtual PCI bus, upstream PR #12). Same EP
     // name and ABI as the stock wheel, so it is a drop-in replacement and is
     // deliberately NOT in All: it is not a separate provider, and installing it
@@ -169,13 +213,17 @@ internal static class KnownPlugins
     public static readonly PluginPackageSpec TensorrtRtxWsl2 = new(
         Id: ProviderId.TensorrtRtx,
         RegistrationName: "NvTensorRTRTXExecutionProvider",
-        Version: "0.4.0-wsl2p1",
-        WheelUrl: new Uri("https://github.com/trackdubllc/LinML/releases/download/ep-trt-rtx-wsl2-0.4.0-wsl2p1/linml-trt-rtx-ep-0.4.0-wsl2p1-linux-x64.zip"),
-        WheelSha256: "e87adedba3dfc86ea96cd7c6f5b9a965de584aeda971ee7792ae6d1e0074d2df",
+        Version: "0.4.0-wsl2p2",
+        WheelUrl: new Uri("https://github.com/trackdubllc/LinML/releases/download/ep-trt-rtx-wsl2-0.4.0-wsl2p2/linml-trt-rtx-ep-0.4.0-wsl2p2-linux-x64.zip"),
+        WheelSha256: "7575c51157110228d581593c04147473868fbb7eefc79aa1b809c5b8bb66c220",
         PackagePrefix: "linml_trt_rtx_ep/",
         InstallSubdirectory: Path.Combine("ep-plugins", "trt-rtx-wsl2", "linml_trt_rtx_ep"),
         LibraryFileName: "libonnxruntime_providers_nv_tensorrt_rtx.so",
-        MinimumOrtVersion: new Version(1, 24, 0));
+        MinimumOrtVersion: new Version(1, 24, 0),
+        // The floor scripts/check-elf-floor.sh holds the build to: above the stock wheel's manylinux_2_28, so
+        // an older WSL2 distro (Ubuntu 20.04) loads the wheel but not this.
+        MinimumGlibc: new Version(2, 35),
+        VersionManifestFile: "build-info.json");
 
     // Qualcomm QNN plugin EP (onnxruntime/onnxruntime-qnn v2.6.0), Linux aarch64
     // inference package. The tarball is flat: the EP plugin .so plus the bundled

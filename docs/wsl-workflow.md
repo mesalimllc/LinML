@@ -101,7 +101,7 @@ source scripts/env-gpu-deps.sh     # LD_LIBRARY_PATH + default LINML_EP_LIBRARIE
   `cudaDeviceGetByPCIBusId`; CUDA sees `0000:0B:00.0`. Works on native
   Linux/Windows. **Fix (default on in the catalog since 0.4.2; `LINML_TRT_RTX_WSL2=0` opts out):** `EnsureReadyAsync(AllowDownloads: true)` installs it, or
   `linml setup --trt-rtx-wsl2` / `bash scripts/fetch-ep-plugins.sh trt-rtx-wsl2`
-  vendors the LinML-hosted patched EP; `env-gpu-deps.sh` then prefers it. See
+  vendors the LinML-hosted patched EP (an earlier version in the same directory is replaced); `env-gpu-deps.sh` then prefers it. See
   `docs/compatibility.md` and `evidence/trt-rtx-wsl2-block.md`.
 - **cuDNN**: CUDA Conv kernels fail without cuDNN 9.x on the loader path
   (Gemm-only models work). `setup-gpu-deps.sh` provides it.

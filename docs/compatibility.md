@@ -29,7 +29,7 @@ not yet verified on aarch64 hardware. The x64 pin is unchanged.
 | CPUExecutionProvider | ✅ Verified (Gate C) | `evidence/cpu-run.json`, `CpuInference_ReturnsExpectedOutput` |
 | CUDAExecutionProvider | ✅ Verified (Gate D, RTX 5070) | `evidence/cuda-run.json`, ORT profile shows `MatMul_0/MatMulAddFusion` on `CUDAExecutionProvider` |
 | TensorrtExecutionProvider | ✅ Verified (RTX 5070) | `evidence/trt-run.json`, `evidence/trt-mnist-run.json` — exact logits, TRTKernel placement; TF32 default, use `trt:trt_engine_cache_*` for repeated runs |
-| NvTensorRTRTXExecutionProvider | ✅ Verified (native Linux, RTX 4090 Daytona) | TrtRtxInferenceTests 3/3; **WSL2 needs an opt-in patched build** — the stock wheel registers but exposes zero devices (virtual PCI vendor 0x1414 + bus-id mismatch, root-caused in `evidence/trt-rtx-wsl2-block.md`; upstream issue [#13](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI/issues/13), fix in PR [#12](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI/pull/12)). `bash scripts/fetch-ep-plugins.sh trt-rtx-wsl2` installs the LinML-hosted patched EP (release `ep-trt-rtx-wsl2-0.4.0-wsl2p1`, built by `scripts/build-trt-rtx-ep.sh`; `scripts/build-trt-rtx-custom.sh` builds one locally, two tiers — `local` upstream `main` + enumeration patch, `upstream` PR head incl. per-GPU registration `6777daf`); `env-gpu-deps.sh` then prefers it, and `TRT_RTX_CUSTOM_EP` overrides everything. The default `trt-rtx` pin is unchanged |
+| NvTensorRTRTXExecutionProvider | ✅ Verified (native Linux, RTX 4090 Daytona) | TrtRtxInferenceTests 3/3; **WSL2 needs an opt-in patched build** — the stock wheel registers but exposes zero devices (virtual PCI vendor 0x1414 + bus-id mismatch, root-caused in `evidence/trt-rtx-wsl2-block.md`; upstream issue [#13](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI/issues/13), fix in PR [#12](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI/pull/12)). `bash scripts/fetch-ep-plugins.sh trt-rtx-wsl2` installs the LinML-hosted patched EP (release `ep-trt-rtx-wsl2-0.4.0-wsl2p2`, built by `scripts/build-trt-rtx-ep-docker.sh`; `scripts/build-trt-rtx-custom.sh` builds one locally, two tiers — `local` upstream `main` + enumeration patch, `upstream` PR head incl. per-GPU registration `6777daf`); `env-gpu-deps.sh` then prefers it, and `TRT_RTX_CUSTOM_EP` overrides everything. The default `trt-rtx` pin is unchanged |
 | OpenVINOExecutionProvider | ✅ Verified (plugin EP 1.6.1, Intel Xeon) | MNIST argmax=8, no fallback; `onnxruntime-ep-openvino` wheel |
 | MIGraphXExecutionProvider | ✅ Verified (Daytona MI355X gfx950) | `evidence/migraphx-run.json`, MGXKernel on MIGraphXExecutionProvider, exact logits |
 | QNNExecutionProvider | 🔌 Wired, blocked | No Snapdragon NPU; QAIRT SDK needs Qualcomm account |
@@ -124,7 +124,7 @@ not yet verified on aarch64 hardware. The x64 pin is unchanged.
   [#13](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI/issues/13), fix proposed
   in [PR #12](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI/pull/12). LinML
   publishes a patched build (release
-  `ep-trt-rtx-wsl2-0.4.0-wsl2p1`). Since 0.4.2 the catalog selects it by default
+  `ep-trt-rtx-wsl2-0.4.0-wsl2p2`). Since 0.4.2 the catalog selects it by default
   on WSL2 with GPU passthrough (`/dev/dxg`) and `EnsureReadyAsync(AllowDownloads: true)`
   installs it; set `LINML_TRT_RTX_WSL2=0` to opt out. From the CLI:
   ```
@@ -142,6 +142,22 @@ not yet verified on aarch64 hardware. The x64 pin is unchanged.
     produces a byte-stable archive. It is **not** built in CI: the TensorRT-RTX
     SDK (headers + import libs) is under NVIDIA's license and cannot be
     downloaded automatically — unlike AMD's public ROCm image for MIGraphX.
+  - **glibc floor.** The archive must load wherever the stock wheel does
+    (`manylinux_2_35`: Ubuntu 22.04, glibc 2.35, libstdc++ 3.4.30). It is therefore
+    built in an `ubuntu:22.04` container (`bash scripts/build-trt-rtx-ep-docker.sh`
+    with `TRT_RTX_SDK` set), and `scripts/check-elf-floor.sh` fails the build if the
+    library needs a newer `GLIBC_`, `GLIBCXX_` or `CXXABI_`. `0.4.0-wsl2p1` was built
+    on a host with glibc 2.43 and needed `GLIBC_2.43`, so it did not load on Ubuntu
+    24.04. Never build the release natively on a current distro.
+  - **Upgrading.** The patched build records its version in `build-info.json`. An
+    install of another version (such as `0.4.0-wsl2p1`) is replaced by the pinned one:
+    `EnsureReadyAsync(AllowDownloads: true)`, `linml setup --trt-rtx-wsl2` and
+    `scripts/fetch-ep-plugins.sh trt-rtx-wsl2` all check it, and `linml catalog install trt-rtx`
+    upgrades a patched build that is already vendored (it never installs one where there is
+    none). The build needs glibc 2.35 or newer, so on an older
+    WSL2 distro (Ubuntu 20.04) `EnsureReadyAsync` returns `NotAvailable` instead of
+    downloading it.
+    With downloads disallowed, or if the download fails, the earlier build stays in use.
   - Verified in WSL2: the patched EP is *selected* (no fallback) and MNIST
     returns the exact output `[11, 22, 13, 24, 15, 26]`.
   - Superseded once PR #12 merges and NVIDIA ships a fixed wheel; the default
