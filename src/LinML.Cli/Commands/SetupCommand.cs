@@ -79,7 +79,8 @@ public static class SetupCommand
             {
                 string libraryPath = rec.Spec.LibraryPath(installRoot);
                 string installDir = rec.Spec.InstallDirectory(installRoot);
-                bool alreadyInstalled = File.Exists(libraryPath);
+                // The pinned build, not just some library: an earlier build of a versioned package is replaced.
+                bool alreadyInstalled = rec.Spec.IsVendored(installRoot);
 
                 if (dryRun)
                 {
@@ -193,7 +194,7 @@ public static class SetupCommand
                     foreach (var plugin in KnownPlugins.All)
                     {
                         string libraryPath = plugin.LibraryPath(installRoot);
-                        bool alreadyInstalled = File.Exists(libraryPath);
+                        bool alreadyInstalled = plugin.IsVendored(installRoot);
 
                         if (alreadyInstalled && !force)
                         {

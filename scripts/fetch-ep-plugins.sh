@@ -357,9 +357,10 @@ fetch_qnn() {
 
 fetch_trt_rtx_wsl2() {
     local OUT="$DEPS/ep-plugins/trt-rtx-wsl2/linml_trt_rtx_ep"
-    local WHEEL_URL="https://github.com/trackdubllc/LinML/releases/download/ep-trt-rtx-wsl2-0.4.0-wsl2p1/linml-trt-rtx-ep-0.4.0-wsl2p1-linux-x64.zip"
-    local WHEEL_SHA256="e87adedba3dfc86ea96cd7c6f5b9a965de584aeda971ee7792ae6d1e0074d2df"
-    local WHEEL_NAME="linml-trt-rtx-ep-0.4.0-wsl2p1-linux-x64.zip"
+    local EP_VERSION="0.4.0-wsl2p2"
+    local WHEEL_URL="https://github.com/trackdubllc/LinML/releases/download/ep-trt-rtx-wsl2-0.4.0-wsl2p2/linml-trt-rtx-ep-0.4.0-wsl2p2-linux-x64.zip"
+    local WHEEL_SHA256="7575c51157110228d581593c04147473868fbb7eefc79aa1b809c5b8bb66c220"
+    local WHEEL_NAME="linml-trt-rtx-ep-0.4.0-wsl2p2-linux-x64.zip"
     local TMP="$TMP_ROOT/trt-rtx-wsl2"
 
     echo "=== LinML EP plugin fetch (TensorRT-RTX, WSL2 patch) ==="
@@ -368,13 +369,21 @@ fetch_trt_rtx_wsl2() {
     # which only the stock wheel bundles; vendor the wheel first.
     fetch_trt_rtx
 
+    # The library alone does not say which build it is: an earlier one sits in the
+    # same directory (0.4.0-wsl2p1 needs a newer glibc than most hosts have), so
+    # compare the epVersion the archive records in build-info.json with the pin.
     if [ -f "$OUT/libonnxruntime_providers_nv_tensorrt_rtx.so" ]; then
-        echo "Already vendored: $OUT"
-        return 0
+        if python3 -c 'import json, sys; sys.exit(0 if json.load(open(sys.argv[1])).get("epVersion") == sys.argv[2] else 1)' \
+            "$OUT/build-info.json" "$EP_VERSION" 2>/dev/null; then
+            echo "Already vendored: $OUT"
+            return 0
+        fi
+        echo "Vendored build at $OUT is not $EP_VERSION; replacing it."
     fi
 
     # Stage and rename like the other fetches: an interrupted extract never
-    # leaves a truncated plugin .so that the check above treats as vendored.
+    # leaves a truncated plugin .so that the check above treats as vendored, and
+    # a failed download leaves the build that is there in place.
     local STAGE="$OUT.partial"
     rm -rf "$STAGE"
     mkdir -p "$STAGE" "$TMP"

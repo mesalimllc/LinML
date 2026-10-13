@@ -89,11 +89,15 @@ sees the real device as `0000:0B:00.0`). Root cause in
 in [PR #12](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI/pull/12).
 
 We ship a patched build as a **GitHub release**
-(`ep-trt-rtx-wsl2-0.4.0-wsl2p1`), mirroring the MIGraphX EP (`ep-migraphx-*`):
+(`ep-trt-rtx-wsl2-0.4.0-wsl2p2`), mirroring the MIGraphX EP (`ep-migraphx-*`):
 
 - `scripts/build-trt-rtx-ep.sh` pins the PR head commit, builds, and packages a
   byte-stable `linml-trt-rtx-ep-<ver>-linux-x64.zip` (EP `.so`, Apache-2.0
-  license, change notice, `build-info.json`).
+  license, change notice, `build-info.json`). It is run in an `ubuntu:22.04`
+  container (`scripts/build-trt-rtx-ep-docker.sh`) and refuses a library that needs
+  a newer glibc / libstdc++ than the stock wheel's floor
+  (`scripts/check-elf-floor.sh`); `build-info.json`'s `epVersion` lets the installer
+  replace an earlier build in the same directory.
 - `scripts/fetch-ep-plugins.sh trt-rtx-wsl2` vendors it into
   `ep-plugins/trt-rtx-wsl2/` after fetching the stock wheel, which supplies the
   TensorRT-RTX runtime libraries.

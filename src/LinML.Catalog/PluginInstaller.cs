@@ -15,7 +15,11 @@ internal sealed class PluginInstaller(HttpMessageHandler? httpHandler = null)
 {
     private readonly HttpMessageHandler? _httpHandler = httpHandler;
 
-    /// <summary>Installs the plugin unless its library is already present, or forces reinstallation if <paramref name="force"/> is true.</summary>
+    /// <summary>
+    /// Installs the plugin unless the pinned build is already vendored, or forces reinstallation if
+    /// <paramref name="force"/> is true. A library of another version (see
+    /// <see cref="PluginPackageSpec.VersionManifestFile"/>) is not the pinned build and is replaced.
+    /// </summary>
     /// <param name="spec">Specification of the plugin package to install.</param>
     /// <param name="installRoot">Target root directory for installation.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
@@ -29,11 +33,15 @@ internal sealed class PluginInstaller(HttpMessageHandler? httpHandler = null)
         bool force = false)
     {
         string finalDir = spec.InstallDirectory(installRoot);
-        if (!force && File.Exists(spec.LibraryPath(installRoot)))
+        if (!force && spec.IsVendored(installRoot))
         {
             CreateRequiredSymlinks(finalDir);
             return false;
         }
+
+        // A library that is present but is not the pinned build is replaced like a forced reinstall: the
+        // staged copy is verified first, and the old directory is only removed once it can be swapped in.
+        force |= File.Exists(spec.LibraryPath(installRoot));
 
         string parent = Path.GetDirectoryName(finalDir)!;
         Directory.CreateDirectory(parent);

@@ -12,7 +12,7 @@ namespace LinML.Catalog.Tests;
 /// </summary>
 public partial class ScriptPinAgreementTests
 {
-    private sealed record ScriptPin(string Function, string Url, string Sha256, string InstallSubdirectory);
+    private sealed record ScriptPin(string Function, string Url, string Sha256, string InstallSubdirectory, string? Version = null);
 
     private static string RepoRoot()
     {
@@ -30,7 +30,7 @@ public partial class ScriptPinAgreementTests
     [GeneratedRegex(@"^(?<fn>fetch_[a-z0-9_]+)\(\)\s*\{(?<body>.*?)^\}", RegexOptions.Multiline | RegexOptions.Singleline)]
     private static partial Regex FetchFunction();
 
-    [GeneratedRegex(@"local\s+(?<key>OUT|WHEEL_URL|WHEEL_SHA256)=""(?<value>[^""]+)""")]
+    [GeneratedRegex(@"local\s+(?<key>OUT|WHEEL_URL|WHEEL_SHA256|EP_VERSION)=""(?<value>[^""]+)""")]
     private static partial Regex LocalAssignment();
 
     private static List<ScriptPin> ReadFetchScriptPins()
@@ -46,7 +46,7 @@ public partial class ScriptPinAgreementTests
                 const string depsPrefix = "$DEPS/";
                 string outDir = values["OUT"];
                 Assert.StartsWith(depsPrefix, outDir, StringComparison.Ordinal);
-                pins.Add(new ScriptPin(fn.Groups["fn"].Value, url, values["WHEEL_SHA256"], outDir[depsPrefix.Length..]));
+                pins.Add(new ScriptPin(fn.Groups["fn"].Value, url, values["WHEEL_SHA256"], outDir[depsPrefix.Length..], values.GetValueOrDefault("EP_VERSION")));
             }
         }
 
@@ -192,5 +192,44 @@ public partial class ScriptPinAgreementTests
         Assert.Equal(spec.InstallSubdirectory.Replace('\\', '/'), pin.InstallSubdirectory);
         Assert.DoesNotContain(KnownPlugins.All, p => p == spec);
         Assert.Equal(KnownPlugins.TensorrtRtx.RegistrationName, spec.RegistrationName);
+    }
+
+    [Fact]
+    public void Wsl2TrtRtxVariant_VersionAgreesAcrossTheSpecScriptsAndReleaseUrl()
+    {
+        // Archives are pinned by sha256 and never overwritten, so a rebuilt .so must carry a new version in the
+        // build script that emits it, the fetch script that vendors it and the catalog pin, and the release URL
+        // names it. A bump in one place only would build, fetch or register something other than what was released.
+        PluginPackageSpec spec = KnownPlugins.TensorrtRtxWsl2;
+        string version = spec.Version;
+
+        string build = File.ReadAllText(Path.Combine(RepoRoot(), "scripts", "build-trt-rtx-ep.sh"));
+        Assert.Contains($"EP_VERSION=\"{version}\"", build, StringComparison.Ordinal);
+
+        ScriptPin pin = ReadFetchScriptPins().Single(p => p.Function == "fetch_trt_rtx_wsl2");
+        Assert.Equal(version, pin.Version);
+        Assert.Equal(
+            $"https://github.com/trackdubllc/LinML/releases/download/ep-trt-rtx-wsl2-{version}/linml-trt-rtx-ep-{version}-linux-x64.zip",
+            spec.WheelUrl.ToString());
+    }
+
+    [Fact]
+    public void Wsl2TrtRtxVariant_FetchScriptReplacesAnInstallOfAnotherVersion()
+    {
+        // The skip-if-vendored check must look at the vendored version, not just at the library, or a host
+        // that fetched 0.4.0-wsl2p1 would keep a library that needs a newer glibc than it has.
+        string script = File.ReadAllText(Path.Combine(RepoRoot(), "scripts", "fetch-ep-plugins.sh"));
+        Match fn = FetchFunction().Matches(script).Single(m => m.Groups["fn"].Value == "fetch_trt_rtx_wsl2");
+
+        Assert.Contains("build-info.json", fn.Groups["body"].Value, StringComparison.Ordinal);
+        Assert.Contains("$EP_VERSION", fn.Groups["body"].Value, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Wsl2TrtRtxVariant_CatalogChecksTheVendoredVersionInBuildInfo()
+    {
+        Assert.Equal("build-info.json", KnownPlugins.TensorrtRtxWsl2.VersionManifestFile);
+        // The stock wheel and the other plugins carry no such manifest; theirs is a plain presence check.
+        Assert.All(KnownPlugins.All, p => Assert.Null(p.VersionManifestFile));
     }
 }

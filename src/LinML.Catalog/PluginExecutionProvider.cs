@@ -123,6 +123,19 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
             : null;
     }
 
+    // The version of the vendored WSL2 build actually in use, which predates the pin when it could not be replaced.
+    private string WslBuildVersion() =>
+        WslVariantLibraryPath() is { } library && !_wsl2Spec.IsCurrent(library)
+            ? _wsl2Spec.VendoredVersion(library) ?? "(unknown version)"
+            : _wsl2Spec.Version;
+
+    // A build of an earlier version failing to load is most often why it was replaced: say so.
+    private string StaleWsl2BuildHint(string library) =>
+        IsWslVariant(library) && !_wsl2Spec.IsCurrent(library)
+            ? $" The vendored WSL2 build is {_wsl2Spec.VendoredVersion(library) ?? "of unknown version"}, but {_wsl2Spec.Version} is pinned: "
+                + "allow downloads or run 'linml setup --trt-rtx-wsl2' to replace it."
+            : "";
+
     public ProviderReadyState ReadyState
     {
         get
@@ -210,7 +223,7 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
         }
         catch (Exception ex) when (ex is OnnxRuntimeException or InvalidOperationException or ArgumentException or IOException or DllNotFoundException)
         {
-            failureReason = $"Registering {library} failed: {ex.Message}";
+            failureReason = $"Registering {library} failed: {ex.Message}{StaleWsl2BuildHint(library)}";
             return false;
         }
     }
@@ -270,7 +283,11 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
                         needed.Add(_spec);
                     }
 
-                    if (WslVariantLibraryPath() is null)
+                    // A vendored build of another version (the pin moved on; 0.4.0-wsl2p1 needs a newer glibc than
+                    // most hosts have) is replaced when downloads are allowed. Without downloads it stays in use:
+                    // it is all there is, and where it loads it works.
+                    if (WslVariantLibraryPath() is not { } vendored
+                        || (options.AllowDownloads && !_wsl2Spec.IsCurrent(vendored)))
                     {
                         needed.Add(_wsl2Spec);
                     }
@@ -319,7 +336,7 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
             {
                 string detail = variant switch
                 {
-                    Variant.Wsl2 => $"{Id} (patched WSL2 build {_wsl2Spec.Version}) is registered but exposes no EP devices. Check that 'nvidia-smi' works in this distro and that /dev/dxg exists (WSL2 GPU passthrough).",
+                    Variant.Wsl2 => $"{Id} (patched WSL2 build {WslBuildVersion()}) is registered but exposes no EP devices. Check that 'nvidia-smi' works in this distro and that /dev/dxg exists (WSL2 GPU passthrough).",
                     Variant.Custom => $"{Id} (custom build from {TrtRtxCustomEpEnvVar}) is registered but exposes no EP devices on this host.",
                     _ when Id == ProviderId.TensorrtRtx && IsWsl() && Wsl2OptedOut() =>
                         $"{Id} is registered, but in WSL2 virtual PCI mapping blocks device enumeration with the stock wheel (see docs/compatibility.md). You opted out of the patched WSL2 build: remove {Wsl2OptOutEnvVar}=0 from the environment to use it, or use bare-metal Linux.",
@@ -335,7 +352,7 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
                 downloaded ? ProviderEnsureStatus.Downloaded : ProviderEnsureStatus.Ready,
                 variant switch
                 {
-                    Variant.Wsl2 => $"{Id} patched WSL2 build {_wsl2Spec.Version} ready with {devices.Count} EP device(s).",
+                    Variant.Wsl2 => $"{Id} patched WSL2 build {WslBuildVersion()} ready with {devices.Count} EP device(s).",
                     Variant.Custom => $"{Id} custom build ({TrtRtxCustomEpEnvVar}) ready with {devices.Count} EP device(s).",
                     _ => $"{Id} {_spec.Version} ready with {devices.Count} EP device(s).",
                 },

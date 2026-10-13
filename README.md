@@ -172,7 +172,7 @@ OpenVINO, TensorRT-RTX and MIGraphX are plugin execution providers. LinML does n
 |--------|---------------|-----------|-----------------|--------------------------------------------|
 | OpenVINO | `OpenVINOExecutionProvider` | Linux x86_64 with an Intel CPU, GPU or NPU | Intel `onnxruntime-ep-openvino` 1.6.1 wheel from PyPI, with the OpenVINO 2026.2.1 runtime bundled | `ep-plugins/openvino/onnxruntime_ep_openvino/` |
 | TensorRT-RTX | `NvTensorRTRTXExecutionProvider` | Linux x86_64; Linux aarch64 (SBSA) | NVIDIA `onnxruntime-ep-nv-tensorrt-rtx-cu13` 0.4.0 wheel from PyPI, with TensorRT-RTX 1.6.1 bundled | `ep-plugins/trt-rtx/onnxruntime_ep_nv_tensorrt_rtx/` (x86_64); `ep-plugins/trt-rtx-arm64/onnxruntime_ep_nv_tensorrt_rtx/` (aarch64) |
-| TensorRT-RTX on WSL2 | same | WSL2 with GPU passthrough (`/dev/dxg`) | LinML patched build `0.4.0-wsl2p1` (GitHub release), used alongside the wheel above | `ep-plugins/trt-rtx-wsl2/linml_trt_rtx_ep/` |
+| TensorRT-RTX on WSL2 | same | WSL2 with GPU passthrough (`/dev/dxg`) | LinML patched build `0.4.0-wsl2p2` (GitHub release; glibc 2.35+, the same floor as the wheel), used alongside the wheel above | `ep-plugins/trt-rtx-wsl2/linml_trt_rtx_ep/` |
 | MIGraphX | `MIGraphXExecutionProvider` | Linux x86_64 with an AMD GPU and ROCm | LinML build `2611.1` (GitHub release), built from AMD's `onnxruntime-ep-amdgpu` | `ep-plugins/migraphx/linml_migraphx_ep/` |
 
 The CLI finds these in `~/.local/linml-deps` automatically. Pass `--root <dir>` to `linml catalog` or `linml providers list` to use another location.
@@ -277,12 +277,13 @@ These commands use only `curl`, `sha256sum`, `unzip`, and `mktemp`. Each downloa
   set -euo pipefail
   DEPS="$HOME/.local/linml-deps"
   TMP="$(mktemp -d)"
-  ZIP=linml-trt-rtx-ep-0.4.0-wsl2p1-linux-x64.zip
-  URL=https://github.com/trackdubllc/LinML/releases/download/ep-trt-rtx-wsl2-0.4.0-wsl2p1/$ZIP
-  SHA256=e87adedba3dfc86ea96cd7c6f5b9a965de584aeda971ee7792ae6d1e0074d2df
+  ZIP=linml-trt-rtx-ep-0.4.0-wsl2p2-linux-x64.zip
+  URL=https://github.com/trackdubllc/LinML/releases/download/ep-trt-rtx-wsl2-0.4.0-wsl2p2/$ZIP
+  SHA256=7575c51157110228d581593c04147473868fbb7eefc79aa1b809c5b8bb66c220
   OUT="$DEPS/ep-plugins/trt-rtx-wsl2/linml_trt_rtx_ep"
   curl -fsSL -o "$TMP/$ZIP" "$URL"
   echo "$SHA256  $TMP/$ZIP" | sha256sum -c
+  rm -rf "$OUT"   # replaces any earlier build, e.g. 0.4.0-wsl2p1
   mkdir -p "$OUT"
   unzip -q -o "$TMP/$ZIP" 'linml_trt_rtx_ep/*' -d "$TMP/unpacked"
   cp -r "$TMP/unpacked/linml_trt_rtx_ep/." "$OUT/"

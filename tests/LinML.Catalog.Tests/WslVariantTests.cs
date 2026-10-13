@@ -245,6 +245,106 @@ public class WslEnsureReadyTests : IDisposable
         Assert.Equal(_wsl.LibraryPath(root.Path), Assert.Single(registrar.Registrations).Path);
     }
 
+    // 0.4.0-wsl2p1 needs a newer glibc than Ubuntu 24.04 has, and p2 installs into the same directory.
+    // A host that already has p1 must get the pinned build, not keep loading the library that is there.
+    private (PluginPackageSpec Wsl, byte[] Wheel) PinnedWsl2Build()
+    {
+        byte[] wheel = FakeWheel.Build(buildInfoVersion: "2.0.0");
+        PluginPackageSpec wsl = _wsl with
+        {
+            Version = "2.0.0",
+            VersionManifestFile = "build-info.json",
+            WheelSha256 = FakeWheel.Sha256(wheel),
+        };
+        return (wsl, wheel);
+    }
+
+    private static void VendorStaleWsl2Build(string root, PluginPackageSpec wsl)
+    {
+        Directory.CreateDirectory(wsl.InstallDirectory(root));
+        File.WriteAllText(wsl.LibraryPath(root), "previous-build");
+        File.WriteAllText(Path.Combine(wsl.InstallDirectory(root), "build-info.json"), FakeWheel.BuildInfo("1.0.0"));
+    }
+
+    [Fact]
+    public async Task StaleWsl2BuildVendored_DownloadsAllowed_ReplacesItBeforeRegistering()
+    {
+        using var root = new TempDir();
+        (PluginPackageSpec wsl, byte[] wheel) = PinnedWsl2Build();
+        Vendor(root.Path, _stock);
+        VendorStaleWsl2Build(root.Path, wsl);
+        var handler = new RoutingHandler(new() { [_stock.WheelUrl] = _stockWheel, [wsl.WheelUrl] = wheel });
+        var registrar = new FakeRegistrar();
+        var provider = new PluginExecutionProvider(_stock, root.Path, new PluginInstaller(handler), registrar, () => true, wsl);
+
+        await provider.EnsureReadyAsync(new EnsureOptions(AllowDownloads: true));
+
+        Assert.Equal([wsl.WheelUrl], handler.Requested);
+        Assert.Equal("plugin", File.ReadAllText(wsl.LibraryPath(root.Path)));
+        Assert.Equal("2.0.0", wsl.VendoredVersion(wsl.LibraryPath(root.Path)));
+        Assert.Equal(wsl.LibraryPath(root.Path), Assert.Single(registrar.Registrations).Path);
+    }
+
+    [Fact]
+    public async Task CurrentWsl2BuildVendored_NoHttp()
+    {
+        using var root = new TempDir();
+        (PluginPackageSpec wsl, byte[] wheel) = PinnedWsl2Build();
+        Vendor(root.Path, _stock);
+        Directory.CreateDirectory(wsl.InstallDirectory(root.Path));
+        File.WriteAllText(wsl.LibraryPath(root.Path), "current-build");
+        File.WriteAllText(Path.Combine(wsl.InstallDirectory(root.Path), "build-info.json"), FakeWheel.BuildInfo("2.0.0"));
+        var handler = new RoutingHandler(new() { [wsl.WheelUrl] = wheel });
+        var provider = new PluginExecutionProvider(_stock, root.Path, new PluginInstaller(handler), new FakeRegistrar(), () => true, wsl);
+
+        await provider.EnsureReadyAsync(new EnsureOptions(AllowDownloads: true));
+
+        Assert.Empty(handler.Requested);
+        Assert.Equal("current-build", File.ReadAllText(wsl.LibraryPath(root.Path)));
+    }
+
+    [Fact]
+    public async Task StaleWsl2BuildVendored_DownloadsDisallowed_KeepsUsingIt_AndReportsItsVersion()
+    {
+        // Offline hosts where the older build works keep working; nothing is fetched or replaced.
+        using var root = new TempDir();
+        (PluginPackageSpec wsl, byte[] wheel) = PinnedWsl2Build();
+        Vendor(root.Path, _stock);
+        VendorStaleWsl2Build(root.Path, wsl);
+        var handler = new RoutingHandler(new() { [wsl.WheelUrl] = wheel });
+        var registrar = new FakeRegistrar();
+        var provider = new PluginExecutionProvider(_stock, root.Path, new PluginInstaller(handler), registrar, () => true, wsl);
+
+        var result = await provider.EnsureReadyAsync(new EnsureOptions(AllowDownloads: false));
+
+        Assert.Empty(handler.Requested);
+        Assert.Equal("previous-build", File.ReadAllText(wsl.LibraryPath(root.Path)));
+        Assert.Equal(wsl.LibraryPath(root.Path), Assert.Single(registrar.Registrations).Path);
+        Assert.Equal(ProviderEnsureStatus.NoDevices, result.Status);
+        Assert.Contains("1.0.0", result.Detail);
+        Assert.DoesNotContain("2.0.0", result.Detail);
+    }
+
+    [Fact]
+    public async Task StaleWsl2BuildThatFailsToLoad_PointsAtTheUpdate()
+    {
+        using var root = new TempDir();
+        (PluginPackageSpec wsl, byte[] wheel) = PinnedWsl2Build();
+        Vendor(root.Path, _stock);
+        VendorStaleWsl2Build(root.Path, wsl);
+        var registrar = new FakeRegistrar { RegisterThrows = new InvalidOperationException("version `GLIBC_2.43' not found") };
+        var provider = new PluginExecutionProvider(
+            _stock, root.Path, new PluginInstaller(new RoutingHandler(new() { [wsl.WheelUrl] = wheel })), registrar, () => true, wsl);
+
+        var result = await provider.EnsureReadyAsync(new EnsureOptions(AllowDownloads: false));
+
+        Assert.Equal(ProviderEnsureStatus.Failed, result.Status);
+        Assert.Contains("GLIBC_2.43", result.Detail);
+        Assert.Contains("1.0.0", result.Detail);
+        Assert.Contains("2.0.0", result.Detail);
+        Assert.Contains("linml setup --trt-rtx-wsl2", result.Detail);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
