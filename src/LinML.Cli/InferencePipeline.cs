@@ -73,7 +73,7 @@ internal static class InferencePipeline
             if (!report.AvailableProviders.Contains(candidate)
                 && KnownPlugins.All.Any(p => p.Id == candidate))
             {
-                unavailableReasons[candidate] = ProviderListing.NotListedReason(candidate);
+                unavailableReasons[candidate] = UnavailableReason(candidate);
             }
         }
 
@@ -259,6 +259,13 @@ internal static class InferencePipeline
             false, 1, $"All providers failed at session creation: {attempted}",
             null, decision.SelectedProvider!, fallbackChain);
     }
+
+    /// <summary>
+    /// Why catalog plugin <paramref name="candidate"/> is not available. One this host cannot run
+    /// gets no install hint: <see cref="ProviderArgs.ProviderUnavailableHint"/> says why instead.
+    /// </summary>
+    internal static string UnavailableReason(ProviderId candidate) =>
+        ProviderListing.NotListedReason(candidate, installable: ProviderArgs.NotApplicableNote(candidate) is null);
 
     internal static string FormatSelectionFailure(string? failureReason, ProviderId? preferredProvider)
     {

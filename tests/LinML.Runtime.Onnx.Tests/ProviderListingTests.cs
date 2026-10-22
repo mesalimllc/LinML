@@ -39,6 +39,22 @@ public class ProviderListingTests
     }
 
     [Fact]
+    public void NotListedReason_UnloadedPluginTheHostCannotRun_HasNoInstallHint()
+    {
+        const string openVinoLibrary = "libonnxruntime_providers_openvino_plugin.so";
+        if (!OpenVinoRunsOnThisHost || PluginLibraryRegistry.RegisteredLibraryFileNames.Contains(openVinoLibrary)
+            || PluginLibraryRegistry.RegistrationFailure(openVinoLibrary) is not null)
+        {
+            return;
+        }
+
+        string reason = ProviderListing.NotListedReason(ProviderId.OpenVino, installable: false);
+
+        Assert.Contains("is not loaded into this process", reason, StringComparison.Ordinal);
+        Assert.DoesNotContain("catalog install", reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void NotListedReason_PluginForAnotherArchitecture_SaysItWillNotRunHere()
     {
         // OpenVINO is linux-x64 only and QNN is linux-arm64 only, so one of them is always for another host.
