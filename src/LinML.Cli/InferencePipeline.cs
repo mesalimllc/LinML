@@ -263,14 +263,9 @@ internal static class InferencePipeline
     internal static string FormatSelectionFailure(string? failureReason, ProviderId? preferredProvider)
     {
         var errorMsg = $"Provider selection failed: {failureReason ?? "Unknown reason"}";
-        if (preferredProvider is not null)
+        if (ProviderArgs.ProviderUnavailableHint(preferredProvider) is { } hint)
         {
-            var spec = KnownPlugins.All.FirstOrDefault(p => p.Id == preferredProvider);
-            if (spec is not null && spec.FindLibrary() is null)
-            {
-                var shortId = ProviderArgs.GetShortName(preferredProvider);
-                errorMsg += $" Run 'linml catalog install {shortId}' to vendor missing libraries.";
-            }
+            errorMsg += " " + hint;
         }
         return errorMsg;
     }

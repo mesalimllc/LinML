@@ -9,8 +9,16 @@ namespace LinML.Cli.Tests;
 /// Tests for ProviderArgs: provider aliases, EP library and EP option parsing.
 /// </summary>
 [Collection("WslProbe")]
-public class ProviderArgsTests
+public class ProviderArgsTests : IDisposable
 {
+    // A shell that sourced scripts/env-gpu-deps.sh inherits real plugin mappings; each test
+    // starts without them (tests that need one set it) so results do not depend on the host.
+    private readonly string? _inheritedEpLibraries = Environment.GetEnvironmentVariable(ProviderArgs.EpLibrariesEnvVar);
+
+    public ProviderArgsTests() => Environment.SetEnvironmentVariable(ProviderArgs.EpLibrariesEnvVar, null);
+
+    public void Dispose() => Environment.SetEnvironmentVariable(ProviderArgs.EpLibrariesEnvVar, _inheritedEpLibraries);
+
     [Theory]
     [InlineData("cpu", "CPUExecutionProvider")]
     [InlineData("cuda", "CUDAExecutionProvider")]
@@ -207,6 +215,39 @@ public class ProviderArgsTests
         Assert.Throws<ArgumentException>(() =>
             ProviderArgs.EnsureEpLibrariesRegistered(
                 new Dictionary<string, string> { ["bogus"] = "/nonexistent/libbogus.so" }));
+    }
+
+    [Fact]
+    public void RegisterEpLibraries_InheritedFailure_IsSkippedWithWarning()
+    {
+        var warnings = new StringWriter();
+
+        var registered = ProviderArgs.RegisterEpLibraries(
+            new Dictionary<string, string> { ["bogus"] = "/nonexistent/libbogus.so" },
+            epLibraryArgs: [],
+            warnings: warnings);
+
+        Assert.Empty(registered);
+        Assert.Contains("skipping EP plugin library 'bogus'", warnings.ToString());
+    }
+
+    [Fact]
+    public void RegisterEpLibraries_ExplicitFailure_Throws()
+    {
+        Assert.Throws<ArgumentException>(() =>
+            ProviderArgs.RegisterEpLibraries(
+                new Dictionary<string, string> { ["bogus"] = "/nonexistent/libbogus.so" },
+                epLibraryArgs: ["bogus=/nonexistent/libbogus.so"]));
+    }
+
+    [Fact]
+    public void RegisterEpLibraries_RequiredProviderFailure_Throws()
+    {
+        Assert.Throws<ArgumentException>(() =>
+            ProviderArgs.RegisterEpLibraries(
+                new Dictionary<string, string> { ["MIGraphXExecutionProvider"] = "/nonexistent/libmigraphx-ep.so" },
+                epLibraryArgs: [],
+                requiredProvider: ProviderId.MigraphX));
     }
 
     [Fact]

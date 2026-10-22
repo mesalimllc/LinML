@@ -243,8 +243,9 @@ public static class BenchCommand
     {
         try
         {
-            var epLibraries = ProviderArgs.ResolveEpLibraries(epLibraryArgs, providerId, root);
-            ProviderArgs.EnsureEpLibrariesRegistered(epLibraries);
+            var epLibraries = ProviderArgs.RegisterEpLibraries(
+                ProviderArgs.ResolveEpLibraries(epLibraryArgs, providerId, root),
+                epLibraryArgs, requiredProvider: providerId);
             var scopedOptions = ProviderArgs.OptionsForProvider(epOptions, providerId);
 
             // Cold start measurement (session creation + first execution)

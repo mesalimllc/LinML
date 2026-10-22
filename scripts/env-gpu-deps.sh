@@ -82,17 +82,23 @@ if [ -f "$TRT_RTX_EP" ]; then
     # remains the explicit override.
     if [ -n "${LINML_EP_LIBRARIES:-}" ]; then
         _linml_rest=""
-        _linml_old_ifs="$IFS"
-        IFS=';'
-        for _linml_pair in $LINML_EP_LIBRARIES; do
+        # Peel entries off one at a time rather than word-splitting on IFS, so
+        # this also works when sourced from zsh (which does not split $VAR).
+        _linml_todo="$LINML_EP_LIBRARIES"
+        while [ -n "$_linml_todo" ]; do
+            _linml_pair="${_linml_todo%%;*}"
+            case "$_linml_todo" in
+                *";"*) _linml_todo="${_linml_todo#*;}" ;;
+                *) _linml_todo="" ;;
+            esac
+            [ -n "$_linml_pair" ] || continue
             case "$_linml_pair" in
                 NvTensorRTRTXExecutionProvider=*|nvtensorrtrtx=*) ;;  # stale, drop
                 *) _linml_rest="${_linml_rest:+$_linml_rest;}$_linml_pair" ;;
             esac
         done
-        IFS="$_linml_old_ifs"
         LINML_EP_LIBRARIES="$_linml_rest"
-        unset _linml_pair _linml_rest _linml_old_ifs
+        unset _linml_pair _linml_rest _linml_todo
     fi
     LINML_EP_LIBRARIES="NvTensorRTRTXExecutionProvider=$TRT_RTX_EP${LINML_EP_LIBRARIES:+;$LINML_EP_LIBRARIES}"
     export LINML_EP_LIBRARIES
@@ -111,9 +117,16 @@ if [ -f "$OPENVINO_EP" ]; then
     _linml_has_ov=""
     if [ -n "${LINML_EP_LIBRARIES:-}" ]; then
         _linml_rest=""
-        _linml_old_ifs="$IFS"
-        IFS=';'
-        for _linml_pair in $LINML_EP_LIBRARIES; do
+        # Peel entries off one at a time rather than word-splitting on IFS, so
+        # this also works when sourced from zsh (which does not split $VAR).
+        _linml_todo="$LINML_EP_LIBRARIES"
+        while [ -n "$_linml_todo" ]; do
+            _linml_pair="${_linml_todo%%;*}"
+            case "$_linml_todo" in
+                *";"*) _linml_todo="${_linml_todo#*;}" ;;
+                *) _linml_todo="" ;;
+            esac
+            [ -n "$_linml_pair" ] || continue
             case "$_linml_pair" in
                 openvino=*) ;;  # stale alias, drop
                 linml.openvino=*|OpenVINOExecutionProvider=*)
@@ -122,9 +135,8 @@ if [ -f "$OPENVINO_EP" ]; then
                 *) _linml_rest="${_linml_rest:+$_linml_rest;}$_linml_pair" ;;
             esac
         done
-        IFS="$_linml_old_ifs"
         LINML_EP_LIBRARIES="$_linml_rest"
-        unset _linml_pair _linml_rest _linml_old_ifs
+        unset _linml_pair _linml_rest _linml_todo
     fi
     if [ -z "$_linml_has_ov" ]; then
         LINML_EP_LIBRARIES="linml.openvino=$OPENVINO_EP${LINML_EP_LIBRARIES:+;$LINML_EP_LIBRARIES}"
@@ -134,15 +146,46 @@ if [ -f "$OPENVINO_EP" ]; then
 fi
 
 # Convenience: default plugin EP library registration for MIGraphX
-# (vendored by scripts/fetch-ep-plugins.sh or LinML.Catalog).
+# (vendored by scripts/fetch-ep-plugins.sh or LinML.Catalog). The plugin links
+# against ROCm's libmigraphx_c.so.3, so it is only mapped when that library
+# resolves (loader path or ldconfig cache); without ROCm, MIGraphX is not
+# applicable on this host (see `linml doctor`) and the plugin cannot load.
+_linml_has_migraphx_runtime() {
+    # Written to work when sourced from zsh too, which does not word-split $VAR.
+    if printf '%s\n' "${LD_LIBRARY_PATH:-}" | tr ':' '\n' | while IFS= read -r _linml_dir; do
+            if [ -n "$_linml_dir" ] && [ -e "$_linml_dir/libmigraphx_c.so.3" ]; then echo found; fi
+        done | grep -q found; then
+        return 0
+    fi
+    for _linml_ldconfig in ldconfig /sbin/ldconfig /usr/sbin/ldconfig; do
+        if command -v "$_linml_ldconfig" >/dev/null 2>&1; then
+            "$_linml_ldconfig" -p 2>/dev/null | grep -q 'libmigraphx_c\.so\.3 '
+            _linml_rc=$?
+            unset _linml_ldconfig
+            return $_linml_rc
+        fi
+    done
+    unset _linml_ldconfig
+    return 1
+}
 MIGRAPHX_EP="$DEPS/ep-plugins/migraphx/linml_migraphx_ep/libmigraphx-ep.so"
-if [ -f "$MIGRAPHX_EP" ]; then
+if [ -f "$MIGRAPHX_EP" ] && _linml_has_migraphx_runtime; then
     case ";${LINML_EP_LIBRARIES:-};" in
         *";MIGraphXExecutionProvider="*|*";migraphx="*) ;;
         *) LINML_EP_LIBRARIES="MIGraphXExecutionProvider=$MIGRAPHX_EP${LINML_EP_LIBRARIES:+;$LINML_EP_LIBRARIES}" ;;
     esac
     export LINML_EP_LIBRARIES
+elif [ -n "${LINML_EP_LIBRARIES:-}" ]; then
+    # Drop the vendored mapping a previous source (or an older version of this
+    # script) exported; any other MIGraphX mapping is the user's and is kept.
+    _linml_libs=";$LINML_EP_LIBRARIES;"
+    _linml_libs="${_linml_libs//";MIGraphXExecutionProvider=$MIGRAPHX_EP;"/;}"
+    _linml_libs="${_linml_libs#;}"
+    LINML_EP_LIBRARIES="${_linml_libs%;}"
+    export LINML_EP_LIBRARIES
+    unset _linml_libs
 fi
+unset -f _linml_has_migraphx_runtime
 
 
 # Convenience: default plugin EP library registration for Qualcomm QNN
