@@ -4,6 +4,8 @@ All notable changes to LinML are documented here. This project follows [Semantic
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-10-22
+
 ### Changed
 - **TensorRT-RTX 1.7.** The stock `trt-rtx` pin is `onnxruntime-ep-nv-tensorrt-rtx-cu13` **0.5.0** (x86_64 `manylinux_2_28` and aarch64 `manylinux_2_35`, as before), which bundles TensorRT-RTX **1.7.1** instead of 1.6.1. Same ABI and minimum ORT (1.24). TensorRT-RTX engines are not forward-compatible, so an engine cache built under 1.6.1 (`trt_engine_cache_enable`) is rebuilt.
 - **A vendored 0.4.0 wheel is replaced.** The wheel records no version, so the installer and `scripts/fetch-ep-plugins.sh` now treat the versioned runtime it bundles (`libtensorrt_rtx.so.1.7.1`) as the marker of the pinned build: a 0.4.0 install in the same directory is replaced, verified before the old directory is touched. `PluginPackageSpec.VersionMarkerFile` is the internal opt-in.

@@ -47,9 +47,9 @@ LinML also provides `LinML.Catalog`, the Linux counterpart to WinML's `Execution
 
 | Component | Version | NuGet | Notes |
 |-----------|---------|-------|-------|
-| **CLI** (`linml`) | `0.4.0` | — | Self-contained `linux-x64`, `linux-arm64` binaries |
-| **LinML.Catalog** | `0.4.0` | [![NuGet Catalog](https://img.shields.io/nuget/v/LinML.Catalog.svg?label=LinML.Catalog&color=blue)](https://www.nuget.org/packages/LinML.Catalog) | Plugin EP vendoring & registration |
-| **LinML.Contracts** | `0.4.0` | [![NuGet Contracts](https://img.shields.io/nuget/v/LinML.Contracts.svg?label=LinML.Contracts&color=blue)](https://www.nuget.org/packages/LinML.Contracts) | Pure contracts & data models |
+| **CLI** (`linml`) | `0.6.0` | — | Self-contained `linux-x64`, `linux-arm64` binaries |
+| **LinML.Catalog** | `0.6.0` | [![NuGet Catalog](https://img.shields.io/nuget/v/LinML.Catalog.svg?label=LinML.Catalog&color=blue)](https://www.nuget.org/packages/LinML.Catalog) | Plugin EP vendoring & registration |
+| **LinML.Contracts** | `0.6.0` | [![NuGet Contracts](https://img.shields.io/nuget/v/LinML.Contracts.svg?label=LinML.Contracts&color=blue)](https://www.nuget.org/packages/LinML.Contracts) | Pure contracts & data models |
 | **Runtime** | — | — | ONNX Runtime 1.31.x |
 
 See [CHANGELOG.md](CHANGELOG.md) for full release history.
@@ -86,7 +86,7 @@ curl -fsSL https://raw.githubusercontent.com/mesalimllc/LinML/main/scripts/insta
 curl -fsSL https://raw.githubusercontent.com/mesalimllc/LinML/main/scripts/install.sh | bash -s -- --gpu
 
 # Explicit version and architecture:
-bash scripts/install.sh --version v0.4.0 --target ~/.local/share/linml --bin-dir ~/.local/bin
+bash scripts/install.sh --version v0.6.0 --target ~/.local/share/linml --bin-dir ~/.local/bin
 ```
 
 Pre-built archives (`linml-<version>-linux-x64.tar.gz`, `linml-<version>-linux-arm64.tar.gz`) and SHA-256 checksums are also downloadable directly from [GitHub Releases](https://github.com/mesalimllc/LinML/releases).
