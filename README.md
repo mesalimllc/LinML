@@ -1,8 +1,8 @@
 # LinML (Linux ML)
 
-[![CI](https://github.com/trackdubllc/LinML/actions/workflows/ci.yml/badge.svg)](https://github.com/trackdubllc/LinML/actions/workflows/ci.yml)
-[![Release](https://github.com/trackdubllc/LinML/actions/workflows/release.yml/badge.svg)](https://github.com/trackdubllc/LinML/actions/workflows/release.yml)
-[![GitHub Release](https://img.shields.io/github/v/release/trackdubllc/LinML?color=blue)](https://github.com/trackdubllc/LinML/releases)
+[![CI](https://github.com/mesalimllc/LinML/actions/workflows/ci.yml/badge.svg)](https://github.com/mesalimllc/LinML/actions/workflows/ci.yml)
+[![Release](https://github.com/mesalimllc/LinML/actions/workflows/release.yml/badge.svg)](https://github.com/mesalimllc/LinML/actions/workflows/release.yml)
+[![GitHub Release](https://img.shields.io/github/v/release/mesalimllc/LinML?color=blue)](https://github.com/mesalimllc/LinML/releases)
 [![NuGet Catalog](https://img.shields.io/nuget/v/LinML.Catalog.svg?label=LinML.Catalog&color=blue)](https://www.nuget.org/packages/LinML.Catalog)
 [![NuGet Contracts](https://img.shields.io/nuget/v/LinML.Contracts.svg?label=LinML.Contracts&color=blue)](https://www.nuget.org/packages/LinML.Contracts)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -80,16 +80,16 @@ LinML CLI is distributed as a standalone, self-contained binary for **Linux x86_
 
 ```bash
 # Install to ~/.local/share/linml and symlink to ~/.local/bin/linml (auto-detects architecture)
-curl -fsSL https://raw.githubusercontent.com/trackdubllc/LinML/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/mesalimllc/LinML/main/scripts/install.sh | bash
 
 # Or install and automatically set up GPU dependencies (cuDNN, TensorRT, plugins):
-curl -fsSL https://raw.githubusercontent.com/trackdubllc/LinML/main/scripts/install.sh | bash -s -- --gpu
+curl -fsSL https://raw.githubusercontent.com/mesalimllc/LinML/main/scripts/install.sh | bash -s -- --gpu
 
 # Explicit version and architecture:
 bash scripts/install.sh --version v0.4.0 --target ~/.local/share/linml --bin-dir ~/.local/bin
 ```
 
-Pre-built archives (`linml-<version>-linux-x64.tar.gz`, `linml-<version>-linux-arm64.tar.gz`) and SHA-256 checksums are also downloadable directly from [GitHub Releases](https://github.com/trackdubllc/LinML/releases).
+Pre-built archives (`linml-<version>-linux-x64.tar.gz`, `linml-<version>-linux-arm64.tar.gz`) and SHA-256 checksums are also downloadable directly from [GitHub Releases](https://github.com/mesalimllc/LinML/releases).
 
 Verify the installation:
 ```bash
@@ -291,7 +291,7 @@ These commands use only `curl`, `sha256sum`, `unzip`, and `mktemp`. Each downloa
   DEPS="$HOME/.local/linml-deps"
   TMP="$(mktemp -d)"
   ZIP=linml-trt-rtx-ep-0.4.0-wsl2p2-linux-x64.zip
-  URL=https://github.com/trackdubllc/LinML/releases/download/ep-trt-rtx-wsl2-0.4.0-wsl2p2/$ZIP
+  URL=https://github.com/mesalimllc/LinML/releases/download/ep-trt-rtx-wsl2-0.4.0-wsl2p2/$ZIP
   SHA256=7575c51157110228d581593c04147473868fbb7eefc79aa1b809c5b8bb66c220
   OUT="$DEPS/ep-plugins/trt-rtx-wsl2/linml_trt_rtx_ep"
   curl -fsSL -o "$TMP/$ZIP" "$URL"
@@ -313,7 +313,7 @@ These commands use only `curl`, `sha256sum`, `unzip`, and `mktemp`. Each downloa
   DEPS="$HOME/.local/linml-deps"
   TMP="$(mktemp -d)"
   ZIP=linml-migraphx-ep-2611.1-linux-x64.zip
-  URL=https://github.com/trackdubllc/LinML/releases/download/ep-migraphx-2611.1/$ZIP
+  URL=https://github.com/mesalimllc/LinML/releases/download/ep-migraphx-2611.1/$ZIP
   SHA256=968bdb1aa294c1ab4af04cfec0d4318fb2ffa4c69f0b34bc3b98532a199acd86
   OUT="$DEPS/ep-plugins/migraphx/linml_migraphx_ep"
   curl -fsSL -o "$TMP/$ZIP" "$URL"
@@ -328,7 +328,7 @@ These commands use only `curl`, `sha256sum`, `unzip`, and `mktemp`. Each downloa
 Or download the one script that does all of the above, and run it:
 
 ```bash
-curl -fsSLO https://raw.githubusercontent.com/trackdubllc/LinML/main/scripts/fetch-ep-plugins.sh
+curl -fsSLO https://raw.githubusercontent.com/mesalimllc/LinML/main/scripts/fetch-ep-plugins.sh
 bash fetch-ep-plugins.sh openvino       # Intel hardware (x86_64)
 bash fetch-ep-plugins.sh trt-rtx-wsl2   # WSL2: the wheel, then the patched build
 bash fetch-ep-plugins.sh trt-rtx        # native Linux: the wheel

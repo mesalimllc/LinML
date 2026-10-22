@@ -28,9 +28,9 @@
     <VersionPrefix>0.5.1</VersionPrefix>
     <Authors>LinML Contributors</Authors>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <RepositoryUrl>https://github.com/trackdubllc/LinML</RepositoryUrl>
+    <RepositoryUrl>https://github.com/mesalimllc/LinML</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <PackageProjectUrl>https://github.com/trackdubllc/LinML</PackageProjectUrl>
+    <PackageProjectUrl>https://github.com/mesalimllc/LinML</PackageProjectUrl>
 
   </PropertyGroup>
 

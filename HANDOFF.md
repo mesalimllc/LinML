@@ -17,7 +17,7 @@ plugin registry. See README.md for the current state.
 
 ```bash
 # Quick start in WSL:
-cd ~/dev/LinML  # or clone first: git clone https://github.com/trackdubllc/LinML.git
+cd ~/dev/LinML  # or clone first: git clone https://github.com/mesalimllc/LinML.git
 bash scripts/setup-wsl.sh
 dotnet restore LinML.slnx
 dotnet build LinML.slnx -c Release
@@ -58,7 +58,7 @@ ls /usr/local/cuda/lib64/libcudart.so*  # CUDA runtime present
 | **Runtime.Onnx** | `OnnxProviderDiscovery`, `OnnxSessionFactory`, `OnnxInferenceSession`, `EpAppender`, `CudaReadinessProbe`, `GenericReadinessProbe` |
 | **CLI** | `Program.cs`, `ProvidersCommand`, `DoctorCommand`, `RunCommand` — all working |
 | **Tests** | 147 passing: 23 policy + 57 CLI + 20 integration + 22 runtime + 25 catalog |
-| **Git** | Initialized, pushed to `https://github.com/trackdubllc/LinML` (public) |
+| **Git** | Initialized, pushed to `https://github.com/mesalimllc/LinML` (public) |
 | **Docs** | ADR 0001, compatibility.md, diagnostics-schema.md, input-schema.md, wsl-workflow.md |
 | **Scripts** | `setup-wsl.sh`, `fetch-test-fixture.sh`, `fetch-ep-plugins.sh`, `setup-gpu-deps.sh`, `env-gpu-deps.sh`, `verify-linux-publish.sh` |
 
@@ -298,7 +298,7 @@ dotnet run --project src/LinML.Cli -- run \
 ## Git Workflow
 
 ```bash
-# Repo: https://github.com/trackdubllc/LinML (public)
+# Repo: https://github.com/mesalimllc/LinML (public)
 # Windows path: D:\Dev\Trackdub_Workspace\LinML
 # WSL path (if cloned): ~/dev/LinML
 

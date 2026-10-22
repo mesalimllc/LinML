@@ -209,7 +209,7 @@ public partial class ScriptPinAgreementTests
         ScriptPin pin = ReadFetchScriptPins().Single(p => p.Function == "fetch_trt_rtx_wsl2");
         Assert.Equal(version, pin.Version);
         Assert.Equal(
-            $"https://github.com/trackdubllc/LinML/releases/download/ep-trt-rtx-wsl2-{version}/linml-trt-rtx-ep-{version}-linux-x64.zip",
+            $"https://github.com/mesalimllc/LinML/releases/download/ep-trt-rtx-wsl2-{version}/linml-trt-rtx-ep-{version}-linux-x64.zip",
             spec.WheelUrl.ToString());
     }
 

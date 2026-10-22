@@ -3,7 +3,7 @@
 Core interfaces and data models for LinML (Linux ML).
 
 [![NuGet](https://img.shields.io/nuget/v/LinML.Contracts.svg?label=LinML.Contracts&color=blue)](https://www.nuget.org/packages/LinML.Contracts)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/trackdubllc/LinML/blob/main/LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/mesalimllc/LinML/blob/main/LICENSE)
 
 `LinML.Contracts` defines provider discovery, hardware abstraction, selection policies, readiness reporting, and inference abstractions with **zero external dependencies on ONNX Runtime**.
 
@@ -29,4 +29,4 @@ dotnet add package LinML.Contracts
 
 ## Documentation & Repository
 
-For more details, CLI tools, and architecture documentation, visit the [LinML GitHub Repository](https://github.com/trackdubllc/LinML).
+For more details, CLI tools, and architecture documentation, visit the [LinML GitHub Repository](https://github.com/mesalimllc/LinML).

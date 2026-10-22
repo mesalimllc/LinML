@@ -276,7 +276,7 @@ PYEOF
 
 fetch_migraphx() {
     local OUT="$DEPS/ep-plugins/migraphx/linml_migraphx_ep"
-    local WHEEL_URL="https://github.com/trackdubllc/LinML/releases/download/ep-migraphx-2611.1/linml-migraphx-ep-2611.1-linux-x64.zip"
+    local WHEEL_URL="https://github.com/mesalimllc/LinML/releases/download/ep-migraphx-2611.1/linml-migraphx-ep-2611.1-linux-x64.zip"
     local WHEEL_SHA256="968bdb1aa294c1ab4af04cfec0d4318fb2ffa4c69f0b34bc3b98532a199acd86"
     local WHEEL_NAME="linml-migraphx-ep-2611.1-linux-x64.zip"
     local TMP="$TMP_ROOT/migraphx"
@@ -381,7 +381,7 @@ fetch_qnn() {
 fetch_trt_rtx_wsl2() {
     local OUT="$DEPS/ep-plugins/trt-rtx-wsl2/linml_trt_rtx_ep"
     local EP_VERSION="0.4.0-wsl2p2"
-    local WHEEL_URL="https://github.com/trackdubllc/LinML/releases/download/ep-trt-rtx-wsl2-0.4.0-wsl2p2/linml-trt-rtx-ep-0.4.0-wsl2p2-linux-x64.zip"
+    local WHEEL_URL="https://github.com/mesalimllc/LinML/releases/download/ep-trt-rtx-wsl2-0.4.0-wsl2p2/linml-trt-rtx-ep-0.4.0-wsl2p2-linux-x64.zip"
     local WHEEL_SHA256="7575c51157110228d581593c04147473868fbb7eefc79aa1b809c5b8bb66c220"
     local WHEEL_NAME="linml-trt-rtx-ep-0.4.0-wsl2p2-linux-x64.zip"
     local TMP="$TMP_ROOT/trt-rtx-wsl2"

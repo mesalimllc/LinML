@@ -151,4 +151,4 @@ All notable changes to LinML are documented here. This project follows [Semantic
 
 ---
 
-For full release notes, see [GitHub Releases](https://github.com/trackdubllc/LinML/releases).
+For full release notes, see [GitHub Releases](https://github.com/mesalimllc/LinML/releases).

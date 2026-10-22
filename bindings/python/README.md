@@ -78,4 +78,4 @@ for warning in report.compatibility_warnings:
 
 ## License
 
-MIT License. See [LICENSE](https://github.com/trackdubllc/LinML/blob/main/LICENSE) for details.
+MIT License. See [LICENSE](https://github.com/mesalimllc/LinML/blob/main/LICENSE) for details.

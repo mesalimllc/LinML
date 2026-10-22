@@ -3,17 +3,17 @@
 # Installs pre-built LinML CLI binary for Linux x86_64.
 #
 # Quick install:
-#   curl -fsSL https://raw.githubusercontent.com/trackdubllc/LinML/main/scripts/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/mesalimllc/LinML/main/scripts/install.sh | bash
 #
 # With GPU dependencies:
-#   curl -fsSL https://raw.githubusercontent.com/trackdubllc/LinML/main/scripts/install.sh | bash -s -- --gpu
+#   curl -fsSL https://raw.githubusercontent.com/mesalimllc/LinML/main/scripts/install.sh | bash -s -- --gpu
 #
 # Custom options:
 #   bash scripts/install.sh --version v0.1.0 --bin-dir /usr/local/bin
 
 set -euo pipefail
 
-REPO="${LINML_REPO:-trackdubllc/LinML}"
+REPO="${LINML_REPO:-mesalimllc/LinML}"
 VERSION="${LINML_VERSION:-}"
 INSTALL_DIR="${LINML_INSTALL_DIR:-$HOME/.local/share/linml}"
 BIN_DIR="${LINML_BIN_DIR:-$HOME/.local/bin}"
@@ -31,7 +31,7 @@ Options:
   -f, --file <path>     Install from a local archive instead of downloading
   -t, --target <dir>    Directory to install LinML files to (default: ~/.local/share/linml)
   -b, --bin-dir <dir>   Directory to create the 'linml' symlink in (default: ~/.local/bin)
-  -r, --repo <owner/repo> GitHub repository (default: trackdubllc/LinML)
+  -r, --repo <owner/repo> GitHub repository (default: mesalimllc/LinML)
       --gpu             Run GPU setup (cuDNN, TensorRT, plugin EPs) after installing
   -h, --help            Show this help message
 

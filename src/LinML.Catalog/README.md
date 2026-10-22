@@ -3,7 +3,7 @@
 Execution provider catalog for ONNX Runtime on Linux.
 
 [![NuGet](https://img.shields.io/nuget/v/LinML.Catalog.svg?label=LinML.Catalog&color=blue)](https://www.nuget.org/packages/LinML.Catalog)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/trackdubllc/LinML/blob/main/LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/mesalimllc/LinML/blob/main/LICENSE)
 
 `LinML.Catalog` is the Linux counterpart to the Windows ML (WinML) `ExecutionProviderCatalog`. It automates vendoring, SHA-256 integrity verification, dynamic registration, and session attachment for external plugin execution providers on Linux.
 
@@ -72,4 +72,4 @@ using var session = new InferenceSession("model.onnx", sessionOptions);
 
 ## Documentation & Repository
 
-For more details, CLI tools, and architecture documentation, visit the [LinML GitHub Repository](https://github.com/trackdubllc/LinML).
+For more details, CLI tools, and architecture documentation, visit the [LinML GitHub Repository](https://github.com/mesalimllc/LinML).
