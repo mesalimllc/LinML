@@ -178,7 +178,7 @@ public class PluginExecutionProviderTests
         IExecutionProvider? trtRtx = catalog.Find(Contracts.ProviderId.TensorrtRtx);
         Assert.NotNull(trtRtx);
         Assert.Equal(ProviderSource.Plugin, trtRtx.Source);
-        Assert.Equal("0.4.0", trtRtx.PinnedVersion);
+        Assert.Equal("0.5.0", trtRtx.PinnedVersion);
 
         IExecutionProvider? migraphx = catalog.Find(Contracts.ProviderId.MigraphX);
         Assert.NotNull(migraphx);
@@ -309,5 +309,72 @@ public class PluginExecutionProviderTests
         // The aarch64 pin's glibc floor is judged against this probe; a null here would refuse every glibc host.
         Assert.NotNull(PluginExecutionProvider.HostGlibc);
         Assert.True(PluginExecutionProvider.GlibcSatisfies(new Version(2, 0), PluginExecutionProvider.HostGlibc));
+    }
+
+    // A stock wheel with no manifest (TensorRT-RTX) is told apart by its version marker. A 0.4.0 install
+    // predates the 0.5.0 pin: EnsureReadyAsync replaces it when downloads are allowed, as for the WSL2 build.
+    private static (PluginPackageSpec Spec, byte[] Wheel) MarkedStock()
+    {
+        byte[] wheel = FakeWheel.Build();
+        return (FakeWheel.Spec(wheel) with { VersionMarkerFile = "libruntime.so.2621" }, wheel);
+    }
+
+    private static void VendorEarlierStockBuild(string root, PluginPackageSpec spec)
+    {
+        Directory.CreateDirectory(spec.InstallDirectory(root));
+        File.WriteAllText(spec.LibraryPath(root), "previous-build");
+        File.WriteAllText(Path.Combine(spec.InstallDirectory(root), "libruntime.so.1999"), "previous-runtime");
+    }
+
+    [Fact]
+    public async Task EarlierStockBuildVendored_DownloadsAllowed_ReplacesItBeforeRegistering()
+    {
+        using var root = new TempDir();
+        (PluginPackageSpec spec, byte[] wheel) = MarkedStock();
+        VendorEarlierStockBuild(root.Path, spec);
+        var handler = new FakeWheelHandler(wheel);
+        var registrar = new FakeRegistrar();
+        var provider = new PluginExecutionProvider(spec, root.Path, new PluginInstaller(handler), registrar, () => true);
+
+        await provider.EnsureReadyAsync(new EnsureOptions(AllowDownloads: true));
+
+        Assert.Equal(1, handler.Requests);
+        Assert.Equal("plugin", File.ReadAllText(spec.LibraryPath(root.Path)));
+        Assert.False(File.Exists(Path.Combine(spec.InstallDirectory(root.Path), "libruntime.so.1999")));
+        Assert.Equal(spec.LibraryPath(root.Path), Assert.Single(registrar.Registrations).Path);
+    }
+
+    [Fact]
+    public async Task EarlierStockBuildVendored_DownloadsDisallowed_KeepsUsingIt()
+    {
+        using var root = new TempDir();
+        (PluginPackageSpec spec, byte[] wheel) = MarkedStock();
+        VendorEarlierStockBuild(root.Path, spec);
+        var handler = new FakeWheelHandler(wheel);
+        var registrar = new FakeRegistrar();
+        var provider = new PluginExecutionProvider(spec, root.Path, new PluginInstaller(handler), registrar, () => true);
+
+        await provider.EnsureReadyAsync(new EnsureOptions(AllowDownloads: false));
+
+        Assert.Equal(0, handler.Requests);
+        Assert.Equal("previous-build", File.ReadAllText(spec.LibraryPath(root.Path)));
+        Assert.Equal(spec.LibraryPath(root.Path), Assert.Single(registrar.Registrations).Path);
+    }
+
+    [Fact]
+    public async Task EarlierStockBuild_WhenTheUpdateCannotBeDownloaded_KeepsUsingIt_AndSaysWhy()
+    {
+        using var root = new TempDir();
+        (PluginPackageSpec spec, _) = MarkedStock();
+        VendorEarlierStockBuild(root.Path, spec);
+        var registrar = new FakeRegistrar();
+        var provider = new PluginExecutionProvider(spec, root.Path, new PluginInstaller(new TimingOutHandler()), registrar, () => true);
+
+        var result = await provider.EnsureReadyAsync(new EnsureOptions(AllowDownloads: true));
+
+        Assert.Equal("previous-build", File.ReadAllText(spec.LibraryPath(root.Path)));
+        Assert.Equal(spec.LibraryPath(root.Path), Assert.Single(registrar.Registrations).Path);
+        Assert.NotEqual(ProviderEnsureStatus.Failed, result.Status);
+        Assert.Contains($"Could not replace the vendored build with {spec.Version}", result.Detail);
     }
 }

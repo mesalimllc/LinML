@@ -32,8 +32,8 @@ public static class ProvidersCommand
 
             // Register plugin EP libraries before discovery so they are listed, the same
             // way `doctor` does, so the two commands report the same providers.
-            var epLibraries = ProviderArgs.ParseEpLibraries(epLibraryArgs);
-            ProviderArgs.EnsureEpLibrariesRegistered(epLibraries);
+            ProviderArgs.RegisterEpLibraries(
+                ProviderArgs.ParseEpLibraries(epLibraryArgs), epLibraryArgs, warnings: Console.Error);
             ProviderArgs.RegisterCatalogPlugins(epLibraryArgs, string.IsNullOrWhiteSpace(root) ? null : root);
 
             var discovery = provider.GetRequiredService<IProviderDiscovery>();

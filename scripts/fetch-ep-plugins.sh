@@ -4,7 +4,7 @@
 # ~/.local/linml-deps/ep-plugins/:
 #
 #   trt-rtx   NvTensorRTRTXExecutionProvider (NVIDIA). The wheel bundles the EP
-#             plugin .so AND the TensorRT-RTX 1.6.1 runtime libraries, so no
+#             plugin .so AND the TensorRT-RTX 1.7.1 runtime libraries, so no
 #             separate TensorRT-RTX SDK install is needed. x86_64 hosts get the
 #             x86_64 wheel; Linux aarch64 (SBSA) hosts get the aarch64 wheel.
 #   openvino  OpenVINOExecutionProvider (Intel onnxruntime-ep-openvino). The
@@ -42,18 +42,27 @@ DEPS="${HOME}/.local/linml-deps"
 TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
 
+# The TensorRT-RTX runtime the trt-rtx wheels bundle (same on both architectures).
+TRT_RTX_RUNTIME_VERSION="1.7.1"
+TRT_RTX_RUNTIME="libtensorrt_rtx.so.${TRT_RTX_RUNTIME_VERSION}"
+
 fetch_trt_rtx() {
     local OUT="$DEPS/ep-plugins/trt-rtx/onnxruntime_ep_nv_tensorrt_rtx"
-    local WHEEL_URL="https://files.pythonhosted.org/packages/9c/68/093626a054300fa7f4f1a6d18b775d185034c6bb7fb056ac4f9d1e9b50d4/onnxruntime_ep_nv_tensorrt_rtx_cu13-0.4.0-py3-none-manylinux_2_28_x86_64.whl"
-    local WHEEL_SHA256="68b8f7306b50cf76daf997b8be24ec3813498c15d48e0ddd211db14f2a9daa19"
-    local WHEEL_NAME="onnxruntime_ep_nv_tensorrt_rtx_cu13-0.4.0-py3-none-manylinux_2_28_x86_64.whl"
+    local WHEEL_URL="https://files.pythonhosted.org/packages/6b/ea/033a6d73b74a443cbf67247e3700b2a2f5076b37af4b00e433fbbd46fa6d/onnxruntime_ep_nv_tensorrt_rtx_cu13-0.5.0-py3-none-manylinux_2_28_x86_64.whl"
+    local WHEEL_SHA256="32f575c633d171b4edf4b53d3bb22b72a6c9c0a850d2982ce9a788a5d40d3298"
+    local WHEEL_NAME="onnxruntime_ep_nv_tensorrt_rtx_cu13-0.5.0-py3-none-manylinux_2_28_x86_64.whl"
     local TMP="$TMP_ROOT/trt-rtx"
 
     echo "=== LinML EP plugin fetch (TensorRT-RTX) ==="
 
+    # The wheel records no version; the versioned TensorRT-RTX runtime it bundles
+    # marks the build, so an earlier wheel in the same directory is replaced.
     if [ -f "$OUT/libonnxruntime_providers_nv_tensorrt_rtx.so" ]; then
-        echo "Already vendored: $OUT"
-        return 0
+        if [ -f "$OUT/$TRT_RTX_RUNTIME" ]; then
+            echo "Already vendored: $OUT"
+            return 0
+        fi
+        echo "Vendored build at $OUT does not bundle $TRT_RTX_RUNTIME; replacing it."
     fi
 
     # Staged like the OpenVINO fetch: a failed extract never leaves a
@@ -89,12 +98,18 @@ PYEOF
     # versioned files only. Create the SONAME symlinks next to the libraries.
     local lib
     for lib in libtensorrt_rtx libtensorrt_onnxparser_rtx; do
-        if [ -f "$STAGE/${lib}.so.1.6.1" ] && [ ! -e "$STAGE/${lib}.so.1" ]; then
-            ln -s "${lib}.so.1.6.1" "$STAGE/${lib}.so.1"
+        if [ -f "$STAGE/${lib}.so.${TRT_RTX_RUNTIME_VERSION}" ] && [ ! -e "$STAGE/${lib}.so.1" ]; then
+            ln -s "${lib}.so.${TRT_RTX_RUNTIME_VERSION}" "$STAGE/${lib}.so.1"
         fi
     done
-    if [ -f "$STAGE/libcudart.so.13.4.36" ] && [ ! -e "$STAGE/libcudart.so.13" ]; then
-        ln -s "libcudart.so.13.4.36" "$STAGE/libcudart.so.13"
+    # The CUDA runtime is patch-versioned (libcudart.so.13.4.36 in 0.5.0); link
+    # whatever patch version the wheel ships, as fetch_trt_rtx_arm64 does.
+    local cudart
+    if [ ! -e "$STAGE/libcudart.so.13" ]; then
+        cudart="$(compgen -G "$STAGE/libcudart.so.13.*" | head -n 1 || true)"
+        if [ -n "$cudart" ]; then
+            ln -s "$(basename "$cudart")" "$STAGE/libcudart.so.13"
+        fi
     fi
 
     rm -rf "$OUT"
@@ -115,9 +130,9 @@ PYEOF
 
 fetch_trt_rtx_arm64() {
     local OUT="$DEPS/ep-plugins/trt-rtx-arm64/onnxruntime_ep_nv_tensorrt_rtx"
-    local WHEEL_URL="https://files.pythonhosted.org/packages/41/63/ef110d73730969957740d770b29c158ca79a9df32c65ee081b01f8b64124/onnxruntime_ep_nv_tensorrt_rtx_cu13-0.4.0-py3-none-manylinux_2_35_aarch64.whl"
-    local WHEEL_SHA256="0ccf6a636f9f49d74e3e7e3b1b90287aa1c818db770b47fad6e8aa344f4290a5"
-    local WHEEL_NAME="onnxruntime_ep_nv_tensorrt_rtx_cu13-0.4.0-py3-none-manylinux_2_35_aarch64.whl"
+    local WHEEL_URL="https://files.pythonhosted.org/packages/9c/5e/9b63610651a0f5d2c8712b84f64c8cee3b3b83564cc20be207d00272d982/onnxruntime_ep_nv_tensorrt_rtx_cu13-0.5.0-py3-none-manylinux_2_35_aarch64.whl"
+    local WHEEL_SHA256="1f0bb2b89bb3dfd43096fccb8ec1f581c266c5852c4e6ba672b7bf790c8c96c2"
+    local WHEEL_NAME="onnxruntime_ep_nv_tensorrt_rtx_cu13-0.5.0-py3-none-manylinux_2_35_aarch64.whl"
     local TMP="$TMP_ROOT/trt-rtx"
 
     echo "=== LinML EP plugin fetch (TensorRT-RTX) ==="
@@ -130,9 +145,14 @@ fetch_trt_rtx_arm64() {
         return 1
     fi
 
+    # The wheel records no version; the versioned TensorRT-RTX runtime it bundles
+    # marks the build, so an earlier wheel in the same directory is replaced.
     if [ -f "$OUT/libonnxruntime_providers_nv_tensorrt_rtx.so" ]; then
-        echo "Already vendored: $OUT"
-        return 0
+        if [ -f "$OUT/$TRT_RTX_RUNTIME" ]; then
+            echo "Already vendored: $OUT"
+            return 0
+        fi
+        echo "Vendored build at $OUT does not bundle $TRT_RTX_RUNTIME; replacing it."
     fi
 
     # Staged like the OpenVINO fetch: a failed extract never leaves a
@@ -168,8 +188,8 @@ PYEOF
     # versioned files only. Create the SONAME symlinks next to the libraries.
     local lib
     for lib in libtensorrt_rtx libtensorrt_onnxparser_rtx; do
-        if [ -f "$STAGE/${lib}.so.1.6.1" ] && [ ! -e "$STAGE/${lib}.so.1" ]; then
-            ln -s "${lib}.so.1.6.1" "$STAGE/${lib}.so.1"
+        if [ -f "$STAGE/${lib}.so.${TRT_RTX_RUNTIME_VERSION}" ] && [ ! -e "$STAGE/${lib}.so.1" ]; then
+            ln -s "${lib}.so.${TRT_RTX_RUNTIME_VERSION}" "$STAGE/${lib}.so.1"
         fi
     done
     # The aarch64 wheel ships libcudart.so.13.4.46; link whatever patch version it has.
@@ -368,8 +388,9 @@ fetch_trt_rtx_wsl2() {
 
     echo "=== LinML EP plugin fetch (TensorRT-RTX, WSL2 patch) ==="
 
-    # The patched EP dynamically links the TensorRT-RTX 1.6.1 runtime libraries,
-    # which only the stock wheel bundles; vendor the wheel first.
+    # The patched EP dynamically links the TensorRT-RTX runtime libraries (by
+    # SONAME, libtensorrt_rtx.so.1), which only the stock wheel bundles; vendor
+    # the wheel first.
     fetch_trt_rtx
 
     # The library alone does not say which build it is: an earlier one sits in the

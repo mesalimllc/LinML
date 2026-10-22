@@ -11,6 +11,8 @@ namespace LinML.Catalog;
 /// <c>MinimumGlibc</c>, when set, is the oldest glibc the wheel loads on.
 /// <c>VersionManifestFile</c>, when set, names a JSON file in the package whose <c>epVersion</c> records the
 /// version it was built as: an install only counts as vendored when that equals <c>Version</c>.
+/// <c>VersionMarkerFile</c>, when set, names a file in the package that only the pinned build ships (for a
+/// wheel with no manifest, its versioned runtime library): an install without it is an earlier build.
 /// </summary>
 internal sealed record PluginPackageSpec(
     ProviderId Id,
@@ -24,7 +26,8 @@ internal sealed record PluginPackageSpec(
     Version MinimumOrtVersion,
     string Architecture = "x64",
     Version? MinimumGlibc = null,
-    string? VersionManifestFile = null)
+    string? VersionManifestFile = null,
+    string? VersionMarkerFile = null)
 {
     public string InstallDirectory(string installRoot) => Path.Combine(installRoot, InstallSubdirectory);
 
@@ -59,13 +62,16 @@ internal sealed record PluginPackageSpec(
 
     /// <summary>
     /// Whether the library at <paramref name="libraryPath"/> exists and is the pinned build. A package without
-    /// a <see cref="VersionManifestFile"/> has nothing to compare, so any library counts. With one, the vendored
-    /// version must equal <see cref="Version"/>: successive builds share one install directory, and a library
-    /// that is merely present may be an earlier build the pin replaced.
+    /// a <see cref="VersionManifestFile"/> or <see cref="VersionMarkerFile"/> has nothing to compare, so any
+    /// library counts. With a manifest, the vendored version must equal <see cref="Version"/>; with a marker, the
+    /// marker must sit beside the library: successive builds share one install directory, and a library that
+    /// is merely present may be an earlier build the pin replaced.
     /// </summary>
     public bool IsCurrent(string libraryPath) =>
         File.Exists(libraryPath)
-        && (VersionManifestFile is null || string.Equals(VendoredVersion(libraryPath), Version, StringComparison.Ordinal));
+        && (VersionManifestFile is null || string.Equals(VendoredVersion(libraryPath), Version, StringComparison.Ordinal))
+        && (VersionMarkerFile is null
+            || File.Exists(Path.Combine(Path.GetDirectoryName(libraryPath) ?? string.Empty, VersionMarkerFile)));
 
     /// <summary>Whether the pinned build is vendored under <paramref name="installRoot"/>.</summary>
     public bool IsVendored(string installRoot) => IsCurrent(LibraryPath(installRoot));
@@ -152,37 +158,44 @@ internal static class KnownPlugins
 
     // NVIDIA TensorRT-RTX standalone plugin EP. Works on RTX Ampere+ GPUs. The
     // wheel is per architecture: x86_64 for desktop and workstation hosts, and
-    // aarch64 for Linux SBSA hosts (TensorRT-RTX 1.6 supports Ubuntu 24.04 SBSA).
+    // aarch64 for Linux SBSA hosts (TensorRT-RTX supports Ubuntu 24.04 SBSA).
     // Under WSL2, stock PyPI wheels register but expose zero devices due to
-    // virtual PCI bus mapping; see docs/compatibility.md.
+    // virtual PCI bus mapping; see docs/compatibility.md. The wheel has no version
+    // manifest, so its versioned TensorRT-RTX runtime marks the build: a 0.4.0
+    // install (TensorRT-RTX 1.6.1) in the same directory is replaced.
+    // The TensorRT-RTX runtime the 0.5.0 wheels bundle (both architectures).
+    private const string TensorrtRtxRuntimeMarker = "libtensorrt_rtx.so.1.7.1";
+
     internal static readonly PluginPackageSpec TensorrtRtxLinuxX64 = new(
         Id: ProviderId.TensorrtRtx,
         RegistrationName: "NvTensorRTRTXExecutionProvider",
-        Version: "0.4.0",
-        WheelUrl: new Uri("https://files.pythonhosted.org/packages/9c/68/093626a054300fa7f4f1a6d18b775d185034c6bb7fb056ac4f9d1e9b50d4/onnxruntime_ep_nv_tensorrt_rtx_cu13-0.4.0-py3-none-manylinux_2_28_x86_64.whl"),
-        WheelSha256: "68b8f7306b50cf76daf997b8be24ec3813498c15d48e0ddd211db14f2a9daa19",
+        Version: "0.5.0",
+        WheelUrl: new Uri("https://files.pythonhosted.org/packages/6b/ea/033a6d73b74a443cbf67247e3700b2a2f5076b37af4b00e433fbbd46fa6d/onnxruntime_ep_nv_tensorrt_rtx_cu13-0.5.0-py3-none-manylinux_2_28_x86_64.whl"),
+        WheelSha256: "32f575c633d171b4edf4b53d3bb22b72a6c9c0a850d2982ce9a788a5d40d3298",
         PackagePrefix: "onnxruntime_ep_nv_tensorrt_rtx/",
         InstallSubdirectory: Path.Combine("ep-plugins", "trt-rtx", "onnxruntime_ep_nv_tensorrt_rtx"),
         LibraryFileName: "libonnxruntime_providers_nv_tensorrt_rtx.so",
         MinimumOrtVersion: new Version(1, 24, 0),
-        Architecture: "x64");
+        Architecture: "x64",
+        VersionMarkerFile: TensorrtRtxRuntimeMarker);
 
     // The same EP for Linux aarch64 (SBSA). Same version and ABI, and the same
-    // bundled TensorRT-RTX 1.6.1 runtime, built for aarch64 (manylinux_2_35, so
+    // bundled TensorRT-RTX 1.7.1 runtime, built for aarch64 (manylinux_2_35, so
     // glibc 2.35 or newer). Installs beside the x64 build, not over it. Not yet
     // verified on aarch64 hardware.
     internal static readonly PluginPackageSpec TensorrtRtxLinuxArm64 = new(
         Id: ProviderId.TensorrtRtx,
         RegistrationName: "NvTensorRTRTXExecutionProvider",
-        Version: "0.4.0",
-        WheelUrl: new Uri("https://files.pythonhosted.org/packages/41/63/ef110d73730969957740d770b29c158ca79a9df32c65ee081b01f8b64124/onnxruntime_ep_nv_tensorrt_rtx_cu13-0.4.0-py3-none-manylinux_2_35_aarch64.whl"),
-        WheelSha256: "0ccf6a636f9f49d74e3e7e3b1b90287aa1c818db770b47fad6e8aa344f4290a5",
+        Version: "0.5.0",
+        WheelUrl: new Uri("https://files.pythonhosted.org/packages/9c/5e/9b63610651a0f5d2c8712b84f64c8cee3b3b83564cc20be207d00272d982/onnxruntime_ep_nv_tensorrt_rtx_cu13-0.5.0-py3-none-manylinux_2_35_aarch64.whl"),
+        WheelSha256: "1f0bb2b89bb3dfd43096fccb8ec1f581c266c5852c4e6ba672b7bf790c8c96c2",
         PackagePrefix: "onnxruntime_ep_nv_tensorrt_rtx/",
         InstallSubdirectory: Path.Combine("ep-plugins", "trt-rtx-arm64", "onnxruntime_ep_nv_tensorrt_rtx"),
         LibraryFileName: "libonnxruntime_providers_nv_tensorrt_rtx.so",
         MinimumOrtVersion: new Version(1, 24, 0),
         Architecture: "arm64",
-        MinimumGlibc: new Version(2, 35));
+        MinimumGlibc: new Version(2, 35),
+        VersionMarkerFile: TensorrtRtxRuntimeMarker);
 
     /// <summary>The TensorRT-RTX pin for this host: the wheel built for its architecture.</summary>
     public static PluginPackageSpec TensorrtRtx =>

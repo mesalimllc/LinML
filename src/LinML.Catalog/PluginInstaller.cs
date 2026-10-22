@@ -268,22 +268,22 @@ internal sealed class PluginInstaller(HttpMessageHandler? httpHandler = null)
             return;
         }
 
-        string[] sonamePairs =
-        [
-            "libtensorrt_rtx.so.1.6.1", "libtensorrt_rtx.so.1",
-            "libtensorrt_onnxparser_rtx.so.1.6.1", "libtensorrt_onnxparser_rtx.so.1"
-        ];
-
-        for (int i = 0; i < sonamePairs.Length; i += 2)
+        // The TensorRT-RTX runtime is versioned (libtensorrt_rtx.so.1.7.1 in the 0.5.0 wheel, 1.6.1 in 0.4.0),
+        // so link whichever version the directory holds to the SONAME the EP needs.
+        foreach (string library in (string[])["libtensorrt_rtx", "libtensorrt_onnxparser_rtx"])
         {
-            string targetName = sonamePairs[i];
-            string linkName = sonamePairs[i + 1];
-            string targetPath = Path.Combine(directory, targetName);
-            string linkPath = Path.Combine(directory, linkName);
-
-            if (File.Exists(targetPath) && !File.Exists(linkPath))
+            string linkPath = Path.Combine(directory, library + ".so.1");
+            if (File.Exists(linkPath))
             {
-                File.CreateSymbolicLink(linkPath, targetName);
+                continue;
+            }
+
+            string? target = Directory.EnumerateFiles(directory, library + ".so.1.*")
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .LastOrDefault();
+            if (target is not null)
+            {
+                File.CreateSymbolicLink(linkPath, Path.GetFileName(target));
             }
         }
 

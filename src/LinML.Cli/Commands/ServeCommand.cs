@@ -77,19 +77,24 @@ public static class ServeCommand
                 }
 
                 var preferredProvider = ProviderArgs.ParseProvider(providerName);
-                var explicitLibraries = ProviderArgs.ParseEpLibraries(epLibraryArgs);
-                ProviderArgs.EnsureEpLibrariesRegistered(explicitLibraries);
+                // An inherited mapping (LINML_EP_LIBRARIES) for another provider that fails to
+                // load here is skipped with a warning; the requested provider's own is not.
+                var explicitLibraries = ProviderArgs.RegisterEpLibraries(
+                    ProviderArgs.ParseEpLibraries(epLibraryArgs), epLibraryArgs, warnings: Console.Error);
 
-                var epLibraries = ProviderArgs.ResolveEpLibraries(epLibraryArgs, preferredProvider);
+                IReadOnlyDictionary<string, string> epLibraries;
                 try
                 {
-                    ProviderArgs.EnsureEpLibrariesRegistered(epLibraries);
+                    epLibraries = ProviderArgs.RegisterEpLibraries(
+                        ProviderArgs.ResolveEpLibraries(epLibraryArgs, preferredProvider),
+                        epLibraryArgs, requiredProvider: preferredProvider);
                 }
                 catch (Exception ex)
                 {
                     if (requireProvider)
                     {
-                        Console.Error.WriteLine($"Error: {ex.Message}");
+                        var hint = ProviderArgs.ProviderUnavailableHint(preferredProvider);
+                        Console.Error.WriteLine($"Error: {ex.Message}{(hint is null ? string.Empty : " " + hint)}");
                         return 3;
                     }
                     epLibraries = explicitLibraries;

@@ -317,8 +317,11 @@ public class PluginInstallerTests
         Assert.Empty(Directory.GetDirectories(dir));
     }
 
-    [Fact]
-    public void CreateRequiredSymlinks_CreatesRelativeSonameLinksOnLinux()
+    // Whichever TensorRT-RTX runtime the wheel bundles (1.7.1 in 0.5.0, 1.6.1 in 0.4.0) gets its SONAME link.
+    [Theory]
+    [InlineData("1.7.1")]
+    [InlineData("1.6.1")]
+    public void CreateRequiredSymlinks_CreatesRelativeSonameLinksOnLinux(string runtimeVersion)
     {
         if (!OperatingSystem.IsLinux())
         {
@@ -326,16 +329,58 @@ public class PluginInstallerTests
         }
 
         using var root = new TempDir();
-        string targetFile = Path.Combine(root.Path, "libtensorrt_rtx.so.1.6.1");
-        File.WriteAllText(targetFile, "dummy");
+        foreach (string library in (string[])["libtensorrt_rtx", "libtensorrt_onnxparser_rtx"])
+        {
+            File.WriteAllText(Path.Combine(root.Path, $"{library}.so.{runtimeVersion}"), "dummy");
+        }
 
         PluginInstaller.CreateRequiredSymlinks(root.Path);
 
-        string linkFile = Path.Combine(root.Path, "libtensorrt_rtx.so.1");
-        Assert.True(File.Exists(linkFile));
-        var linkTarget = File.ResolveLinkTarget(linkFile, returnFinalTarget: false);
-        Assert.NotNull(linkTarget);
-        Assert.Equal("libtensorrt_rtx.so.1.6.1", linkTarget.Name);
+        foreach (string library in (string[])["libtensorrt_rtx", "libtensorrt_onnxparser_rtx"])
+        {
+            string linkFile = Path.Combine(root.Path, library + ".so.1");
+            Assert.True(File.Exists(linkFile));
+            var linkTarget = File.ResolveLinkTarget(linkFile, returnFinalTarget: false);
+            Assert.NotNull(linkTarget);
+            Assert.Equal($"{library}.so.{runtimeVersion}", linkTarget.Name);
+        }
+    }
+
+    // A wheel with no manifest (the stock TensorRT-RTX wheel) is told apart by a file only the pinned build
+    // ships. 0.4.0 and 0.5.0 share one install directory, so a 0.4.0 install must be replaced, not kept.
+    private static PluginPackageSpec Marked(byte[] wheel) =>
+        FakeWheel.Spec(wheel) with { VersionMarkerFile = "libruntime.so.2621" };
+
+    [Fact]
+    public async Task Install_MarkedPackage_ReplacesAnInstallWithoutTheMarker()
+    {
+        using var root = new TempDir();
+        byte[] wheel = FakeWheel.Build();
+        PluginPackageSpec pinned = Marked(wheel);
+        VendorByHand(pinned, root.Path, buildInfoVersion: null);
+        Assert.False(pinned.IsVendored(root.Path));
+
+        bool installed = await new PluginInstaller(new FakeWheelHandler(wheel)).InstallAsync(pinned, root.Path, CancellationToken.None);
+
+        Assert.True(installed);
+        Assert.Equal("plugin", File.ReadAllText(pinned.LibraryPath(root.Path)));
+        Assert.True(pinned.IsVendored(root.Path));
+    }
+
+    [Fact]
+    public async Task Install_MarkedPackage_KeepsAnInstallWithTheMarker()
+    {
+        using var root = new TempDir();
+        byte[] wheel = FakeWheel.Build();
+        PluginPackageSpec pinned = Marked(wheel);
+        var handler = new FakeWheelHandler(wheel);
+        var installer = new PluginInstaller(handler);
+        await installer.InstallAsync(pinned, root.Path, CancellationToken.None);
+
+        bool second = await installer.InstallAsync(pinned, root.Path, CancellationToken.None);
+
+        Assert.False(second);
+        Assert.Equal(1, handler.Requests);
     }
 
     [Fact]
@@ -351,7 +396,7 @@ public class PluginInstallerTests
         string installDir = spec.InstallDirectory(root.Path);
         Directory.CreateDirectory(installDir);
         File.WriteAllText(spec.LibraryPath(root.Path), "dummy lib");
-        File.WriteAllText(Path.Combine(installDir, "libtensorrt_rtx.so.1.6.1"), "dummy soname");
+        File.WriteAllText(Path.Combine(installDir, spec.VersionMarkerFile!), "dummy soname");
 
         var installer = new PluginInstaller();
         bool installed = await installer.InstallAsync(spec, root.Path, CancellationToken.None);

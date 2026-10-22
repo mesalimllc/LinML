@@ -4,6 +4,18 @@ All notable changes to LinML are documented here. This project follows [Semantic
 
 ## [Unreleased]
 
+### Changed
+- **TensorRT-RTX 1.7.** The stock `trt-rtx` pin is `onnxruntime-ep-nv-tensorrt-rtx-cu13` **0.5.0** (x86_64 `manylinux_2_28` and aarch64 `manylinux_2_35`, as before), which bundles TensorRT-RTX **1.7.1** instead of 1.6.1. Same ABI and minimum ORT (1.24). TensorRT-RTX engines are not forward-compatible, so an engine cache built under 1.6.1 (`trt_engine_cache_enable`) is rebuilt.
+- **A vendored 0.4.0 wheel is replaced.** The wheel records no version, so the installer and `scripts/fetch-ep-plugins.sh` now treat the versioned runtime it bundles (`libtensorrt_rtx.so.1.7.1`) as the marker of the pinned build: a 0.4.0 install in the same directory is replaced, verified before the old directory is touched. `PluginPackageSpec.VersionMarkerFile` is the internal opt-in.
+- The SONAME links (`libtensorrt_rtx.so.1`, `libtensorrt_onnxparser_rtx.so.1`) now follow whichever runtime version the directory holds instead of a hardcoded 1.6.1, which would have left the 0.5.0 EP unable to load.
+- The patched WSL2 build stays at `0.4.0-wsl2p2` and is not rebuilt: the fix is expected upstream ([NVIDIA/TensorRT-RTX-EP-ABI#12](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI/pull/12)). It links the stock wheel's runtime by SONAME and is verified on TensorRT-RTX 1.7.1 in WSL2.
+
+### Fixed
+- **A plugin library in `LINML_EP_LIBRARIES` that fails to load no longer breaks every command.** On a host with the MIGraphX plugin vendored but no ROCm (`libmigraphx_c.so.3` missing), sourcing `scripts/env-gpu-deps.sh` mapped MIGraphX anyway, and `providers list`, `doctor`, `run`, `serve` and `bench` all exited with an unhandled `ArgumentException` (`Failed to register EP plugin library`). Such a library is now skipped with a warning on stderr and not passed on, so other providers work; `doctor` reports it under its own provider. A library given with `--ep-library`, or the one for the provider requested with `--provider`, still fails as before.
+- **`env-gpu-deps.sh` maps MIGraphX only when ROCm is present.** The vendored plugin is added to `LINML_EP_LIBRARIES` only when `libmigraphx_c.so.3` resolves (`LD_LIBRARY_PATH` or the `ldconfig` cache), and a vendored mapping left by an earlier source is removed when it does not. A MIGraphX mapping you set to another path is kept.
+- **`run --require-provider` matches `doctor` on hosts that cannot run a provider.** A required provider this host lacks the hardware or architecture for (MIGraphX without ROCm, QNN off aarch64) is reported as not applicable, with no `linml catalog install` hint, whether or not its plugin is vendored. The install hint remains for a plugin that could run here but is not installed. Provider selection failures use the same rule.
+- **`env-gpu-deps.sh` no longer drops mappings when sourced from zsh.** The cleanup of stale TensorRT-RTX and OpenVINO mappings split `LINML_EP_LIBRARIES` by `IFS`, which zsh does not do, so it could discard unrelated mappings. It now behaves the same in bash and zsh.
+
 ### Added
 - **QNN in the catalog.** `linml catalog install qnn` installs the Qualcomm QNN plugin (`onnxruntime-qnn` 2.6.0, aarch64) on Snapdragon aarch64 hosts. On other architectures the catalog reports it as not applicable, `catalog install` refuses without downloading it, and `setup --all` and `doctor` skip it with the reason. Not verified on hardware.
 

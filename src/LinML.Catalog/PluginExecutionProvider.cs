@@ -81,6 +81,9 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
     internal static bool Wsl2OptedOut() =>
         EnvReader(Wsl2OptOutEnvVar)?.Trim().ToLowerInvariant() is "0" or "false" or "off" or "no";
 
+    // A stock library is vendored but is not the pinned build (its version marker or manifest says so).
+    private bool StaleStockLibrary() => StockLibraryPath() is { } stock && !_spec.IsCurrent(stock);
+
     private string? StockLibraryPath() =>
         File.Exists(_spec.LibraryPath(_installRoot))
             ? _spec.LibraryPath(_installRoot)
@@ -272,9 +275,10 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
             bool downloaded = false;
             // Why a vendored build of another version could not be replaced, when it stays in use instead.
             string? updateFailure = null;
+            string? updateVersion = null;
             string WithUpdateNote(string detail) => updateFailure is null
                 ? detail
-                : $"{detail} Could not replace the vendored build with {_wsl2Spec.Version}: {updateFailure}";
+                : $"{detail} Could not replace the vendored build with {updateVersion}: {updateFailure}";
             Variant variant = SelectVariant();
             if (variant != Variant.Custom)
             {
@@ -286,6 +290,10 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
                     if (StockRuntimeDirectory() is null)
                     {
                         needed.Add((_spec, false));
+                    }
+                    else if (options.AllowDownloads && StaleStockLibrary())
+                    {
+                        needed.Add((_spec, true));
                     }
 
                     // A vendored build of another version (the pin moved on; 0.4.0-wsl2p1 needs a newer glibc than
@@ -303,6 +311,12 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
                 else if (LibraryPath is null)
                 {
                     needed.Add((_spec, false));
+                }
+                else if (options.AllowDownloads && StaleStockLibrary())
+                {
+                    // An earlier stock build (0.4.0 before the TensorRT-RTX 0.5.0 pin) is replaced the same way;
+                    // if that fails it stays in use.
+                    needed.Add((_spec, true));
                 }
 
                 foreach ((PluginPackageSpec spec, bool hasFallback) in needed)
@@ -323,6 +337,7 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
                         if (hasFallback)
                         {
                             updateFailure = ex.Message;
+                            updateVersion = spec.Version;
                             continue;
                         }
 
@@ -334,6 +349,7 @@ internal sealed class PluginExecutionProvider : IExecutionProvider
                         if (hasFallback)
                         {
                             updateFailure = $"timed out: {ex.Message}";
+                            updateVersion = spec.Version;
                             continue;
                         }
 
