@@ -18,9 +18,9 @@
 
 **TensorRT-RTX on aarch64.** NVIDIA's TensorRT-RTX 1.6 supports Ubuntu 24.04 SBSA
 (Linux aarch64) with CUDA 13.4, gcc 11.4, and compute capabilities 7.5, 8.6, 8.9,
-12.0 and 12.13. LinML pins the same EP version (0.4.0) for `manylinux_2_35_aarch64`
+12.0 and 12.13. LinML pins the same EP version as on x64 (0.5.0, TensorRT-RTX 1.7.1) for `manylinux_2_35_aarch64`
 (glibc 2.35 or newer), selected automatically on aarch64 hosts. The aarch64 build is
-not yet verified on aarch64 hardware. The x64 pin is unchanged.
+not yet verified on aarch64 hardware.
 
 ## Execution Providers
 
@@ -135,9 +135,11 @@ not yet verified on aarch64 hardware. The x64 pin is unchanged.
   detects WSL2 and an RTX Ampere+ GPU. On WSL2 the CLI prefers the patched build
   for `trt-rtx` (as does `env-gpu-deps.sh`); `TRT_RTX_CUSTOM_EP` overrides it (also in the catalog since 0.4.2). Notes:
   - The archive contains only the Apache-2.0 EP plugin `.so` (~5 MB, RUNPATH
-    `$ORIGIN`); it dynamically links the TensorRT-RTX 1.6.1 runtime
+    `$ORIGIN`); it dynamically links the TensorRT-RTX runtime by SONAME
     (`libtensorrt_rtx.so.1`, `libtensorrt_onnxparser_rtx.so.1`) and CUDA 13,
-    which the stock `trt-rtx` wheel provides.
+    which the stock `trt-rtx` wheel provides. It is built from EP 0.4.0 against the
+    1.6.1 SDK; since the stock pin moved to 0.5.0 it runs on that wheel's TensorRT-RTX
+    1.7.1 runtime (verified in WSL2 on an RTX 5070: `TensorrtRtxWsl2EndToEndTests`).
   - Built by `scripts/build-trt-rtx-ep.sh`, which pins the PR head commit and
     produces a byte-stable archive. It is **not** built in CI: the TensorRT-RTX
     SDK (headers + import libs) is under NVIDIA's license and cannot be

@@ -171,7 +171,7 @@ OpenVINO, TensorRT-RTX, MIGraphX and QNN are plugin execution providers. LinML d
 | Plugin | Provider name | Platforms | Pinned artifact | Installed to (under `~/.local/linml-deps`) |
 |--------|---------------|-----------|-----------------|--------------------------------------------|
 | OpenVINO | `OpenVINOExecutionProvider` | Linux x86_64 with an Intel CPU, GPU or NPU | Intel `onnxruntime-ep-openvino` 1.6.1 wheel from PyPI, with the OpenVINO 2026.2.1 runtime bundled | `ep-plugins/openvino/onnxruntime_ep_openvino/` |
-| TensorRT-RTX | `NvTensorRTRTXExecutionProvider` | Linux x86_64; Linux aarch64 (SBSA) | NVIDIA `onnxruntime-ep-nv-tensorrt-rtx-cu13` 0.4.0 wheel from PyPI, with TensorRT-RTX 1.6.1 bundled | `ep-plugins/trt-rtx/onnxruntime_ep_nv_tensorrt_rtx/` (x86_64); `ep-plugins/trt-rtx-arm64/onnxruntime_ep_nv_tensorrt_rtx/` (aarch64) |
+| TensorRT-RTX | `NvTensorRTRTXExecutionProvider` | Linux x86_64; Linux aarch64 (SBSA) | NVIDIA `onnxruntime-ep-nv-tensorrt-rtx-cu13` 0.5.0 wheel from PyPI, with TensorRT-RTX 1.7.1 bundled | `ep-plugins/trt-rtx/onnxruntime_ep_nv_tensorrt_rtx/` (x86_64); `ep-plugins/trt-rtx-arm64/onnxruntime_ep_nv_tensorrt_rtx/` (aarch64) |
 | TensorRT-RTX on WSL2 | same | WSL2 with GPU passthrough (`/dev/dxg`) | LinML patched build `0.4.0-wsl2p2` (GitHub release; glibc 2.35+, the same floor as the wheel), used alongside the wheel above | `ep-plugins/trt-rtx-wsl2/linml_trt_rtx_ep/` |
 | MIGraphX | `MIGraphXExecutionProvider` | Linux x86_64 with an AMD GPU and ROCm | LinML build `2611.1` (GitHub release), built from AMD's `onnxruntime-ep-amdgpu` | `ep-plugins/migraphx/linml_migraphx_ep/` |
 | QNN | `QNNExecutionProvider` | Linux aarch64 with a Qualcomm Snapdragon NPU | Qualcomm `onnxruntime-qnn` 2.6.0 tarball (GitHub release), with the QAIRT 2.50.40 runtime bundled | `ep-plugins/qnn/onnxruntime_qnn/` |
@@ -246,14 +246,14 @@ These commands use only `curl`, `sha256sum`, `unzip`, and `mktemp`. Each downloa
   TMP="$(mktemp -d)"
   case "$(uname -m)" in
     x86_64)
-      WHEEL=onnxruntime_ep_nv_tensorrt_rtx_cu13-0.4.0-py3-none-manylinux_2_28_x86_64.whl
-      URL=https://files.pythonhosted.org/packages/9c/68/093626a054300fa7f4f1a6d18b775d185034c6bb7fb056ac4f9d1e9b50d4/$WHEEL
-      SHA256=68b8f7306b50cf76daf997b8be24ec3813498c15d48e0ddd211db14f2a9daa19
+      WHEEL=onnxruntime_ep_nv_tensorrt_rtx_cu13-0.5.0-py3-none-manylinux_2_28_x86_64.whl
+      URL=https://files.pythonhosted.org/packages/6b/ea/033a6d73b74a443cbf67247e3700b2a2f5076b37af4b00e433fbbd46fa6d/$WHEEL
+      SHA256=32f575c633d171b4edf4b53d3bb22b72a6c9c0a850d2982ce9a788a5d40d3298
       DIR=trt-rtx ;;
     aarch64)
-      WHEEL=onnxruntime_ep_nv_tensorrt_rtx_cu13-0.4.0-py3-none-manylinux_2_35_aarch64.whl
-      URL=https://files.pythonhosted.org/packages/41/63/ef110d73730969957740d770b29c158ca79a9df32c65ee081b01f8b64124/$WHEEL
-      SHA256=0ccf6a636f9f49d74e3e7e3b1b90287aa1c818db770b47fad6e8aa344f4290a5
+      WHEEL=onnxruntime_ep_nv_tensorrt_rtx_cu13-0.5.0-py3-none-manylinux_2_35_aarch64.whl
+      URL=https://files.pythonhosted.org/packages/9c/5e/9b63610651a0f5d2c8712b84f64c8cee3b3b83564cc20be207d00272d982/$WHEEL
+      SHA256=1f0bb2b89bb3dfd43096fccb8ec1f581c266c5852c4e6ba672b7bf790c8c96c2
       DIR=trt-rtx-arm64
       # The aarch64 wheel is manylinux_2_35: refuse an older glibc before downloading it.
       GLIBC="$(getconf GNU_LIBC_VERSION 2>/dev/null | awk '{print $2}')" || GLIBC=""
@@ -269,8 +269,8 @@ These commands use only `curl`, `sha256sum`, `unzip`, and `mktemp`. Each downloa
   unzip -q -j -o "$TMP/$WHEEL" 'onnxruntime_ep_nv_tensorrt_rtx/*' -d "$OUT"
   # The plugin links SONAMEs, but the wheel ships only versioned files: add the links.
   (cd "$OUT" &&
-    ln -sf libtensorrt_rtx.so.1.6.1 libtensorrt_rtx.so.1 &&
-    ln -sf libtensorrt_onnxparser_rtx.so.1.6.1 libtensorrt_onnxparser_rtx.so.1 &&
+    ln -sf libtensorrt_rtx.so.1.7.1 libtensorrt_rtx.so.1 &&
+    ln -sf libtensorrt_onnxparser_rtx.so.1.7.1 libtensorrt_onnxparser_rtx.so.1 &&
     ln -sf "$(ls libcudart.so.13.* | head -n 1)" libcudart.so.13)
   rm -rf "$TMP"
   echo "TensorRT-RTX installed to $OUT"
@@ -790,7 +790,7 @@ for warning in report.compatibility_warnings:
 
 It covers:
 - **Built-in EPs**: `CPUExecutionProvider`, `CUDAExecutionProvider`, and `TensorrtExecutionProvider`
-- **Plugin EPs**: `OpenVINOExecutionProvider` (1.6.1), `NvTensorRTRTXExecutionProvider` (0.4.0), and `MIGraphXExecutionProvider` (2611.1)
+- **Plugin EPs**: `OpenVINOExecutionProvider` (1.6.1), `NvTensorRTRTXExecutionProvider` (0.5.0), and `MIGraphXExecutionProvider` (2611.1)
 
 ```csharp
 using LinML.Catalog;

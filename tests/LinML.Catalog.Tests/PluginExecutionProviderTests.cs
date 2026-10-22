@@ -178,7 +178,7 @@ public class PluginExecutionProviderTests
         IExecutionProvider? trtRtx = catalog.Find(Contracts.ProviderId.TensorrtRtx);
         Assert.NotNull(trtRtx);
         Assert.Equal(ProviderSource.Plugin, trtRtx.Source);
-        Assert.Equal("0.4.0", trtRtx.PinnedVersion);
+        Assert.Equal("0.5.0", trtRtx.PinnedVersion);
 
         IExecutionProvider? migraphx = catalog.Find(Contracts.ProviderId.MigraphX);
         Assert.NotNull(migraphx);
