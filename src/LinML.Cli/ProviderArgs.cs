@@ -368,10 +368,7 @@ public static class ProviderArgs
             return null;
         }
 
-        string? gap = Commands.SetupCommand.ArchitectureNote(
-                spec, System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant())
-            ?? Commands.SetupCommand.MigraphXHardwareNote(spec.Id, Commands.SetupCommand.ProbeAmdRocm());
-        if (gap is not null)
+        if (NotApplicableNote(spec.Id) is { } gap)
         {
             return $"{GetShortName(spec.Id)} is not applicable on this host: {gap}.";
         }
@@ -379,6 +376,21 @@ public static class ProviderArgs
         return spec.FindLibrary(root) is null
             ? $"Run 'linml catalog install {GetShortName(spec.Id)}' to vendor missing libraries."
             : null;
+    }
+
+    /// <summary>
+    /// Why this host lacks the hardware or architecture to run catalog plugin
+    /// <paramref name="provider"/> (so installing it would not help), or null when it could run here
+    /// or is not a catalog plugin.
+    /// </summary>
+    public static string? NotApplicableNote(ProviderId? provider)
+    {
+        var spec = LinML.Catalog.KnownPlugins.All.FirstOrDefault(p => p.Id == provider);
+        return spec is null
+            ? null
+            : Commands.SetupCommand.ArchitectureNote(
+                    spec, System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant())
+                ?? Commands.SetupCommand.MigraphXHardwareNote(spec.Id, Commands.SetupCommand.ProbeAmdRocm());
     }
 
     /// <summary>

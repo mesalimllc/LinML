@@ -519,4 +519,21 @@ public class ProviderArgsTests : IDisposable
             [$"NvTensorRTRTXExecutionProvider={layout.Stock}"], ProviderId.TensorrtRtx, layout.Root);
         Assert.Equal(layout.Stock, explicitArg["NvTensorRTRTXExecutionProvider"]);
     }
+
+    // The selection failure for a provider this host cannot run must not tell the user to install
+    // it, whatever this process has registered: `run --require-provider migraphx` on a host without
+    // ROCm printed the not-applicable hint and an install hint from the listing reason.
+    [Fact]
+    public void UnavailableReason_ProviderTheHostCannotRun_HasNoInstallHint()
+    {
+        // MIGraphX without ROCm reaches the generic not-loaded reason; a plugin for another
+        // architecture (QNN on x64) is already worded as such and never had the hint.
+        if (Commands.SetupCommand.ProbeAmdRocm())
+        {
+            return;
+        }
+
+        Assert.NotNull(ProviderArgs.NotApplicableNote(ProviderId.MigraphX));
+        Assert.DoesNotContain("catalog install", InferencePipeline.UnavailableReason(ProviderId.MigraphX), StringComparison.Ordinal);
+    }
 }

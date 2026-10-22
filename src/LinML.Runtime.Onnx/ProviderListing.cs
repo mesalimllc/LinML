@@ -22,9 +22,11 @@ public static class ProviderListing
 
     /// <summary>
     /// The reason a provider is not listed, worded for the state it is in: built-in, loaded but
-    /// without devices, failed to load (with ORT's message), or not loaded at all.
+    /// without devices, failed to load (with ORT's message), or not loaded at all. Pass
+    /// <paramref name="installable"/> false when the caller knows this host cannot run the
+    /// provider (no ROCm for MIGraphX, say): a plugin that is not loaded then gets no install hint.
     /// </summary>
-    public static string NotListedReason(ProviderId provider)
+    public static string NotListedReason(ProviderId provider, bool installable = true)
     {
         var plugin = KnownPlugins.All.FirstOrDefault(p => p.Id == provider);
         if (plugin is null)
@@ -51,7 +53,9 @@ public static class ProviderListing
             return $"Provider '{provider}' is installed but failed to register: {failure}";
         }
 
-        return $"Provider '{provider}' is not loaded into this process. If the plugin is not installed, run 'linml catalog install {ShortName(provider)}' to vendor it.";
+        return installable
+            ? $"Provider '{provider}' is not loaded into this process. If the plugin is not installed, run 'linml catalog install {ShortName(provider)}' to vendor it."
+            : $"Provider '{provider}' is not loaded into this process.";
     }
 
     // Matches the CLI's short names for these providers (ProviderArgs.GetShortName).
