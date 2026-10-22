@@ -65,8 +65,11 @@ public static class DoctorCommand
                     : ExecutionProviderCatalog.Create(root);
 
                 // Register plugin EP libraries before discovery so they are listed.
-                var epLibraries = ProviderArgs.ParseEpLibraries(epLibraryArgs);
-                ProviderArgs.EnsureEpLibrariesRegistered(epLibraries);
+                // A plugin library inherited from LINML_EP_LIBRARIES that fails to load is not
+                // fatal here: it is named on stderr, and the catalog section below reports a
+                // catalog plugin's failure under its provider.
+                ProviderArgs.RegisterEpLibraries(
+                    ProviderArgs.ParseEpLibraries(epLibraryArgs), epLibraryArgs, warnings: Console.Error);
 
                 // Pre-register available catalog plugins before discovery so smoke tests and discovery cover them
                 ProviderArgs.RegisterCatalogPlugins(epLibraryArgs, root);
@@ -89,7 +92,8 @@ public static class DoctorCommand
                     {
                         var scopedOptions = ProviderArgs.OptionsForProvider(epOptions, p);
                         // Per provider, as `run` resolves them: the catalog's library for a plugin, not only the explicit flags.
-                        var providerLibraries = ProviderArgs.ResolveEpLibraries(epLibraryArgs, p, root);
+                        var providerLibraries = ProviderArgs.RegisterEpLibraries(
+                            ProviderArgs.ResolveEpLibraries(epLibraryArgs, p, root), epLibraryArgs);
                         readinessReports.Add(smokeRunner.RunSmoke(
                             p, modelIdentity, tensorInputs,
                             options: scopedOptions, epLibraries: providerLibraries));

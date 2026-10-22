@@ -1,4 +1,5 @@
 using System.Text.Json;
+using LinML.Catalog;
 using LinML.Cli.Commands;
 using Xunit;
 
@@ -224,8 +225,25 @@ public class ExitCodeTests
             "--provider", "migraphx",
             "--require-provider"));
 
-        Assert.Equal(3, exitCode);
-        Assert.Contains("Run 'linml catalog install migraphx' to vendor missing libraries.", stderr);
+        if (SetupCommand.ProbeAmdRocm())
+        {
+            if (KnownPlugins.MigraphX.FindLibrary() is not null)
+            {
+                return; // vendored on a ROCm host: the provider may really run here
+            }
+
+            Assert.Equal(3, exitCode);
+            Assert.Contains("Run 'linml catalog install migraphx' to vendor missing libraries.", stderr);
+        }
+        else
+        {
+            // Without ROCm, MIGraphX is not applicable whether or not its plugin is vendored
+            // (vendored, it fails to load for want of libmigraphx_c.so.3); installing it would
+            // not help, so there is no install hint, as in `doctor`.
+            Assert.Equal(3, exitCode);
+            Assert.Contains("migraphx is not applicable on this host", stderr);
+            Assert.DoesNotContain("linml catalog install migraphx", stderr);
+        }
     }
 
     [Fact]

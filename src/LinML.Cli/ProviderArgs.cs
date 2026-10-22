@@ -62,7 +62,17 @@ public static class ProviderArgs
             "(or a raw ORT EP name like CUDAExecutionProvider).");
     }
 
-    private static readonly List<IntPtr> BundledLibraryHandles = [];
+    // Handles of bundled runtime libraries loaded ahead of a plugin, kept for the life of the
+    // process. A set, so resolving the same plugin again does not record a handle twice.
+    private static readonly HashSet<IntPtr> BundledLibraryHandles = [];
+
+    private static void KeepBundledLibraryHandles(IEnumerable<IntPtr> handles)
+    {
+        lock (BundledLibraryHandles)
+        {
+            BundledLibraryHandles.UnionWith(handles);
+        }
+    }
 
     /// <summary>
     /// Gets the canonical short alias for a known provider ID.
@@ -183,7 +193,7 @@ public static class ProviderArgs
                     var pluginDir = Path.GetDirectoryName(libraryPath);
                     if (!string.IsNullOrEmpty(pluginDir))
                     {
-                        BundledLibraryHandles.AddRange(
+                        KeepBundledLibraryHandles(
                             PluginInstaller.LoadBundledLibraries(pluginDir, spec.LibraryFileName));
                     }
 
@@ -215,7 +225,7 @@ public static class ProviderArgs
             return null;
         }
 
-        BundledLibraryHandles.AddRange(PluginInstaller.LoadBundledLibraries(runtimeDir, spec.LibraryFileName));
+        KeepBundledLibraryHandles(PluginInstaller.LoadBundledLibraries(runtimeDir, spec.LibraryFileName));
         return variant;
     }
 
@@ -287,6 +297,88 @@ public static class ProviderArgs
             throw new ArgumentException(
                 $"Failed to register EP plugin library: {ex.Message}", ex);
         }
+    }
+
+    /// <summary>
+    /// Register plugin EP libraries one at a time, isolating failures. A library named on
+    /// the command line (<paramref name="epLibraryArgs"/>) or mapped for
+    /// <paramref name="requiredProvider"/> still fails fast, as
+    /// <see cref="EnsureEpLibrariesRegistered"/> does; any other library that fails to
+    /// register (typically one inherited from LINML_EP_LIBRARIES whose runtime is missing
+    /// on this host) is reported to <paramref name="warnings"/> and left out of the result,
+    /// so it cannot break commands that do not use it.
+    /// </summary>
+    /// <returns>The libraries that registered.</returns>
+    public static IReadOnlyDictionary<string, string> RegisterEpLibraries(
+        IReadOnlyDictionary<string, string> epLibraries,
+        IEnumerable<string> epLibraryArgs,
+        ProviderId? requiredProvider = null,
+        TextWriter? warnings = null)
+    {
+        var explicitKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var arg in epLibraryArgs)
+        {
+            var eq = arg.IndexOf('=');
+            if (eq > 0)
+            {
+                explicitKeys.Add(arg[..eq].Trim());
+            }
+        }
+
+        var requiredSpec = requiredProvider is null
+            ? null
+            : LinML.Catalog.KnownPlugins.All.FirstOrDefault(p => p.Id == requiredProvider);
+
+        var registered = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (name, path) in epLibraries)
+        {
+            bool required = explicitKeys.Contains(name)
+                || (requiredSpec is not null && IsMappingFor(name, requiredSpec))
+                || (requiredProvider is not null && string.Equals(name, requiredProvider.Value, StringComparison.OrdinalIgnoreCase));
+            if (required)
+            {
+                EnsureEpLibrariesRegistered(new Dictionary<string, string> { [name] = path });
+                registered[name] = path;
+                continue;
+            }
+
+            try
+            {
+                PluginEpRegistry.EnsureRegistered(new Dictionary<string, string> { [name] = path });
+                registered[name] = path;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                warnings?.WriteLine($"Warning: skipping EP plugin library '{name}' ({path}): {ex.Message}");
+            }
+        }
+        return registered;
+    }
+
+    /// <summary>
+    /// Why <paramref name="provider"/> cannot run here and what to do about it, as a sentence
+    /// to append to an error: the host lacks its hardware or architecture (no install hint, as
+    /// installing it would not help), or its plugin library is not installed. Null otherwise.
+    /// </summary>
+    public static string? ProviderUnavailableHint(ProviderId? provider, string? root = null)
+    {
+        var spec = LinML.Catalog.KnownPlugins.All.FirstOrDefault(p => p.Id == provider);
+        if (spec is null)
+        {
+            return null;
+        }
+
+        string? gap = Commands.SetupCommand.ArchitectureNote(
+                spec, System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant())
+            ?? Commands.SetupCommand.MigraphXHardwareNote(spec.Id, Commands.SetupCommand.ProbeAmdRocm());
+        if (gap is not null)
+        {
+            return $"{GetShortName(spec.Id)} is not applicable on this host: {gap}.";
+        }
+
+        return spec.FindLibrary(root) is null
+            ? $"Run 'linml catalog install {GetShortName(spec.Id)}' to vendor missing libraries."
+            : null;
     }
 
     /// <summary>

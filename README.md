@@ -263,15 +263,21 @@ These commands use only `curl`, `sha256sum`, `unzip`, and `mktemp`. Each downloa
     *) echo "No TensorRT-RTX build for $(uname -m)" >&2; false ;;
   esac
   OUT="$DEPS/ep-plugins/$DIR/onnxruntime_ep_nv_tensorrt_rtx"
-  mkdir -p "$OUT"
+  # Extract into a staging directory and swap it in, so an upgrade does not leave an
+  # earlier build's runtime (libtensorrt_rtx.so.1.6.1 from 0.4.0) beside the new one.
+  mkdir -p "$(dirname "$OUT")"
+  STAGE="$(mktemp -d "$OUT.partial.XXXXXX")"
   curl -fsSL -o "$TMP/$WHEEL" "$URL"
   echo "$SHA256  $TMP/$WHEEL" | sha256sum -c
-  unzip -q -j -o "$TMP/$WHEEL" 'onnxruntime_ep_nv_tensorrt_rtx/*' -d "$OUT"
+  unzip -q -j -o "$TMP/$WHEEL" 'onnxruntime_ep_nv_tensorrt_rtx/*' -d "$STAGE"
   # The plugin links SONAMEs, but the wheel ships only versioned files: add the links.
-  (cd "$OUT" &&
+  (cd "$STAGE" &&
     ln -sf libtensorrt_rtx.so.1.7.1 libtensorrt_rtx.so.1 &&
     ln -sf libtensorrt_onnxparser_rtx.so.1.7.1 libtensorrt_onnxparser_rtx.so.1 &&
     ln -sf "$(ls libcudart.so.13.* | head -n 1)" libcudart.so.13)
+  chmod 755 "$STAGE"
+  rm -rf "$OUT"
+  mv "$STAGE" "$OUT"
   rm -rf "$TMP"
   echo "TensorRT-RTX installed to $OUT"
 )
