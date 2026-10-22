@@ -104,6 +104,7 @@ PYEOF
     done
     # The CUDA runtime is patch-versioned (libcudart.so.13.4.36 in 0.5.0); link
     # whatever patch version the wheel ships, as fetch_trt_rtx_arm64 does.
+    local cudart
     if [ ! -e "$STAGE/libcudart.so.13" ]; then
         cudart="$(compgen -G "$STAGE/libcudart.so.13.*" | head -n 1 || true)"
         if [ -n "$cudart" ]; then

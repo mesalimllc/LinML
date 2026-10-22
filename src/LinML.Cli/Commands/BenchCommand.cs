@@ -179,8 +179,11 @@ public static class BenchCommand
                 {
                     try
                     {
-                        var libs = ProviderArgs.ResolveEpLibraries(epLibraryArgs, p.Id, root);
-                        ProviderArgs.EnsureEpLibrariesRegistered(libs);
+                        // An unrelated inherited mapping that fails to load must not keep this candidate
+                        // from registering; its own mapping failing still drops it from the list.
+                        ProviderArgs.RegisterEpLibraries(
+                            ProviderArgs.ResolveEpLibraries(epLibraryArgs, p.Id, root),
+                            epLibraryArgs, requiredProvider: p.Id);
                     }
                     catch
                     {

@@ -66,8 +66,10 @@ public static class DoctorCommand
 
                 // Register plugin EP libraries before discovery so they are listed.
                 // A plugin library inherited from LINML_EP_LIBRARIES that fails to load is not
-                // fatal here: the catalog section below reports it for its provider.
-                ProviderArgs.RegisterEpLibraries(ProviderArgs.ParseEpLibraries(epLibraryArgs), epLibraryArgs);
+                // fatal here: it is named on stderr, and the catalog section below reports a
+                // catalog plugin's failure under its provider.
+                ProviderArgs.RegisterEpLibraries(
+                    ProviderArgs.ParseEpLibraries(epLibraryArgs), epLibraryArgs, warnings: Console.Error);
 
                 // Pre-register available catalog plugins before discovery so smoke tests and discovery cover them
                 ProviderArgs.RegisterCatalogPlugins(epLibraryArgs, root);
