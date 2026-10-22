@@ -102,8 +102,13 @@ PYEOF
             ln -s "${lib}.so.${TRT_RTX_RUNTIME_VERSION}" "$STAGE/${lib}.so.1"
         fi
     done
-    if [ -f "$STAGE/libcudart.so.13.4.36" ] && [ ! -e "$STAGE/libcudart.so.13" ]; then
-        ln -s "libcudart.so.13.4.36" "$STAGE/libcudart.so.13"
+    # The CUDA runtime is patch-versioned (libcudart.so.13.4.36 in 0.5.0); link
+    # whatever patch version the wheel ships, as fetch_trt_rtx_arm64 does.
+    if [ ! -e "$STAGE/libcudart.so.13" ]; then
+        cudart="$(compgen -G "$STAGE/libcudart.so.13.*" | head -n 1 || true)"
+        if [ -n "$cudart" ]; then
+            ln -s "$(basename "$cudart")" "$STAGE/libcudart.so.13"
+        fi
     fi
 
     rm -rf "$OUT"
