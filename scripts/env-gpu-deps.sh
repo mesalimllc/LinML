@@ -178,12 +178,24 @@ if [ -f "$MIGRAPHX_EP" ] && _linml_has_migraphx_runtime; then
 elif [ -n "${LINML_EP_LIBRARIES:-}" ]; then
     # Drop the vendored mapping a previous source (or an older version of this
     # script) exported; any other MIGraphX mapping is the user's and is kept.
-    _linml_libs=";$LINML_EP_LIBRARIES;"
-    _linml_libs="${_linml_libs//";MIGraphXExecutionProvider=$MIGRAPHX_EP;"/;}"
-    _linml_libs="${_linml_libs#;}"
-    LINML_EP_LIBRARIES="${_linml_libs%;}"
+    # Walked entry by entry like the TensorRT-RTX and OpenVINO cleanups above.
+    _linml_rest=""
+    _linml_todo="$LINML_EP_LIBRARIES"
+    while [ -n "$_linml_todo" ]; do
+        _linml_pair="${_linml_todo%%;*}"
+        case "$_linml_todo" in
+            *";"*) _linml_todo="${_linml_todo#*;}" ;;
+            *) _linml_todo="" ;;
+        esac
+        [ -n "$_linml_pair" ] || continue
+        case "$_linml_pair" in
+            "MIGraphXExecutionProvider=$MIGRAPHX_EP") ;;  # stale vendored mapping, drop
+            *) _linml_rest="${_linml_rest:+$_linml_rest;}$_linml_pair" ;;
+        esac
+    done
+    LINML_EP_LIBRARIES="$_linml_rest"
     export LINML_EP_LIBRARIES
-    unset _linml_libs
+    unset _linml_pair _linml_rest _linml_todo
 fi
 unset -f _linml_has_migraphx_runtime
 

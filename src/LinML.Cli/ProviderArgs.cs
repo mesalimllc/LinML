@@ -62,7 +62,17 @@ public static class ProviderArgs
             "(or a raw ORT EP name like CUDAExecutionProvider).");
     }
 
-    private static readonly List<IntPtr> BundledLibraryHandles = [];
+    // Handles of bundled runtime libraries loaded ahead of a plugin, kept for the life of the
+    // process. A set, so resolving the same plugin again does not record a handle twice.
+    private static readonly HashSet<IntPtr> BundledLibraryHandles = [];
+
+    private static void KeepBundledLibraryHandles(IEnumerable<IntPtr> handles)
+    {
+        lock (BundledLibraryHandles)
+        {
+            BundledLibraryHandles.UnionWith(handles);
+        }
+    }
 
     /// <summary>
     /// Gets the canonical short alias for a known provider ID.
@@ -183,7 +193,7 @@ public static class ProviderArgs
                     var pluginDir = Path.GetDirectoryName(libraryPath);
                     if (!string.IsNullOrEmpty(pluginDir))
                     {
-                        BundledLibraryHandles.AddRange(
+                        KeepBundledLibraryHandles(
                             PluginInstaller.LoadBundledLibraries(pluginDir, spec.LibraryFileName));
                     }
 
@@ -215,7 +225,7 @@ public static class ProviderArgs
             return null;
         }
 
-        BundledLibraryHandles.AddRange(PluginInstaller.LoadBundledLibraries(runtimeDir, spec.LibraryFileName));
+        KeepBundledLibraryHandles(PluginInstaller.LoadBundledLibraries(runtimeDir, spec.LibraryFileName));
         return variant;
     }
 
