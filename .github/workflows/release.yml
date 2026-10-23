@@ -228,12 +228,23 @@ jobs:
           name: nuget-packages
           path: artifacts/packages
 
+      # The nuget.org username of the Trusted Publishing policy's creator (not the owner).
+      # No fallback: without it the token exchange fails with an unhelpful 401.
+      - name: Check NuGet user
+        env:
+          NUGET_USER: ${{ vars.NUGET_USER || secrets.NUGET_USER }}
+        run: |
+          if [ -z "$NUGET_USER" ]; then
+            echo "::error::Set the NUGET_USER repository variable or secret to the nuget.org username that created the Trusted Publishing policy."
+            exit 1
+          fi
+
       # Exchange GitHub Actions OIDC token for temporary NuGet API key
       - name: NuGet login (OIDC → temp API key)
         uses: NuGet/login@v1
         id: nuget-login
         with:
-          user: ${{ vars.NUGET_USER || secrets.NUGET_USER || 'trackdubllc' }}
+          user: ${{ vars.NUGET_USER || secrets.NUGET_USER }}
 
       - name: Push to NuGet.org
         run: |
